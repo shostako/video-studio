@@ -35,10 +35,14 @@ def evaluate(summaries, head_sha, inline_comment_count=0):
     return 0, "Codex のレビューは先頭コミットに対して完了し、未解決の指摘は無い"
 
 
+class GhError(Exception):
+    """gh の呼び出しが失敗した（通信の瞬断など）。「だめ」ではなく「待つ」として扱う。"""
+
+
 def _gh(*args, ok_codes=(0,)):
     r = subprocess.run(["gh", *args], capture_output=True, text=True)
     if r.returncode not in ok_codes:
-        raise SystemExit(f"gh 失敗: {' '.join(args)}\n{r.stderr.strip()}")
+        raise GhError(f"gh 失敗: {' '.join(args)}: {r.stderr.strip()[:200]}")
     return r.stdout
 
 
@@ -70,5 +74,13 @@ def main(argv):
     return code
 
 
+def run(argv):
+    try:
+        return main(argv)
+    except GhError as e:
+        print(f"待つ: 通信に失敗した。もう一度流す（{e}）")
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(run(sys.argv[1:]))

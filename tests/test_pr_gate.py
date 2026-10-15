@@ -37,3 +37,10 @@ def test_no_summary_waits():
 
 def test_latest_summary_wins():
     assert pr_gate.evaluate([body(unresolved=True), body()], HEAD)[0] == 0
+
+
+def test_gh_failure_means_wait(monkeypatch):
+    def boom(*a, **k):
+        raise pr_gate.GhError("TLS handshake timeout")
+    monkeypatch.setattr(pr_gate, "_gh", boom)
+    assert pr_gate.run(["8"]) == 2
