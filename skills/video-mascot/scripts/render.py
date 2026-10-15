@@ -222,6 +222,7 @@ def compose(pl, mth, blk):
 
 W1 = W0 + 2 * PAD; OW = 2 * round(OH * W1 / H0 / 2)
 f0, f1 = int(T0 * FPS), int(math.ceil(T1 * FPS))
+if min(f1, NALL) <= f0: die(f"書き出すコマが無い（{T0}〜{T1} 秒、声は {NALL / FPS:.2f} 秒まで。--from / --to を見直す）")
 if MODE == "alpha":
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
                             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "20", "-auto-alt-ref", "0", OUTF], stdin=subprocess.PIPE)
@@ -248,7 +249,8 @@ for f in range(f0, min(f1, NALL)):
     else:
         enc.stdin.write(bake_shadow(img, sh).tobytes())
     if f % 300 == 0: print(f"  {f}/{NALL}", file=sys.stderr, flush=True)
-enc.stdin.close(); enc.wait()
+enc.stdin.close(); rc_enc = enc.wait()
+if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
 if MODE != "alpha":
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{T0}", "-t", f"{T1 - T0}", "-i", VOICE, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", OUTF], check=True)
     os.remove(tmp)
