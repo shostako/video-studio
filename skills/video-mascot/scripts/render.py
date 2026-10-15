@@ -160,7 +160,7 @@ if MOT and MOT["blink"]:                          # 二次運動: 間隔をゆ�
     B_ = MOT["blink"]
     BLINK_AT = blink_times(END, random.Random(SEED + 101), B_["mean"], B_["spread"], B_["min"], B_["max"], B_["double"],
                            extra=[s_ for s_, _, _ in ev] if B_["on_switch"] else ())
-else:
+elif MOT is None:                                 # 今までどおり（motion.blink: false はまばたきしない）
     t = 1.2
     while t < END: BLINK_AT.append(t); t += random.uniform(2.6, 4.6)
 blink = [None] * NALL                  # まばたき: None か "e1"/"e2"、細かい時は (下の段, 上の段, 上の段の割合)

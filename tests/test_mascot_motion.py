@@ -25,7 +25,8 @@ def test_motion_config_on_fills_defaults():
 
 
 @pytest.mark.parametrize("value, flag", [({"brath": {}}, None), ({"head": {"rol": 1}}, None), ({"head": 3}, None),
-                                         ({"switch": {"ease": "bounce"}}, None), (True, "yes"), ("on", None)])
+                                         ({"switch": {"ease": "bounce"}}, None), (True, "yes"), ("on", None),
+                                         ({"blink": {"max": 0}}, None), ({"blink": {"min": 3, "max": 2}}, None), ({"blink": {"mean": 0}}, None)])
 def test_motion_config_rejects_typos(value, flag):
     with pytest.raises(ValueError):
         lib.motion_config(value, flag)
@@ -197,3 +198,9 @@ def test_plan_at_ease_keeps_duration_and_order():
     assert lib.plan_at(0.5, ev, "home", ib, fps, nib, "in_out") == ("pose", "home")
     assert lib.plan_at(1.4, ev, "home", ib, fps, nib, "in_out") == ("pose", "point")
     assert lib.plan_at(1.2, ev, "home", lambda a, b: None, fps, nib, "in_out") == ("pose", "point")
+
+
+@pytest.mark.parametrize("mean, lo, hi", [(3.4, 1.6, 0.0), (3.4, 0.0, 7.0), (0.0, 1.6, 7.0), (3.4, 5.0, 2.0)])
+def test_blink_times_rejects_intervals_that_cannot_advance(mean, lo, hi):
+    with pytest.raises(ValueError):
+        lib.blink_times(10, random.Random(0), mean=mean, lo=lo, hi=hi)

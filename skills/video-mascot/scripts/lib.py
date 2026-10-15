@@ -361,6 +361,9 @@ def motion_config(value, flag=None):
         if bad: raise ValueError(f"motion.{k} に知らない項目: {sorted(bad)}")
         out[k] = {**d, **u}
     if out["switch"] is not None: ease(out["switch"]["ease"], 0.5)          # 名前の検査
+    b = out["blink"]
+    if b is not None and not (b["mean"] > 0 and 0 < b["min"] <= b["max"]):  # 間隔が進まないと書き出しが終わらない
+        raise ValueError(f"motion.blink は mean > 0 かつ 0 < min <= max: mean={b['mean']} min={b['min']} max={b['max']}")
     return out
 
 
@@ -472,6 +475,7 @@ def switch_offset(t, switches, anticipate=0.15, anticipate_px=5.0, overshoot_px=
 def blink_times(end, rng, mean=3.4, spread=0.35, lo=1.6, hi=7.0, double=0.15, start=1.2, extra=(), gap=0.3):
     """まばたきの時刻（秒）の列。間隔は中央値 mean・ばらつき spread の対数正規を [lo, hi] に切ったもの。
     double の割合で 0.3〜0.45 秒後にもう1回。extra（姿勢の切り替えなど）にも足し、前と gap 秒未満の所は捨てる。rng は random.Random。"""
+    if not (mean > 0 and 0 < lo <= hi): raise ValueError(f"まばたきの間隔は mean > 0 かつ 0 < lo <= hi: {mean}, {lo}, {hi}")
     ts = []; t = start
     while t < end:
         ts.append(t)
