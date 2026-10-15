@@ -1,5 +1,5 @@
-"""video-mascot の共通部分: 設定の読み込み、足元の台座消し、軸足の靴の位置、背景の切り抜き。"""
-import json, os, sys
+"""video-mascot の共通部分: 設定の読み込み、足元の台座消し、軸足の靴の位置、背景の切り抜き、口パクと姿勢の時間割の純関数。"""
+import json, math, os, sys
 import cv2, numpy as np
 
 BG = 253          # マスコットの絵の背景（/img が描く「ほぼ白」）の明るさ
@@ -134,3 +134,113 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600):
     sh = shadow * (1 - a)                                                           # 影は黒の半透明
     at = a + sh; rgb = (col * a[:, :, None]) / np.maximum(at[:, :, None], 1e-3)
     return np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), (np.clip(at, 0, 1) * 255).astype(np.uint8)])
+
+
+# ---------- 声の語から母音の時刻列（render.py の口パク用。純関数）----------
+VOW = {}
+for _row, _v in (("あかさたなはまやらわがざだばぱぁゃ", "a"), ("いきしちにひみりぎじぢびぴぃ", "i"), ("うくすつぬふむゆるぐずづぶぷぅゅ", "u"),
+                 ("えけせてねへめれげぜでべぺぇ", "e"), ("おこそとのほもよろをごぞどぼぽぉょ", "o")):
+    for _ch in _row: VOW[_ch] = _v
+
+
+def hira_vowels(h):
+    """ひらがなの列を (音, 母音) の列にする。母音は a/i/u/e/o、「ん」は n、「っ」は -、「ー」は直前の母音。
+    小書きの「ゃゅょぁぃぅぇぉ」は前の音にまとめ、母音をその音のものに置き換える。知らない字の母音は None。"""
+    seq = []; last = None
+    for ch in h:
+        if ch in "ゃゅょぁぃぅぇぉ" and seq: seq[-1] = (seq[-1][0], VOW.get(ch, seq[-1][1])); continue
+        v = "n" if ch == "ん" else ("-" if ch == "っ" else (last if ch == "ー" else VOW.get(ch)))
+        seq.append((ch, v)); last = v or last
+    return seq
+
+
+def vowel_frames(words_hira, fps, nall):
+    """words_hira=[(ひらがな, 開始秒, 終了秒), ...] から、コマごとの母音（無ければ None）と、音の並び [(音, 開始秒), ...]。
+    語の時間は音の数で等分する。ひらがなが空の語は飛ばす。"""
+    vowel_at = [None] * nall; hira_stream = []
+    for h, s, e in words_hira:
+        if not h: continue
+        seq = hira_vowels(h)
+        for k, (ch, v) in enumerate(seq):
+            s0 = s + (e - s) * k / len(seq); s1 = s + (e - s) * (k + 1) / len(seq); hira_stream.append((ch, s0))
+            for f in range(int(s0 * fps), min(nall, int(math.ceil(s1 * fps)))): vowel_at[f] = v
+    return vowel_at, hira_stream
+
+
+# ---------- events のキーワードの時刻（純関数）----------
+def find_time(hira_stream, start, dur, kw, frac):
+    """行（start 秒から dur 秒）の前後 0.2 秒を含む窓の中で、キーワード（ひらがな）の最初の音の時刻。
+    見つからなければ行の中の割合 frac で見積もる。戻り値: (秒, "声" か "推定")。"""
+    a0, b0 = start - 0.2, start + dur + 0.2
+    idx = [i for i, (_, t) in enumerate(hira_stream) if a0 <= t <= b0]; s = "".join(hira_stream[i][0] for i in idx); k = s.find(kw)
+    return (hira_stream[idx[k]][1], "声") if k >= 0 else (start + dur * frac, "推定")
+
+
+def find_word(words_hira, start, dur, cands, frac):
+    """行の窓の中で、ひらがなが cands のどれかと一致する最初の語の開始時刻。無ければ割合 frac で見積もる。戻り値: (秒, "語" か "推定")。"""
+    a0, b0 = start - 0.2, start + dur + 0.2
+    for h, s, e in words_hira:
+        if a0 <= s <= b0 and h in cands: return s, "語"
+    return start + dur * frac, "推定"
+
+
+def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, log=None):
+    """config.events を姿勢の切り替えの時間割 [(開始秒, 前の姿勢, 次の姿勢), ...]（開始の早い順）にする。
+    開始の指定: kw（ひらがなの並び）/ word（語の候補）の声の時刻から中割りの長さ ibdur と 0.04 秒を引く、at（秒）、
+    line_start（行頭）、line_end（行末。offset の既定 0.05）。offset はどれにも足す（at を除く）。starts/durs は {行番号: 秒}。"""
+    ev = []; cur = home
+    for e in events:
+        to = e["pose"]
+        if "kw" in e or "word" in e:
+            t, how = find_word(words_hira, starts[e["line"]], durs[e["line"]], tuple(e["word"]), e.get("fallback", 0.5)) if "word" in e \
+                else find_time(hira_stream, starts[e["line"]], durs[e["line"]], e["kw"], e.get("fallback", 0.5))
+            st = t - ibdur - 0.04 + float(e.get("offset", 0.0))
+            if log: log(f"行{e['line']} {cur}→{to}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）→ 開始 {st:.2f}s")
+        elif "at" in e: st = float(e["at"])
+        elif "line_start" in e: st = starts[e["line_start"]] + float(e.get("offset", 0.0))
+        elif "line_end" in e: st = starts[e["line_end"]] + durs[e["line_end"]] + float(e.get("offset", 0.05))
+        else: die(f"events に開始の指定が無い: {e}")
+        ev.append((st, cur, to)); cur = to
+    ev.sort()
+    return ev
+
+
+def plan_at(t, ev, home, ib_seq, ibfps, nib):
+    """時刻 t に出す絵。("pose", 姿勢) か、切り替えの途中なら ("ib", 中割りの項目, 部品を借りる姿勢)。
+    ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。"""
+    cur = home
+    for (s, a_, b_) in ev:
+        if t < s: break
+        seq = ib_seq(a_, b_); k = int((t - s) * ibfps) if seq else 99
+        if seq and k < nib: return ("ib", seq[k], a_ if k < int(nib * 0.4 + 0.5) else b_)
+        cur = b_
+    return ("pose", cur)
+
+
+# ---------- 口の形（純関数）----------
+def choose_mouth(Lv, v):
+    """声の大きさと母音から口の形。小さい声は小さく、いちばん大きい開き(m3)は強い「あ」の山だけ。"""
+    if Lv < 0.15 or v in (None, "-"): return None
+    if v == "n": return "m1"
+    if v == "a": return "m1" if Lv < 0.42 else ("m7" if Lv < 0.8 else ("m2" if Lv < 1.15 else "m3"))
+    if v in ("i", "e"): return "m1" if Lv < 0.45 else ("m7" if Lv < 1.1 else "m6")
+    if v == "u": return "m1" if Lv < 0.3 else "m5"
+    if v == "o": return "m1" if Lv < 0.3 else "m4"
+    return "m1"
+
+
+def smooth_mouth(mouth, R):
+    """すぐ消える口の形を直前の形にする（新しいリストを返す）。R=1（30fps 以下）は前後と違う1コマだけ、
+    R>1 は 30fps の1コマ（R コマ）以下しか続かない形。R は 30fps に対する倍率。"""
+    mouth = list(mouth); n = len(mouth)
+    if R == 1:
+        for f in range(1, n - 1):
+            if mouth[f] != mouth[f - 1] and mouth[f] != mouth[f + 1]: mouth[f] = mouth[f - 1]
+    else:
+        f = 1
+        while f < n:
+            g = f
+            while g < n and mouth[g] == mouth[f]: g += 1
+            if g - f <= R and g < n and mouth[f] != mouth[f - 1]: mouth[f:g] = [mouth[f - 1]] * (g - f)
+            f = g
+    return mouth
