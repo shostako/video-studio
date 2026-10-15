@@ -34,7 +34,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 7. **中割りを描く**: `vm poses <作業フォルダ> inbetweens`（pairs ごとに5枚）。
 8. **姿勢の切り替えを書く**: `config.events` に、台詞のキーワード（ひらがな）か語で切り替え時刻を指定。`vm render <作業フォルダ> --mode white --from 秒 --to 秒` で姿勢の移り変わりが多い範囲だけ書き出し、`vm frames`（video-scene）で並べて確かめる。標準エラーに、キーワードが見つかった時刻（声／語／推定）が出る。**推定になった所は、語に替える**（references/lessons.md）。
 9. **全編を書き出す**: 主動画の背景が**白っぽい**なら `vm render <作業フォルダ> --mode white`（背景が白の mp4、声入り）、**暗い・色つき**なら `--mode alpha`（背景透明の webm）。
-10. **主動画に重ねる**（`--x` や `--bottom` を負にしてマスコットの枠を主動画の外へはみ出させてよい。はみ出す分は切り落としてから重ねる）: `vm overlay <主動画.mp4> <作業フォルダ> --out 出力.mp4 --side left [--mode multiply]`。白っぽい主動画は `--mode multiply`（白が透けて枠が出ない。実績あり）。見出し・字幕を足すなら、できた動画を video-scene の `compose` の base にして重ねる。
+10. **主動画に重ねる**（`--x` や `--bottom` を負にしてマスコットの枠を主動画の外へはみ出させてよい。はみ出す分は切り落としてから重ねる）: `vm overlay <主動画.mp4> <作業フォルダ> --out 出力.mp4 --side left [--mode multiply]`。白っぽい主動画は `--mode multiply`（白が透けて枠が出ない。実績あり）。主動画の画面比で置くなら `--preset left|right|center|corner-left|corner-right`（安全領域 `--safe 0.05` の内側。`--height` / `--bottom` / `--x` を足すとそちらが優先）、登場・退場を付けるなら `--enter slide --exit fade` など（`--move-dur 0.5`、`--ease out-cubic|out-back` ほか）。どれも付けなければ今までどおり。プリセットが揃えるのは枠（`pad` の白い余白を含む）の端で、キャラの輪郭ではない。見出し・字幕を足すなら、できた動画を video-scene の `compose` の base にして重ねる。
     - **暗い背景に透明版を重ねる場合の限界**: 髪の毛束のすき間の白（肌・髪・耳の間の細長い白）が、小さな白い切れ端として残ることがある（2026-10-12 実測: 全身の1コマに7か所、うち目立つのは耳の下と首筋の2か所）。透明版は「ほぼ使える」止まり。気になるときは、**元のマスコットの絵を最初から単色の背景（緑など）で描かせて色で抜く**か、主動画の暗い所に白い縁取りを足す（references/lessons.md の「透明にする」）。
 11. **確かめて報告する**（下）。
 
