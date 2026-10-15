@@ -6,7 +6,7 @@
 import json, os, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, MOUTHS, EYES, die
+from lib import Proj, MOUTHS, EYES, GAZES, die
 
 
 def face_box(P):
@@ -15,7 +15,10 @@ def face_box(P):
 
 
 def map_rois(P, pose, pad=8):
-    """home で測った口・目の範囲を、顔を重ね合わせて pose に写す。"""
+    """home で測った口・目の範囲を、顔を重ね合わせて pose に写す。
+    poses.<姿勢>.face に範囲が書いてあれば（斜め・横の顔）、写さずにそれを使う（顔の合いは 1.0 とする）。"""
+    own = P.cfg["poses"].get(pose, {}).get("face")
+    if isinstance(own, dict): return [max(0, v) for v in own["mouth_roi"]], [max(0, v) for v in own["eye_roi"]], 1.0
     f = P.cfg["face"]; home = P.read_pose(P.home)
     if pose == P.home: return [max(0, v) for v in f["mouth_roi"]], [max(0, v) for v in f["eye_roi"]], 1.0
     dst = P.read_pose(pose); x0, y0, x1, y1 = face_box(P); H, W = dst.shape[:2]
@@ -56,8 +59,9 @@ def cut(base, var_path, roi):
 
 
 def extract(P, pose):
+    if P.cfg["poses"].get(pose, {}).get("face", True) is False: print(f"{pose}: 顔なし（face: false）。部品は作らない"); return {}
     mouth_roi, eye_roi, cc = map_rois(P, pose); base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
-    for names, roi in ((MOUTHS, mouth_roi), (EYES, eye_roi)):
+    for names, roi in ((MOUTHS, mouth_roi), (EYES + GAZES, eye_roi)):
         for k in names:
             vp = P.p("parts", f"{pose}_{k}.png")
             if not os.path.exists(vp): continue
@@ -70,12 +74,13 @@ def extract(P, pose):
 
 
 def check(P, pose):
+    if P.cfg["poses"].get(pose, {}).get("face", True) is False: return
     base = P.read_pose(pose); meta = json.load(open(P.p(f"parts_{pose}", "parts.json"))); mouth_roi, eye_roi, _ = map_rois(P, pose)
     cx = (mouth_roi[0] + mouth_roi[2]) // 2; cy = (eye_roi[1] + mouth_roi[3]) // 2; hh, hw = 150, 190; tiles = []
     def crop(img):
         y0 = max(0, cy - hh); x0 = max(0, cx - hw); t = img[y0:y0 + 2 * hh, x0:x0 + 2 * hw].copy()
         return cv2.resize(t, (2 * hw, 2 * hh)) if t.shape[:2] != (2 * hh, 2 * hw) else t
-    for k in MOUTHS + EYES:
+    for k in MOUTHS + EYES + GAZES:
         if k not in meta: continue
         im = cv2.imread(P.p(f"parts_{pose}", f"{k}.png"), cv2.IMREAD_UNCHANGED); x, y = meta[k]; h, w = im.shape[:2]
         out = base.copy(); a = im[:, :, 3:4] / 255.0; out[y:y + h, x:x + w] = (out[y:y + h, x:x + w] * (1 - a) + im[:, :, :3] * a).astype(np.uint8)

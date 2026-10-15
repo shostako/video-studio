@@ -1,6 +1,6 @@
 """マスコットの姿勢の絵・口と目の差分・中割りを /img（ChatGPT の枠、追加料金なし）で並列に描く。あるものは飛ばす。
   vm poses <作業フォルダ> poses         mascot.png から姿勢の絵 poses/pose_<名前>.png を描く（既にあれば飛ばす）
-  vm poses <作業フォルダ> parts         姿勢ごとに口7形・目2段の差分 parts/<姿勢>_<m1..m7,e1,e2>.png を描く
+  vm poses <作業フォルダ> parts         姿勢ごとに口7形・目2段の差分 parts/<姿勢>_<m1..m7,e1,e2>.png を描く（config.gaze があれば視線 g_* も）
   vm poses <作業フォルダ> inbetweens    pairs の姿勢どうしの中割り5枚 ib/ib_<a>_<b>_<k>.png を描く
   vm poses <作業フォルダ> all           上の3つを順に
   オプション: -j N（並列数、既定4）  --dry-run（描く予定だけ出す）  --only 語（出力名にその語を含むものだけ）
@@ -8,7 +8,7 @@
 import os, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, die
+from lib import Proj, die, gaze_keys, pose_view
 
 IMG = os.path.expanduser("~/.claude/skills/img/scripts/img.sh")
 KEEP = ("Edit this exact image. Keep EVERYTHING identical to the input image: the same character, same pose, same hands, same hair, same clothes, same lighting, "
@@ -23,6 +23,11 @@ M = {"m1": "the mouth: lips slightly parted with a small gap, as when speaking s
             "clearly LESS open than a half-open mouth. The eyes stay exactly as they are."),
      "e1": "the eyes: three-quarters closed, in the middle of a blink. The mouth stays exactly as it is.",
      "e2": "the eyes: fully closed, blinking. The mouth stays exactly as it is."}
+G = {"g_l": "the eyes: the irises and pupils moved toward the viewer's left side, glancing left. The head, face direction and mouth stay exactly as they are.",
+     "g_r": "the eyes: the irises and pupils moved toward the viewer's right side, glancing right. The head, face direction and mouth stay exactly as they are.",
+     "g_u": "the eyes: the irises and pupils moved slightly upward, as when thinking. The head, face direction and mouth stay exactly as they are.",
+     "g_c": ("the eyes: the irises and pupils turned to look straight at the camera (at the viewer), while the head keeps facing the same direction as now. "
+             "The mouth stays exactly as it is.")}
 FR = {1: "one sixth", 2: "one third", 3: "exactly halfway", 4: "two thirds", 5: "five sixths"}
 
 
@@ -37,7 +42,15 @@ def jobs_poses(P):
 
 
 def jobs_parts(P):
-    return [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {txt}", [P.pose_path(n)]) for n in P.poses for k, txt in M.items()]
+    """口7形・目2段。config.gaze があれば視線の部品も（顔の向きで決まる: 正面は g_l g_r g_u、斜めは g_c g_u）。face: false の姿勢は作らない。"""
+    out = []
+    for n in P.poses:
+        pc = P.cfg["poses"][n]; face = pc.get("face", True) is not False
+        if not face: continue
+        out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {txt}", [P.pose_path(n)]) for k, txt in M.items()]
+        if "gaze" in P.cfg and P.cfg["gaze"] is not False:
+            out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {G[k]}", [P.pose_path(n)]) for k in gaze_keys(pose_view(pc)[1], face)]
+    return out
 
 
 IB_HEAD = ("Same character, same face, same clothes, same lighting, same camera framing, position and size, same plain white background as both reference images, "

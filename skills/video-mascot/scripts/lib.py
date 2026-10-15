@@ -5,6 +5,7 @@ import cv2, numpy as np
 BG = 253          # マスコットの絵の背景（/img が描く「ほぼ白」）の明るさ
 MOUTHS = ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]   # 少し開き・半開き・大開き・お・う・い/え・小さい開き
 EYES = ["e1", "e2"]                                    # 4分の3閉じ・閉じ
+GAZES = ["g_l", "g_r", "g_u", "g_c"]                    # 視線: 画面の左・右・上・カメラ（config.gaze がある時だけ描く。目の範囲で切り抜く）
 
 
 class Proj:
@@ -184,34 +185,50 @@ def find_word(words_hira, start, dur, cands, frac):
     return start + dur * frac, "推定"
 
 
-def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, log=None):
+VIAS = ("cut", "fade", "turn")     # events の via: 姿勢の切り替えのつなぎ方（中割りを使わない時）
+
+
+def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, log=None, dur_of=None, with_via=False):
     """config.events を姿勢の切り替えの時間割 [(開始秒, 前の姿勢, 次の姿勢), ...]（開始の早い順）にする。
     開始の指定: kw（ひらがなの並び）/ word（語の候補）の声の時刻から中割りの長さ ibdur と 0.04 秒を引く、at（秒）、
-    line_start（行頭）、line_end（行末。offset の既定 0.05）。offset はどれにも足す（at を除く）。starts/durs は {行番号: 秒}。"""
+    line_start（行頭）、line_end（行末。offset の既定 0.05）。offset はどれにも足す（at を除く）。starts/durs は {行番号: 秒}。
+    dur_of(前, 次, via) を渡すと、kw/word で引く長さをその切り替えの長さにする（クロスフェードなど）。
+    with_via=True は (開始秒, 前, 次, via か None) の4つ組で返す（via は "cut"・"fade"・"turn"）。"""
     ev = []; cur = home
     for e in events:
-        to = e["pose"]
+        to = e["pose"]; via = e.get("via")
+        if via is not None and via not in VIAS: die(f"events の via は {'・'.join(VIAS)} のどれか: {via}")
         if "kw" in e or "word" in e:
             t, how = find_word(words_hira, starts[e["line"]], durs[e["line"]], tuple(e["word"]), e.get("fallback", 0.5)) if "word" in e \
                 else find_time(hira_stream, starts[e["line"]], durs[e["line"]], e["kw"], e.get("fallback", 0.5))
-            st = t - ibdur - 0.04 + float(e.get("offset", 0.0))
+            st = t - (ibdur if dur_of is None else dur_of(cur, to, via)) - 0.04 + float(e.get("offset", 0.0))
             if log: log(f"行{e['line']} {cur}→{to}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）→ 開始 {st:.2f}s")
         elif "at" in e: st = float(e["at"])
         elif "line_start" in e: st = starts[e["line_start"]] + float(e.get("offset", 0.0))
         elif "line_end" in e: st = starts[e["line_end"]] + durs[e["line_end"]] + float(e.get("offset", 0.05))
         else: die(f"events に開始の指定が無い: {e}")
-        ev.append((st, cur, to)); cur = to
-    ev.sort()
+        ev.append((st, cur, to, via) if with_via else (st, cur, to)); cur = to
+    ev.sort(key=lambda x: x[:3])
     return ev
 
 
-def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None):
+def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None):
     """時刻 t に出す絵。("pose", 姿勢) か、切り替えの途中なら ("ib", 中割りの項目, 部品を借りる姿勢)。
     ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。
-    ease_name（二次運動の時だけ）: 切り替えの長さ nib/ibfps は同じまま、何枚目を出すかをイージングで決める（None は等速）。"""
+    ease_name（二次運動の時だけ）: 切り替えの長さ nib/ibfps は同じまま、何枚目を出すかをイージングで決める（None は等速）。
+    trans_of(前, 次, via)（向きの切り替えを使う時だけ）: None なら今までどおり、("cut", 0, 0) は一瞬、("fade"|"turn", 秒, 縮み) なら
+    その長さのあいだ ("mix", 前の姿勢, 次の姿勢, 溶かす割合 0..1, 横の縮み 0..) を返す。ev は3つ組か4つ組（4つ目が via）。"""
     cur = home
-    for (s, a_, b_) in ev:
+    for e_ in ev:
+        s, a_, b_ = e_[:3]
         if t < s: break
+        tr = trans_of(a_, b_, e_[3] if len(e_) > 3 else None) if trans_of else None
+        if tr is not None:
+            _, d_, sq_ = tr
+            if tr[0] == "cut": cur = b_; continue
+            if t < s + d_:
+                u = (t - s) / d_; return ("mix", a_, b_, smooth01(u), sq_ * math.sin(math.pi * u) if tr[0] == "turn" else 0.0)
+            cur = b_; continue
         seq = ib_seq(a_, b_)
         if not seq: k = 99
         elif ease_name is None: k = int((t - s) * ibfps)
@@ -499,4 +516,114 @@ def blink_times(end, rng, mean=3.4, spread=0.35, lo=1.6, hi=7.0, double=0.15, st
     out = []
     for t in sorted(ts + [x for x in extra if 0 <= x < end]):
         if t < end and (not out or t - out[-1] >= gap): out.append(t)
+    return out
+
+
+# ---------- 向き・視線（config.transition / config.gaze。純関数）----------
+TRANSITION_DEFAULTS = {"mode": "fade", "dur": 0.25, "squash": 0.06}
+LOOKS = ("c", "l", "r", "u")            # 視線: カメラ・画面の左・画面の右・上
+GAZE_DEFAULTS = {"lead": 0.15, "hold": 1.0}
+
+
+def transition_config(value):
+    """config.transition を (mode, dur, squash) の辞書か None（今までどおり＝中割りが無い組は一瞬で切り替える）に。
+    mode: cut（一瞬）・fade（溶かす）・turn（溶かしながら横に少し縮めて回って見せる）。"""
+    if value is None or value is False: return None
+    if value is True: value = {}
+    if not isinstance(value, dict): raise ValueError(f"transition は true/false か辞書: {value!r}")
+    bad = set(value) - set(TRANSITION_DEFAULTS)
+    if bad: raise ValueError(f"transition に知らない項目: {sorted(bad)}")
+    out = {**TRANSITION_DEFAULTS, **value}
+    if out["mode"] not in VIAS: raise ValueError(f"transition.mode は {'・'.join(VIAS)} のどれか: {out['mode']}")
+    if not out["dur"] > 0: raise ValueError(f"transition.dur は 0 より大きく: {out['dur']}")
+    if not 0 <= out["squash"] < 0.5: raise ValueError(f"transition.squash は 0 以上 0.5 未満: {out['squash']}")
+    return out
+
+
+def switch_kind(has_ib, via, trans, ibdur):
+    """1つの切り替えのつなぎ方。戻り値 None（今までの処理: 中割りか一瞬）か ("fade"|"turn", 秒, 縮み)。
+    via（events の指定）が最優先（via: "cut" は中割りがあっても一瞬で切り替える ("cut", 0, 0)）。via が無ければ、中割りがある組は中割り、
+    無い組は trans（config.transition）。trans の mode が cut か、trans も via も無ければ None。"""
+    if via == "cut": return ("cut", 0.0, 0.0)
+    mode = via if via is not None else (None if has_ib else (trans["mode"] if trans else None))
+    if mode in (None, "cut"): return None
+    t = trans or TRANSITION_DEFAULTS
+    return (mode, float(t["dur"]), float(t["squash"]) if mode == "turn" else 0.0)
+
+
+def pose_view(pcfg):
+    """姿勢の設定から (体の向き yaw, 顔の向き head_yaw)（度、画面の左が負）。無ければ正面 0。"""
+    y = float(pcfg.get("yaw", 0)); return y, float(pcfg.get("head_yaw", y))
+
+
+def gaze_keys(head_yaw, face=True):
+    """その姿勢で描く視線の部品。顔が正面（|顔の向き| < 15 度）は g_l g_r g_u、斜め（< 60 度）は g_c g_u、横・後ろ・顔なしは無し。"""
+    if not face: return []
+    a = abs(((head_yaw + 180) % 360) - 180)
+    return ["g_l", "g_r", "g_u"] if a < 15 else (["g_c", "g_u"] if a < 60 else [])
+
+
+def gaze_part(look, head_yaw, have=None):
+    """視線 look（c/l/r/u か None）を、顔の向き head_yaw の姿勢で貼る部品の名前にする（None は元の絵の目のまま）。
+    顔が正面: c は元の目、l/r/u は g_l/g_r/g_u。顔が左向き（負）: l は元の目（もう左を見ている）、c と r は g_c（見る人の方へ戻す）。右向きは逆。
+    have（その姿勢にある部品の名前の集まり）を渡すと、無い部品は元の目にする。"""
+    if look is None: return None
+    if look not in LOOKS: raise ValueError(f"視線は {'・'.join(LOOKS)} のどれか: {look}")
+    a = ((head_yaw + 180) % 360) - 180
+    if abs(a) < 15: k = None if look == "c" else "g_" + look
+    elif abs(a) < 60:
+        side = "l" if a < 0 else "r"
+        k = "g_u" if look == "u" else (None if look == side else "g_c")
+    else: k = "g_u" if look == "u" and abs(a) < 120 else None
+    return k if (k is None or have is None or k in have) else None
+
+
+def gaze_config(value):
+    """config.gaze を {lead, hold, events} の辞書か None（使わない）に。"""
+    if value is None or value is False: return None
+    if value is True: value = {}
+    if not isinstance(value, dict): raise ValueError(f"gaze は true/false か辞書: {value!r}")
+    bad = set(value) - set(GAZE_DEFAULTS) - {"events"}
+    if bad: raise ValueError(f"gaze に知らない項目: {sorted(bad)}")
+    out = {**GAZE_DEFAULTS, **{k: v for k, v in value.items() if k != "events"}, "events": list(value.get("events", []))}
+    if not (out["lead"] >= 0 and out["hold"] > 0): raise ValueError(f"gaze は lead >= 0、hold > 0: lead={out['lead']} hold={out['hold']}")
+    return out
+
+
+def resolve_gaze(events, starts, durs, hira_stream, words_hira, hold=1.0, log=None):
+    """config.gaze.events を [(開始秒, 終わり秒, 視線), ...]（開始の早い順）にする。開始は kw/word（その語の声の時刻）・at・line_start・line_end、
+    offset で微調整。終わりは until（秒）か、開始から hold 秒（events ごとに hold を書ける）。"""
+    out = []
+    for e in events:
+        lk = e.get("look")
+        if lk not in LOOKS: die(f"gaze.events の look は {'・'.join(LOOKS)} のどれか: {e}")
+        off = float(e.get("offset", 0.0))
+        if "kw" in e or "word" in e:
+            t, how = find_word(words_hira, starts[e["line"]], durs[e["line"]], tuple(e["word"]), e.get("fallback", 0.5)) if "word" in e \
+                else find_time(hira_stream, starts[e["line"]], durs[e["line"]], e["kw"], e.get("fallback", 0.5))
+            st = t + off
+            if log: log(f"視線 行{e['line']} {lk}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）")
+        elif "at" in e: st = float(e["at"])
+        elif "line_start" in e: st = starts[e["line_start"]] + off
+        elif "line_end" in e: st = starts[e["line_end"]] + durs[e["line_end"]] + off
+        else: die(f"gaze.events に開始の指定が無い: {e}")
+        en = float(e["until"]) if "until" in e else st + float(e.get("hold", hold))
+        if en <= st: die(f"gaze.events の終わりが開始より前: {e}")
+        out.append((st, en, lk))
+    return sorted(out)
+
+
+def gaze_track(nall, fps, spans, switches=(), yaw_of=None, lead=0.15):
+    """コマごとの視線（c/l/r/u か None）。spans=[(開始, 終わり, 視線), ...]（台本の指定）が最優先。
+    switches=[(開始, 長さ, 前の姿勢, 次の姿勢), ...] と yaw_of(姿勢)→顔の向き を渡すと、顔の向きが変わる切り替えの
+    lead 秒前から切り替えの終わりまで、目が先に新しい向きへ動く（左へ回るなら l、右へなら r）。"""
+    out = [None] * nall
+    if yaw_of is not None:
+        for s, d, a, b in switches:
+            dy = yaw_of(b) - yaw_of(a)
+            if abs(dy) < 1e-6: continue
+            lk = "l" if dy < 0 else "r"
+            for f in range(max(0, int(math.floor((s - lead) * fps))), min(nall, int(math.ceil((s + d) * fps)))): out[f] = lk
+    for s, e, lk in spans:
+        for f in range(max(0, int(math.floor(s * fps))), min(nall, int(math.ceil(e * fps)))): out[f] = lk
     return out

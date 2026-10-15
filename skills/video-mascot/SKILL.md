@@ -56,7 +56,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 ## 参照
 
-- references/config-spec.md — config.json の全項目と、events の書き方
+- references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md
 - references/pose-design.md — 姿勢と pairs の決め方、描かせる時の注意、口・目の範囲の測り方
 - references/lessons.md — うまくいかなかった所と直し方（声・絵・切り抜き・足元・重ね）
 - assets/examples/icm_explainer/ — 実例（射出圧縮成形の解説、69秒、姿勢6・中割り30）
