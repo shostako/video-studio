@@ -10,6 +10,7 @@ import json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, matte, die
+from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -39,56 +40,13 @@ if not os.path.exists(WORDS) or os.path.getmtime(WORDS) < os.path.getmtime(VOICE
 words = json.load(open(WORDS))
 import pykakasi; KK = pykakasi.kakasi()
 def to_hira(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー")
-VOW = {}
-for row, v in (("あかさたなはまやらわがざだばぱぁゃ", "a"), ("いきしちにひみりぎじぢびぴぃ", "i"), ("うくすつぬふむゆるぐずづぶぷぅゅ", "u"),
-               ("えけせてねへめれげぜでべぺぇ", "e"), ("おこそとのほもよろをごぞどぼぽぉょ", "o")):
-    for ch in row: VOW[ch] = v
-vowel_at = [None] * NALL; hira_stream = []
-for w, s, e in words:
-    h = to_hira(w)
-    if not h: continue
-    seq = []; last = None
-    for ch in h:
-        if ch in "ゃゅょぁぃぅぇぉ" and seq: seq[-1] = (seq[-1][0], VOW.get(ch, seq[-1][1])); continue
-        v = "n" if ch == "ん" else ("-" if ch == "っ" else (last if ch == "ー" else VOW.get(ch)))
-        seq.append((ch, v)); last = v or last
-    for k, (ch, v) in enumerate(seq):
-        s0 = s + (e - s) * k / len(seq); s1 = s + (e - s) * (k + 1) / len(seq); hira_stream.append((ch, s0))
-        for f in range(int(s0 * FPS), min(NALL, int(math.ceil(s1 * FPS)))): vowel_at[f] = v
-
-def find_time(line, kw, frac):
-    """行の時間窓の中で、キーワード（ひらがな）の最初の音の時刻。見つからなければ行の中の割合で見積もる。"""
-    a0, b0 = L[line] - 0.2, L[line] + LDUR[line] + 0.2
-    idx = [i for i, (_, t) in enumerate(hira_stream) if a0 <= t <= b0]; s = "".join(hira_stream[i][0] for i in idx); k = s.find(kw)
-    return (hira_stream[idx[k]][1], "声") if k >= 0 else (L[line] + LDUR[line] * frac, "推定")
-def find_word(line, cands, frac):
-    a0, b0 = L[line] - 0.2, L[line] + LDUR[line] + 0.2
-    for w, s, e in words:
-        if a0 <= s <= b0 and to_hira(w) in cands: return s, "語"
-    return L[line] + LDUR[line] * frac, "推定"
+WH = [(to_hira(w), s, e) for w, s, e in words]     # 語のひらがなと時刻
+vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)
 
 # ---------- 口・まばたき ----------
-def choose(Lv, v):
-    """声の大きさと母音から口の形。小さい声は小さく、いちばん大きい開き(m3)は強い「あ」の山だけ。"""
-    if Lv < 0.15 or v in (None, "-"): return None
-    if v == "n": return "m1"
-    if v == "a": return "m1" if Lv < 0.42 else ("m7" if Lv < 0.8 else ("m2" if Lv < 1.15 else "m3"))
-    if v in ("i", "e"): return "m1" if Lv < 0.45 else ("m7" if Lv < 1.1 else "m6")
-    if v == "u": return "m1" if Lv < 0.3 else "m5"
-    if v == "o": return "m1" if Lv < 0.3 else "m4"
-    return "m1"
 lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
 mouth = [choose(lvl_s[f], vowel_at[f]) for f in range(NALL)]
-if R == 1:
-    for f in range(1, NALL - 1):
-        if mouth[f] != mouth[f - 1] and mouth[f] != mouth[f + 1]: mouth[f] = mouth[f - 1]
-else:                                             # 30fps の1コマ（R コマ）以下しか続かない形は直前の形にする
-    f = 1
-    while f < NALL:
-        g = f
-        while g < NALL and mouth[g] == mouth[f]: g += 1
-        if g - f <= R and g < NALL and mouth[f] != mouth[f - 1]: mouth[f:g] = [mouth[f - 1]] * (g - f)
-        f = g
+mouth = smooth_mouth(mouth, R)                    # すぐ消える形は直前の形にする
 print("口の形のコマ数:", {str(m): mouth.count(m) for m in sorted(set(mouth), key=str)}, file=sys.stderr)
 blink = [None] * NALL; t = 1.2                  # まばたき: None か "e1"/"e2"、細かい時は (下の段, 上の段, 上の段の割合)
 BL = [0, 1, 1, 2, 2, 1, 1, 0]; BK = {0: None, 1: "e1", 2: "e2"}   # 30fps の6コマ（e1 e1 e2 e2 e1 e1）を、前後の「開き」込みの閉じ具合で表す
@@ -181,26 +139,9 @@ def ib_seq(a_, b_):
     return seq[::-1] if rev else seq
 
 # ---------- 時間割 ----------
-DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS; ev = []; cur_pose = P.home
-for e in C.get("events", []):
-    to = e["pose"]
-    if "kw" in e or "word" in e:
-        t, how = find_word(e["line"], tuple(e["word"]), e.get("fallback", 0.5)) if "word" in e else find_time(e["line"], e["kw"], e.get("fallback", 0.5))
-        st = t - IBDUR - 0.04 + float(e.get("offset", 0.0)); print(f"行{e['line']} {cur_pose}→{to}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）→ 開始 {st:.2f}s", file=sys.stderr)
-    elif "at" in e: st = float(e["at"])
-    elif "line_start" in e: st = L[e["line_start"]] + float(e.get("offset", 0.0))
-    elif "line_end" in e: st = L[e["line_end"]] + LDUR[e["line_end"]] + float(e.get("offset", 0.05))
-    else: die(f"events に開始の指定が無い: {e}")
-    ev.append((st, cur_pose, to)); cur_pose = to
-ev.sort()
-def plan(f):
-    t = f / FPS; cur = P.home
-    for (s, a_, b_) in ev:
-        if t < s: break
-        seq = ib_seq(a_, b_); k = int((t - s) * IBFPS) if seq else 99
-        if seq and k < NIB: return ("ib", seq[k], a_ if k < int(NIB * 0.4 + 0.5) else b_)
-        cur = b_
-    return ("pose", cur)
+DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
+ev = resolve_events(C.get("events", []), P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr))
+def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB)
 
 # ---------- 描画 ----------
 def paste(img, part):
