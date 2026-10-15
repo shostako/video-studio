@@ -11,3 +11,5 @@ work/
 __pycache__/
 .venv/
 .env
+# テスト用の素材だけは入れる
+!tests/fixtures/**
