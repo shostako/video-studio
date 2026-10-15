@@ -35,7 +35,8 @@ def test_switch_kind_priority():
     assert lib.switch_kind(True, "fade", None, 0.33) == ("fade", 0.25, 0.0)  # via が最優先（transition が無ければ既定の長さ）
     assert lib.switch_kind(True, "cut", fade, 0.33) == ("cut", 0.0, 0.0)
     assert lib.switch_kind(False, "turn", fade, 0.33) == ("turn", 0.3, 0.06)
-    assert lib.switch_kind(False, None, {"mode": "cut", "dur": 0.3, "squash": 0.0}, 0.33) is None
+    assert lib.switch_kind(False, None, {"mode": "cut", "dur": 0.3, "squash": 0.0}, 0.33) == ("cut", 0.0, 0.0)
+    assert lib.switch_kind(True, None, {"mode": "cut", "dur": 0.3, "squash": 0.0}, 0.33) is None   # 中割りがある組は中割り
 
 
 # ---------- plan_at の mix ----------

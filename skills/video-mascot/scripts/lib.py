@@ -542,11 +542,11 @@ def transition_config(value):
 
 def switch_kind(has_ib, via, trans, ibdur):
     """1つの切り替えのつなぎ方。戻り値 None（今までの処理: 中割りか一瞬）か ("fade"|"turn", 秒, 縮み)。
-    via（events の指定）が最優先（via: "cut" は中割りがあっても一瞬で切り替える ("cut", 0, 0)）。via が無ければ、中割りがある組は中割り、
-    無い組は trans（config.transition）。trans の mode が cut か、trans も via も無ければ None。"""
-    if via == "cut": return ("cut", 0.0, 0.0)
+    via（events の指定）が最優先（via: "cut" は中割りがあっても一瞬で切り替える）。via が無ければ、中割りがある組は中割り（None）、
+    無い組は trans（config.transition）。cut は ("cut", 0, 0)（長さ 0 の一瞬）。trans も via も無ければ None（今までどおり）。"""
     mode = via if via is not None else (None if has_ib else (trans["mode"] if trans else None))
-    if mode in (None, "cut"): return None
+    if mode is None: return None
+    if mode == "cut": return ("cut", 0.0, 0.0)
     t = trans or TRANSITION_DEFAULTS
     return (mode, float(t["dur"]), float(t["squash"]) if mode == "turn" else 0.0)
 
