@@ -23,10 +23,10 @@
 
 - 枠の外で決めた事は `ROADMAP.md`（今の段階と次にやること）と `DECISIONS.md`（決めたことと理由）にある。PR ごとに更新する。
 - やるのは `ROADMAP.md` の「クラウドのスレッドがやること」を上から順に1つずつ。「手元待ち」には手を出さない。
-- 毎回 `main` から枝を切って PR を出す。マージしてよいのは次の2つがそろったとき:
-  1. `ci` が緑。
-  2. Codex のレビューが終わっていて、未解決の指摘が無い。PR のコメントに `<!-- codex-pull-request-review-summary -->` を含む要約が出て、その中の `has_unresolved_findings` が `false`（`gh api repos/shostako/video-studio/issues/<PR番号>/comments --jq '.[].body'` で読む。`ci` が終わっても数分は出ないので、出るまで待つ）。指摘が付いたら（インラインは `gh api repos/shostako/video-studio/pulls/<PR番号>/comments`）直して push し、再レビューを待つ。判断に迷う指摘は `DECISIONS.md` の「未決」に書いて止まる。
-  CI だけを見てマージすると、指摘付きの PR が入ってしまう（過去に別リポで起きた）。
+- 毎回 `main` から枝を切って PR を出す。**マージしてよいのは、`python3 scripts/pr_gate.py <PR番号>` が `OK` を返す（終了コード 0）ときだけ。** ci が緑で、Codex のレビューが **PR の先頭コミットに対して**完了していて、未解決の指摘が無いことを見る。
+  - 終了コード 2 は「待つ」（ci か Codex が走行中、または push の後で再レビュー前）。数分おいてもう一度。
+  - 終了コード 1 は「だめ」。指摘を `gh api repos/shostako/video-studio/pulls/<PR番号>/comments` で読み、直して push し、再レビューを待つ。判断に迷う指摘は `DECISIONS.md` の「未決」に書いて止まる。
+  - push するたびに先頭が変わるので、直したあとは必ずもう一度流す。CI だけを見てマージすると、指摘付きの PR が入る（別リポで実際に起きた）。
 - **既定の挙動は変えない**。新しい機能は opt-in で足す。既定の切り替えが要ると思ったら、`DECISIONS.md` の「未決」に書いて止まる。
 - 判断に迷う仕様は推測で進めず、`DECISIONS.md` の「未決」に書いて止まる。
 - `.github/workflows/` の YAML は変えない（Claude の GitHub App には workflows 権限が無く、push が拒否される）。検査を増やすときは `scripts/ci.sh` か `requirements-ci.txt`。ジョブ名 `ci` は `main` の保護ルールが参照している。
