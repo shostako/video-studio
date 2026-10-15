@@ -23,7 +23,10 @@
 
 - 枠の外で決めた事は `ROADMAP.md`（今の段階と次にやること）と `DECISIONS.md`（決めたことと理由）にある。PR ごとに更新する。
 - やるのは `ROADMAP.md` の「クラウドのスレッドがやること」を上から順に1つずつ。「手元待ち」には手を出さない。
-- 毎回 `main` から枝を切って PR を出す。`ci` が緑なら自分でマージしてよい。
+- 毎回 `main` から枝を切って PR を出す。マージしてよいのは次の2つがそろったとき:
+  1. `ci` が緑。
+  2. Codex のレビューが終わっていて、未解決の指摘が無い。PR のコメントに `<!-- codex-pull-request-review-summary -->` を含む要約が出て、その中の `has_unresolved_findings` が `false`（`gh api repos/shostako/video-studio/issues/<PR番号>/comments --jq '.[].body'` で読む。`ci` が終わっても数分は出ないので、出るまで待つ）。指摘が付いたら（インラインは `gh api repos/shostako/video-studio/pulls/<PR番号>/comments`）直して push し、再レビューを待つ。判断に迷う指摘は `DECISIONS.md` の「未決」に書いて止まる。
+  CI だけを見てマージすると、指摘付きの PR が入ってしまう（過去に別リポで起きた）。
 - **既定の挙動は変えない**。新しい機能は opt-in で足す。既定の切り替えが要ると思ったら、`DECISIONS.md` の「未決」に書いて止まる。
 - 判断に迷う仕様は推測で進めず、`DECISIONS.md` の「未決」に書いて止まる。
 - `.github/workflows/` の YAML は変えない（Claude の GitHub App には workflows 権限が無く、push が拒否される）。検査を増やすときは `scripts/ci.sh` か `requirements-ci.txt`。ジョブ名 `ci` は `main` の保護ルールが参照している。
