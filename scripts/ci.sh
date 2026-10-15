@@ -9,7 +9,15 @@ python3 -m pip install -q -r requirements-ci.txt
 
 # 構文: 全スクリプトが読めること
 python3 -m compileall -q skills scripts research tests
-for f in $(git ls-files '*.sh'); do bash -n "$f"; done
+# 拡張子が .sh のものに加えて、拡張子なしの起動スクリプト（vm / vs）も、先頭行が bash なら検査する
+git ls-files -z | while IFS= read -r -d '' f; do
+  [ -f "$f" ] && [ ! -L "$f" ] || continue
+  case "$f" in
+    *.sh) bash -n "$f" ;;
+    *.*) ;;
+    *) if head -c 64 "$f" | head -1 | grep -qE '^#!.*\b(ba)?sh\b'; then bash -n "$f"; fi ;;
+  esac
+done
 
 # テスト
 python3 -m pytest -q tests
