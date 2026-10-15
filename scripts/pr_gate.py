@@ -13,6 +13,22 @@ MARK = "codex-pull-request-review-summary"
 STATE_RE = re.compile(r"<!--\s*codex-review-state:v1\s*(\{.*?\})\s*-->", re.S)
 
 
+def codex_summaries(comments):
+    """PR のコメント（GitHub API の形）から、Codex の bot が書いた要約の本文だけを古い順に取り出す。
+    公開リポでは誰でもコメントできる。マーカーを真似た偽の要約で門を通さないよう、書いた人を見る。"""
+    out = []
+    for c in comments:
+        u = c.get("user") or {}
+        if u.get("type") == "Bot" and "codex" in (u.get("login") or "").lower():
+            out.append(c.get("body") or "")
+    return out
+
+
+def flatten_pages(pages):
+    """`gh api --paginate --slurp` の出力（ページごとの配列の配列）を1本の配列にする。"""
+    return [c for page in pages for c in (page if isinstance(page, list) else [page])]
+
+
 def evaluate(summaries, head_sha, inline_comment_count=0):
     """Codex の要約コメント本文のリスト（古い順）と PR の先頭 SHA から (コード, 理由) を返す。コード 0/1/2 は上の終了コード。"""
     bodies = [b for b in summaries if MARK in b]
@@ -68,8 +84,8 @@ def main(argv):
         print("待つ: ci が走行中"); return 2
     if ci[0][1] != "pass":
         print(f"だめ: ci が {ci[0][1]}"); return 1
-    bodies = json.loads(_gh("api", f"repos/{repo}/issues/{n}/comments", "--paginate", "--jq", "[.[].body]") or "[]")
-    code, why = evaluate(bodies, head)
+    pages = json.loads(_gh("api", f"repos/{repo}/issues/{n}/comments", "--paginate", "--slurp") or "[]")
+    code, why = evaluate(codex_summaries(flatten_pages(pages)), head)
     print(("OK: " if code == 0 else "待つ: " if code == 2 else "だめ: ") + why)
     return code
 

@@ -44,3 +44,23 @@ def test_gh_failure_means_wait(monkeypatch):
         raise pr_gate.GhError("TLS handshake timeout")
     monkeypatch.setattr(pr_gate, "_gh", boom)
     assert pr_gate.run(["8"]) == 2
+
+
+def _c(login, typ, text):
+    return {"user": {"login": login, "type": typ}, "body": text}
+
+
+def test_forged_summary_by_human_is_ignored():
+    # マーカーを真似た偽の「clean」要約は、Codex の bot が書いたものでなければ数えない
+    forged = _c("someone", "User", body())
+    real = _c("chatgpt-codex-connector[bot]", "Bot", body(unresolved=True))
+    assert pr_gate.evaluate(pr_gate.codex_summaries([real, forged]), HEAD)[0] == 1
+    assert pr_gate.evaluate(pr_gate.codex_summaries([forged]), HEAD)[0] == 2
+
+
+def test_forged_summary_by_other_bot_is_ignored():
+    assert pr_gate.codex_summaries([_c("github-actions[bot]", "Bot", body())]) == []
+
+
+def test_flatten_pages():
+    assert pr_gate.flatten_pages([[1, 2], [3]]) == [1, 2, 3]
