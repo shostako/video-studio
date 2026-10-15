@@ -69,3 +69,9 @@ def test_forged_summary_by_other_bot_is_ignored():
 
 def test_flatten_pages():
     assert pr_gate.flatten_pages([[1, 2], [3]]) == [1, 2, 3]
+
+
+def test_same_prefix_different_commit_waits():
+    # 先頭7文字だけ同じ別のコミットを、レビュー済みとして通さない
+    forged_head = HEAD[:7] + "f" * 33
+    assert pr_gate.evaluate([body()], forged_head)[0] == 2

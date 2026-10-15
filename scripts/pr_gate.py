@@ -48,7 +48,7 @@ def evaluate(summaries, head_sha, unresolved_threads=0):
     if cr.get("status") != "completed":
         return 2, f"Codex のレビューが終わっていない（status={cr.get('status')}）"
     sha = cr.get("commit_sha") or ""
-    if not sha or not head_sha.startswith(sha[:7]) or not sha.startswith(head_sha[:7]):
+    if not sha or sha.lower() != head_sha.lower():  # 接頭辞でなく SHA の全体を比べる（短い接頭辞を揃えた別のコミットで通さない）
         return 2, f"Codex のレビューが先頭コミットのものではない（レビュー={sha[:7]}, 先頭={head_sha[:7]}）。`@codex review` で再レビューを頼む"
     if unresolved_threads > 0:
         return 1, f"未解決のレビュースレッドが {unresolved_threads} 件ある。直して返信し、解決済みにする"
