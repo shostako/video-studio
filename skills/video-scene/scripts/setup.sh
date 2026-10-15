@@ -7,7 +7,7 @@ set -uo pipefail
 VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"
 VENV="$VS_HOME/venv"
 HF_VER="0.8.146"
-PY_PKGS=(opencv-python-headless numpy pillow google-genai faster-whisper pykakasi)  # pykakasi は video-mascot が使う（venv を共用するので、作り直しても消えないよう同じ所で入れる）
+PY_PKGS=(opencv-python-headless numpy pillow google-genai faster-whisper pykakasi praat-parselmouth)  # praat-parselmouth は accent（F0 の計測）が使う。 pykakasi は video-mascot が使う（venv を共用するので、作り直しても消えないよう同じ所で入れる）
 CHECK=0; [ "${1-}" = "--check" ] && CHECK=1
 ok=1
 say() { printf '%s\n' "$*"; }
@@ -51,6 +51,11 @@ else
   "$VENV/bin/pip" install -q "${PY_PKGS[@]}" || { say "NG   pip install に失敗"; exit 1; }
   say "ok   python venv"
 fi
+
+# parselmouth（vs accent の F0 計測。無くても他は動く。前からある venv にも足す）
+if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import parselmouth" 2>/dev/null; then say "ok   parselmouth"
+elif [ $CHECK -eq 1 ]; then say "--   parselmouth が無い（vs accent が使えない。setup.sh を引数なしで流すと入る）"
+elif [ -x "$VENV/bin/python" ]; then say "..   parselmouth を入れる"; "$VENV/bin/pip" install -q praat-parselmouth && say "ok   parselmouth" || say "--   parselmouth を入れられない（vs accent が使えない）"; fi
 
 # HyperFrames（版を固定。使い方の統計は送らない。AI 用スキルの自動導入はしない）
 export HYPERFRAMES_SKIP_SKILLS=1

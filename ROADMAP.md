@@ -22,6 +22,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - フレーム補間（RIFE）と切り絵リグの比較: 見た目の判定が要る
 - 口パク `mora` と `amp` の見比べ（同じ作業フォルダで `vm render --lipsync mora` と既定を書き出して並べる）
 - `vm overlay --preset` の数値（大きさの割合・安全領域 0.05）と、登場・退場の速さ・動き方が実物の動画で見て良いか（見た目の判定）
+- `vs accent` の点数が本物の声で耳の判定と合うか（`--thresh` 1.5 半音は仮の値。Gemini TTS の声で「薄い板」の良い版・崩れた版を測って比べる）
 - 作った機能を既定にするかの判断
 
 ## 済んだこと
@@ -30,3 +31,4 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - `render.py` の中にあった純関数（母音の時刻列、`events` の時刻の解決、口の形の選び方と平滑化、時間割）を `lib.py` に移し、`tests/test_mascot_lib.py` でテストを付けた。挙動は変えていない（旧コードと乱数入力 400 通りで一致を確認）（2026-10-15）
 - 口パクをモーラ位置ベースにできるようにした（opt-in、`config.lipsync: "mora"` か `vm render --lipsync mora`）。行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる。純関数（`kana_morae`・`mora_track`・`voiced_span`・`mora_frames`・`mora_mouth`）を `lib.py` に足し、`tests/test_mascot_mora.py` でテスト。既定（`amp`）は変えていない。見た目の良し悪しは手元で確かめる（2026-10-15）
 - `vm overlay` に置き方のプリセット（`--preset left|right|center|corner-left|corner-right`、安全領域 `--safe`）と登場・退場（`--enter` / `--exit` の `fade`・`slide`、`--move-dur`、`--ease`）を opt-in で足した。計算は `placement.py` の純関数で `tests/test_mascot_placement.py` にテスト（合成の主動画とマスコットを実際に重ねて位置を画素で確かめるものを含む）。付けないときの書き出しは変える前と同じ（合成の素材 7 通りで、デコードした映像と音の MD5 が一致）（2026-10-15）
+- アクセント計測器の F0 部分を足した（新しいコマンド `vs accent`、`skills/video-scene/scripts/accent.py`）。parselmouth で F0 を取り、語の時刻をモーラ数で割って各モーラの高さ（半音）を出し、期待する高低の列（`LHHHL`、1モーラ1文字）と隣どうしの上がり下がりを比べて `score`、下がり目の位置を比べて `drop_ok` を出す。無声化したモーラは飛ばす。書き方は `skills/video-scene/references/accent.md`（用語辞書もこれに揃える）。ピッチ列を指定した合成音で `tests/test_accent.py` にテスト。本物の声での確かめは手元待ち（2026-10-15）
