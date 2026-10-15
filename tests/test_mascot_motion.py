@@ -26,7 +26,9 @@ def test_motion_config_on_fills_defaults():
 
 @pytest.mark.parametrize("value, flag", [({"brath": {}}, None), ({"head": {"rol": 1}}, None), ({"head": 3}, None),
                                          ({"switch": {"ease": "bounce"}}, None), (True, "yes"), ("on", None),
-                                         ({"blink": {"max": 0}}, None), ({"blink": {"min": 3, "max": 2}}, None), ({"blink": {"mean": 0}}, None)])
+                                         ({"blink": {"max": 0}}, None), ({"blink": {"min": 3, "max": 2}}, None), ({"blink": {"mean": 0}}, None),
+                                         ({"breath": {"period": 0}}, None), ({"body": {"period": -1}}, None), ({"head": {"period": 0}}, None),
+                                         ({"breath": {"jitter": 1.0}}, None), ({"breath": {"inhale": 0}}, None)])
 def test_motion_config_rejects_typos(value, flag):
     with pytest.raises(ValueError):
         lib.motion_config(value, flag)

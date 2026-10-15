@@ -361,6 +361,11 @@ def motion_config(value, flag=None):
         if bad: raise ValueError(f"motion.{k} に知らない項目: {sorted(bad)}")
         out[k] = {**d, **u}
     if out["switch"] is not None: ease(out["switch"]["ease"], 0.5)          # 名前の検査
+    for k in ("breath", "body", "head"):                                    # 周期で割るので 0 以下は止める
+        if out[k] is not None and not out[k]["period"] > 0: raise ValueError(f"motion.{k}.period は 0 より大きく: {out[k]['period']}")
+    br = out["breath"]
+    if br is not None and not (0 <= br["jitter"] < 1 and 0 < br["inhale"] < 1):
+        raise ValueError(f"motion.breath は 0 <= jitter < 1、0 < inhale < 1: jitter={br['jitter']} inhale={br['inhale']}")
     b = out["blink"]
     if b is not None and not (b["mean"] > 0 and 0 < b["min"] <= b["max"]):  # 間隔が進まないと書き出しが終わらない
         raise ValueError(f"motion.blink は mean > 0 かつ 0 < min <= max: mean={b['mean']} min={b['min']} max={b['max']}")
