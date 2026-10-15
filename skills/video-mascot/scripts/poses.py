@@ -40,14 +40,28 @@ def jobs_parts(P):
     return [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {txt}", [P.pose_path(n)]) for n in P.poses for k, txt in M.items()]
 
 
+IB_HEAD = ("Same character, same face, same clothes, same lighting, same camera framing, position and size, same plain white background as both reference images, "
+           "vertical 9:16, full body. ")
+
+
 def jobs_ib(P):
-    out = []; D = {n: c["desc"] for n, c in P.cfg["poses"].items()}
+    """中割り。div=6（既定）は両端の姿勢から k/6 の位置を描く。div を増やした細かい中割り（例 12）は、
+    両隣の絵（姿勢か、描けている中割り）が揃っている枚を「両隣のちょうど中間」として描く。揃っていない枚は両端の姿勢から割合で描く。"""
+    out = []; D = {n: c["desc"] for n, c in P.cfg["poses"].items()}; div = P.ib_div
+    def at(a, b, k): return P.pose_path(a) if k == 0 else (P.pose_path(b) if k == div else P.ib_path(a, b, k))
     for a, b in P.pairs:
-        for k in range(1, 6):
-            out.append((P.p("ib", f"ib_{a}_{b}_{k}.png"),
-                        "Same character, same face, same clothes, same lighting, same camera framing, position and size, same plain white background as both reference images, "
-                        f"vertical 9:16, full body. The pose is {FR[k]} of the way from the first reference image ({D[a]}) to the second reference image ({D[b]}), "
-                        "a natural in-between frame of the movement. Her face and expression stay the same, mouth closed.", [P.pose_path(a), P.pose_path(b)]))
+        for k in range(1, div):
+            frac = FR.get(k) if div == 6 else f"{k}/{div} (about {round(100 * k / div)}%)"
+            prev, nxt = at(a, b, k - 1), at(a, b, k + 1)
+            if div != 6 and os.path.exists(prev) and os.path.exists(nxt):
+                prompt = (IB_HEAD + f"The movement goes from {D[a]} to {D[b]}. The pose is exactly halfway between the first reference image and the second reference image: "
+                          "every arm, hand and finger position is the average of the two. A natural in-between frame of the movement. Her face and expression stay the same, mouth closed.")
+                refs = [prev, nxt]
+            else:
+                prompt = (IB_HEAD + f"The pose is {frac} of the way from the first reference image ({D[a]}) to the second reference image ({D[b]}), "
+                          "a natural in-between frame of the movement. Her face and expression stay the same, mouth closed.")
+                refs = [P.pose_path(a), P.pose_path(b)]
+            out.append((P.ib_path(a, b, k), prompt, refs))
     return out
 
 

@@ -21,6 +21,7 @@ class Proj:
         self.pairs = [tuple(p) for p in self.cfg.get("pairs", [])]
         self.pad = int(self.cfg.get("pad", 100))
         self.fps = int(self.cfg.get("fps", 30))
+        self.ib_div = int(self.cfg.get("inbetween_div", 6))     # 姿勢の間を何等分するか。中割りは div-1 枚（既定 6 → 5枚）
         for d in ("out", "voice", "parts", "ib", "poses"): os.makedirs(self.p(d), exist_ok=True)
 
     def p(self, *a): return os.path.join(self.root, *a)
@@ -29,6 +30,10 @@ class Proj:
         im = cv2.imread(self.pose_path(n))
         if im is None: sys.exit(f"ERROR: 姿勢の絵が無い: {self.pose_path(n)}")
         return im
+
+    def ib_path(self, a, b, k):
+        """中割り k（1..div-1）の絵。既定の6等分は ib_<a>_<b>_<k>.png、それ以外は ib_<a>_<b>_<k>_<div>.png。"""
+        return self.p("ib", f"ib_{a}_{b}_{k}.png" if self.ib_div == 6 else f"ib_{a}_{b}_{k}_{self.ib_div}.png")
 
     def pair_dir(self, a, b):
         """中割りの向き。 (a,b) が pairs にあれば順方向、(b,a) があれば逆方向。無ければ None。"""

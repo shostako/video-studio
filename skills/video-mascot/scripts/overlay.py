@@ -32,7 +32,12 @@ Y = MH - H - bottom; start = opt("--start", 0.0, float); duck = opt("--duck", 0.
 voice = P.p("voice", "master.wav")
 args = ["ffmpeg", "-v", "error", "-y", "-i", main_p]
 args += (["-c:v", "libvpx-vp9", "-i", mp] if MODE == "alpha" else ["-i", mp]) + ["-i", voice]
-f = [f"[1:v]scale={W}:{H},setpts=PTS+{start}/TB[m]"]
+# 主動画の外にはみ出す分（--x が負、--bottom が負など）は先に切り落とす。pad は負の位置を「中央寄せ」と解釈するため（2026-10-14 実測）
+cl, ct = max(0, -X), max(0, -Y); cw, ch = min(W, MW - X) - cl, min(H, MH - Y) - ct
+if cw <= 0 or ch <= 0: die("マスコットが主動画の外に出ている（--x / --bottom を見直す）")
+crop = f",crop={cw}:{ch}:{cl}:{ct}" if (cl or ct or cw < W or ch < H) else ""
+X, Y = max(0, X), max(0, Y)
+f = [f"[1:v]scale={W}:{H}{crop},setpts=PTS+{start}/TB[m]"]
 if MODE == "alpha": f.append(f"[0:v][m]overlay={X}:{Y}:eof_action=pass:format=auto[v]")
 else:   # 乗算は両方を同じ形式（gbrp）にそろえてから。形式が違うと色が緑にずれる（2026-10-12 実測）
     f += [f"[m]pad={MW}:{MH}:{X}:{Y}:color=0xfdfdfd,format=gbrp[mp]", "[0:v]format=gbrp[mv]", "[mv][mp]blend=all_mode=multiply,format=yuv420p[v]"]

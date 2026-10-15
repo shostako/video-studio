@@ -4,6 +4,7 @@
     white       : 背景が白の mp4（声入り、out/mascot_white.mp4）。白っぽい主動画に「乗算」で重ねる用
   --mouth-scale  口の開きを全体に小さく(0.8)・大きく(1.2)する。--from/--to は一部だけ書き出して確かめる用
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
+config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
 import json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
@@ -26,8 +27,8 @@ VOICE = P.p("voice", "master.wav")
 def load_audio(p, sr=16000):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", p, "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"], capture_output=True).stdout
     return np.frombuffer(raw, np.int16).astype(np.float32) / 32768, sr
-x, SR = load_audio(VOICE); NALL = int(math.ceil(END * FPS)); hop = SR // FPS
-rms = np.array([np.sqrt(np.mean(x[i * hop: i * hop + hop * 2] ** 2)) if i * hop < len(x) else 0 for i in range(NALL)])
+x, SR = load_audio(VOICE); NALL = int(math.ceil(END * FPS)); hop = SR // FPS; WIN = SR * 2 // 30; R = max(1, round(FPS / 30))   # 窓は時間で固定（30fps の2コマ分）。R = 30fps に対する倍率
+rms = np.array([np.sqrt(np.mean(x[i * hop: i * hop + WIN] ** 2)) if i * hop < len(x) else 0 for i in range(NALL)])
 lvl = np.clip(rms / (np.percentile(rms[rms > 0], 95) + 1e-6), 0, 1.5) * MS
 WORDS = P.p("voice", "master.words.json")
 if not os.path.exists(WORDS) or os.path.getmtime(WORDS) < os.path.getmtime(VOICE):
@@ -76,18 +77,34 @@ def choose(Lv, v):
     if v == "u": return "m1" if Lv < 0.3 else "m5"
     if v == "o": return "m1" if Lv < 0.3 else "m4"
     return "m1"
-lvl_s = np.array([np.median(lvl[max(0, f - 1):f + 2]) for f in range(NALL)])
+lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
 mouth = [choose(lvl_s[f], vowel_at[f]) for f in range(NALL)]
-for f in range(1, NALL - 1):
-    if mouth[f] != mouth[f - 1] and mouth[f] != mouth[f + 1]: mouth[f] = mouth[f - 1]
+if R == 1:
+    for f in range(1, NALL - 1):
+        if mouth[f] != mouth[f - 1] and mouth[f] != mouth[f + 1]: mouth[f] = mouth[f - 1]
+else:                                             # 30fps の1コマ（R コマ）以下しか続かない形は直前の形にする
+    f = 1
+    while f < NALL:
+        g = f
+        while g < NALL and mouth[g] == mouth[f]: g += 1
+        if g - f <= R and g < NALL and mouth[f] != mouth[f - 1]: mouth[f:g] = [mouth[f - 1]] * (g - f)
+        f = g
 print("口の形のコマ数:", {str(m): mouth.count(m) for m in sorted(set(mouth), key=str)}, file=sys.stderr)
-blink = [None] * NALL; t = 1.2
+blink = [None] * NALL; t = 1.2                  # まばたき: None か "e1"/"e2"、細かい時は (下の段, 上の段, 上の段の割合)
+BL = [0, 1, 1, 2, 2, 1, 1, 0]; BK = {0: None, 1: "e1", 2: "e2"}   # 30fps の6コマ（e1 e1 e2 e2 e1 e1）を、前後の「開き」込みの閉じ具合で表す
 while t < END:
     f0 = int(t * FPS)
-    for k, e in enumerate(["e1", "e1", "e2", "e2", "e1", "e1"]):
-        if f0 + k < NALL: blink[f0 + k] = e
+    if R == 1:
+        for k, e in enumerate(["e1", "e1", "e2", "e2", "e1", "e1"]):
+            if f0 + k < NALL: blink[f0 + k] = e
+    else:                                         # 30fps の各コマの中心を結んだ閉じ具合を R 倍の細かさで取り、段の間は溶かす
+        for k in range(6 * R + 1):
+            u = (k + 0.5) / R - 0.5 + 1           # BL 上の位置（BL[1] が 30fps の1コマ目）
+            i0 = int(math.floor(u)); fr = u - i0; lv = BL[min(i0, 7)] * (1 - fr) + BL[min(i0 + 1, 7)] * fr
+            lo = int(math.floor(lv)); hi = min(2, lo + 1); a_ = lv - lo
+            if f0 + k < NALL and lv > 0.01: blink[f0 + k] = BK[lo] if a_ < 0.02 else (BK[lo], BK[hi], a_)
     t += random.uniform(2.6, 4.6)
-sm = np.convolve(lvl, np.ones(5) / 5, mode="same")
+sm = np.convolve(lvl, np.ones(5 * R) / (5 * R), mode="same")
 
 # ---------- 姿勢・部品・軸足 ----------
 FL = C.get("floor", {"clean": True}); H0, W0 = P.read_pose(P.home).shape[:2]; Y0 = int(FL.get("y0", round(H0 * 0.705)))
@@ -134,9 +151,9 @@ def face_affine(src, dst, roi):
     except cv2.error: pass
     return cv2.invertAffineTransform(M), cc
 IBCACHE = {}
-def ib_item(path, src_pose):
+def ib_item(item, src_pose):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
-    key = (path, src_pose)
+    path, a_, b_, k_ = item; key = (path, src_pose)
     if key in IBCACHE: return IBCACHE[key]
     img = cv2.imread(path)
     if img is None: die(f"中割りの絵が無い: {path}")
@@ -144,9 +161,8 @@ def ib_item(path, src_pose):
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     anc = boot_anchor(clean) if AMODE == "boot" else None
-    m = re.search(r"ib_(.+)_(.+)_(\d)\.png", os.path.basename(path)); a_, b_, k_ = m.group(1), m.group(2), int(m.group(3))
-    sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / 6.0
-    if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / 6.0)
+    sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
+    if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
     allp = list(PARTS[src_pose].values()); xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
     roi = (max(0, min(xs) - 80), max(0, min(ys) - 100), min(img.shape[1], max(xs) + 80), min(img.shape[0], max(ys) + 60))
     A, cc = face_affine(PB[src_pose], clean, roi); parts = {}
@@ -161,11 +177,11 @@ def ib_item(path, src_pose):
 def ib_seq(a_, b_):
     d = P.pair_dir(a_, b_)
     if d is None: return None
-    pa, pb, rev = d; seq = [P.p("ib", f"ib_{pa}_{pb}_{k}.png") for k in range(1, 6)]
+    pa, pb, rev = d; seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
     return seq[::-1] if rev else seq
 
 # ---------- 時間割 ----------
-IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = 5 / IBFPS; ev = []; cur_pose = P.home
+DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS; ev = []; cur_pose = P.home
 for e in C.get("events", []):
     to = e["pose"]
     if "kw" in e or "word" in e:
@@ -182,7 +198,7 @@ def plan(f):
     for (s, a_, b_) in ev:
         if t < s: break
         seq = ib_seq(a_, b_); k = int((t - s) * IBFPS) if seq else 99
-        if seq and k < 5: return ("ib", seq[k], a_ if k < 2 else b_)
+        if seq and k < NIB: return ("ib", seq[k], a_ if k < int(NIB * 0.4 + 0.5) else b_)
         cur = b_
     return ("pose", cur)
 
@@ -197,7 +213,10 @@ def compose(pl, mth, blk):
         clean, shadow, parts, anc, sc = ib_item(pl[1], pl[2]); img = clean.copy()
     else:
         img = PB[pl[1]].copy(); shadow = SH[pl[1]]; parts = PARTS[pl[1]]; anc = ANCH[pl[1]]; sc = SCALE[pl[1]]
-    paste(img, part_of(parts, mth)); paste(img, part_of(parts, blk))
+    paste(img, part_of(parts, mth))
+    if isinstance(blk, tuple):                    # 細かいまばたき: 2つの段を割合で溶かす
+        lo_, hi_, al_ = blk; i_lo = img.copy(); paste(i_lo, part_of(parts, lo_)); paste(img, part_of(parts, hi_)); img = cv2.addWeighted(img, al_, i_lo, 1 - al_, 0)
+    else: paste(img, part_of(parts, blk))
     k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
     return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k])
 
