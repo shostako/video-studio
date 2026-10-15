@@ -1,0 +1,20 @@
+name: CI
+
+# 検査の中身は scripts/ci.sh にある。この YAML は変えない（Claude の GitHub App には workflows 権限が無く、push が拒否される）。
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ジョブ名 ci は main の保護ルール（必須チェック）が参照している。変えるとマージできなくなる
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: bash scripts/ci.sh
