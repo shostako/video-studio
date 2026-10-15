@@ -57,6 +57,11 @@ if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import parselmouth" 2>/de
 elif [ $CHECK -eq 1 ]; then say "--   parselmouth が無い（vs accent が使えない。setup.sh を引数なしで流すと入る）"
 elif [ -x "$VENV/bin/python" ]; then say "..   parselmouth を入れる"; "$VENV/bin/pip" install -q praat-parselmouth && say "ok   parselmouth" || say "--   parselmouth を入れられない（vs accent が使えない）"; fi
 
+# PyYAML（vs terms の用語辞書の読み込み。parselmouth と同じく、必須の一括インストールには入れずここで足す）
+if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import yaml" 2>/dev/null; then say "ok   pyyaml"
+elif [ $CHECK -eq 1 ]; then say "--   pyyaml が無い（vs terms が使えない。setup.sh を引数なしで流すと入る）"
+elif [ -x "$VENV/bin/python" ]; then say "..   pyyaml を入れる"; "$VENV/bin/pip" install -q pyyaml && say "ok   pyyaml" || say "--   pyyaml を入れられない（vs terms が使えない）"; fi
+
 # HyperFrames（版を固定。使い方の統計は送らない。AI 用スキルの自動導入はしない）
 export HYPERFRAMES_SKIP_SKILLS=1
 if [ $CHECK -eq 0 ]; then
