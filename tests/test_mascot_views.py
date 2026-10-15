@@ -114,6 +114,7 @@ def test_gaze_config_and_resolve():
     sp = lib.resolve_gaze([{"line": 1, "kw": "ここ", "look": "l", "hold": 0.5}, {"at": 0.2, "look": "u", "until": 0.8},
                            {"line_end": 1, "look": "c"}], {1: 1.0}, {1: 2.0}, stream, words, hold=1.0)
     assert sp == [(0.2, 0.8, "u"), (2.0, 2.5, "l"), (3.0, 4.0, "c")]
+    assert lib.resolve_gaze([{"at": 20, "offset": 0.5, "look": "l"}], {}, {}, [], []) == [(20.5, 21.5, "l")]   # at にも offset を足す
     for bad in ({"at": 1, "look": "x"}, {"look": "l"}, {"at": 1, "until": 0.5, "look": "l"}):
         with pytest.raises(SystemExit): lib.resolve_gaze([bad], {}, {}, [], [])
 
@@ -217,3 +218,19 @@ def test_poses_gaze_jobs_are_opt_in(vproj, tmp_path):
     (p2 / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     names2 = {os.path.basename(j[0]) for j in poses.jobs_parts(lib.Proj(str(p2)))}
     assert not any("_g_" in n for n in names2) and "home_m1.png" in names2
+
+
+def test_render_gaze_lead_ends_at_instant_cut(vproj, env, tmp_path):
+    """中割りもつなぎも無い切り替え（一瞬）では、目の先回りは切り替えの時刻で終わる（中割りの長さ分残らない）。"""
+    def variant(name, gaze):
+        p2 = tmp_path / name; shutil.copytree(vproj, p2)
+        cfg = json.loads((p2 / "config.json").read_text(encoding="utf-8")); cfg.pop("transition")
+        cfg["events"] = [{"at": 2.0, "pose": "turn_l"}, {"at": 2.5, "pose": "home"}]
+        if gaze: cfg["gaze"] = {"lead": 0.15}
+        else: cfg.pop("gaze")
+        (p2 / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+        out = tmp_path / f"{name}.mp4"; _render(p2, env, out, "--mode", "white"); return _frames(out, env)
+    a, b = variant("g", True), variant("n", False)
+    eye = np.abs(a - b)[:, 88:116, 95:170].max(axis=(1, 2, 3))
+    assert eye[72] > 100                       # 2.35〜2.5 秒は右へ先回り（home に戻る前の turn_l で g_c）
+    assert eye[80] < 60                        # 2.5 秒で一瞬で home に戻ったあとは、元の目

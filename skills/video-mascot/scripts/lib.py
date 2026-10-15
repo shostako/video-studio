@@ -592,7 +592,7 @@ def gaze_config(value):
 
 def resolve_gaze(events, starts, durs, hira_stream, words_hira, hold=1.0, log=None):
     """config.gaze.events を [(開始秒, 終わり秒, 視線), ...]（開始の早い順）にする。開始は kw/word（その語の声の時刻）・at・line_start・line_end、
-    offset で微調整。終わりは until（秒）か、開始から hold 秒（events ごとに hold を書ける）。"""
+    offset で微調整（姿勢の events と違い at にも足す）。終わりは until（秒）か、開始から hold 秒（events ごとに hold を書ける）。"""
     out = []
     for e in events:
         lk = e.get("look")
@@ -603,7 +603,7 @@ def resolve_gaze(events, starts, durs, hira_stream, words_hira, hold=1.0, log=No
                 else find_time(hira_stream, starts[e["line"]], durs[e["line"]], e["kw"], e.get("fallback", 0.5))
             st = t + off
             if log: log(f"視線 行{e['line']} {lk}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）")
-        elif "at" in e: st = float(e["at"])
+        elif "at" in e: st = float(e["at"]) + off
         elif "line_start" in e: st = starts[e["line_start"]] + off
         elif "line_end" in e: st = starts[e["line_end"]] + durs[e["line_end"]] + off
         else: die(f"gaze.events に開始の指定が無い: {e}")

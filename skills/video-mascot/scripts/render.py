@@ -180,7 +180,11 @@ SW = [(e_[0], sw_dur(*e_[1:3], e_[3]) if USE_VIA else IBDUR, e_[1], e_[2]) for e
 GAZE = [None] * NALL
 if GZ:                                            # 台本の指定（gaze.events）と、顔の向きが変わる切り替えの前に目が先に動く分
     spans = resolve_gaze(GZ["events"], L, LDUR, hira_stream, WH, GZ["hold"], log=lambda m: print(m, file=sys.stderr))
-    GAZE = gaze_track(NALL, FPS, spans, SW, lambda p_: VIEW[p_][1], GZ["lead"])
+    def instant(e_):                              # 中割りもつなぎも無い切り替えは一瞬（目の先回りは切り替えの時刻で終える）
+        k_ = trans_of(e_[1], e_[2], e_[3]) if USE_VIA else None
+        return (k_ is None and ib_seq(e_[1], e_[2]) is None) or (k_ is not None and k_[0] == "cut")
+    GSW = [(sw[0], 0.0 if instant(e_) else sw[1], sw[2], sw[3]) for sw, e_ in zip(SW, ev)]
+    GAZE = gaze_track(NALL, FPS, spans, GSW, lambda p_: VIEW[p_][1], GZ["lead"])
 
 # ---------- まばたき ----------
 BLINK_AT = []
