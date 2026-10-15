@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# vs — video-scene のスクリプトを専用の Python で動かす入口
+#   vs <コマンド> [引数...]    例: vs compose scene.json / vs veo --help
+#   コマンド: veo h3 hedra analyze ear frames flipbook compose audio_cut line_fix
+set -uo pipefail
+VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"
+PY="$VS_HOME/venv/bin/python"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+[ $# -ge 1 ] || { sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+cmd="$1"; shift
+[ -f "$DIR/$cmd.py" ] || { echo "ERROR: 知らないコマンド: $cmd" >&2; exit 2; }
+[ -x "$PY" ] || { echo "ERROR: 道具が入ってない。先に $DIR/setup.sh を実行する" >&2; exit 2; }
+exec "$PY" -B "$DIR/$cmd.py" "$@"

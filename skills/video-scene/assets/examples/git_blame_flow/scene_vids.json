@@ -1,0 +1,177 @@
+{
+ "name": "Monday_Chibi2_GitBlame_Vids",
+ "fps": 30,
+ "duration": 11.3,
+ "size": [
+  1080,
+  1920
+ ],
+ "bg": "#d6d5da",
+ "base": {
+  "type": "video",
+  "src": "vids_1.mp4",
+  "rect": [
+   0,
+   100,
+   1080,
+   1920
+  ],
+  "cut": 10.0,
+  "audio": "video"
+ },
+ "camera": {
+  "punch": [
+   {
+    "t": 5.12,
+    "scale": 1.06,
+    "origin": [
+     435,
+     835
+    ]
+   }
+  ]
+ },
+ "overlays": [
+  {
+   "type": "terminal",
+   "rect": [
+    40,
+    70,
+    1000,
+    480
+   ],
+   "title": "monday@vaio: ~/app  (review)",
+   "font_size": 26,
+   "line_height": 38,
+   "prefill": "export async function retry(fn) {\n  for (;;) {\n    try { return await fn(); }\n    catch (e) {}  // たぶん大丈夫\n  }\n}\n",
+   "typing": [
+    {
+     "text": "$ git blame -L 2,4 src/retry.ts",
+     "from": 3.55,
+     "to": 4.95
+    }
+   ],
+   "cursor_until": 5.0,
+   "lines": [
+    {
+     "t": 5.0,
+     "text": "7be04d1 (monday 2026-07-11) for (;;) {",
+     "kind": "dim",
+     "mark": "monday",
+     "mark_t": 5.12
+    },
+    {
+     "t": 5.04,
+     "text": "7be04d1 (monday 2026-07-11) try { … }",
+     "kind": "dim",
+     "mark": "monday",
+     "mark_t": 5.12
+    },
+    {
+     "t": 5.08,
+     "text": "7be04d1 (monday 2026-07-11) catch (e) {}",
+     "kind": "dim",
+     "mark": "monday",
+     "mark_t": 5.12
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "text": "← 3ヶ月前の自分",
+   "from": 5.35,
+   "pos": [
+    730,
+    460
+   ],
+   "anchor": "left",
+   "size": 36,
+   "color": "#ffd600",
+   "weight": 900,
+   "anim": "pop"
+  },
+  {
+   "type": "wash",
+   "color": [
+    70,
+    120,
+    255
+   ],
+   "segments": [
+    {
+     "type": "flash",
+     "t": 5.12,
+     "peak": 0.22,
+     "decay": 1.0,
+     "hold": 0.05,
+     "until": 6.6
+    }
+   ]
+  },
+  {
+   "type": "mark",
+   "shape": "sweat",
+   "t": 5.25,
+   "to": 8.6,
+   "pos": [
+    640,
+    640
+   ],
+   "size": 80,
+   "attach": true
+  },
+  {
+   "type": "bubble",
+   "text": "誰だよ、\nこれ書いたの",
+   "from": 1.65,
+   "to": 3.1,
+   "pos": [
+    700,
+    640
+   ],
+   "size": 38
+  },
+  {
+   "type": "bubble",
+   "text": "はぁ？",
+   "from": 6.9,
+   "to": 7.6,
+   "pos": [
+    770,
+    650
+   ],
+   "style": "panic"
+  },
+  {
+   "type": "bubble",
+   "text": "見なかったことに\nする",
+   "from": 8.85,
+   "to": 11.3,
+   "pos": [
+    660,
+    640
+   ],
+   "size": 36
+  },
+  {
+   "type": "text",
+   "text": "犯人：本人",
+   "from": 9.95,
+   "pos": [
+    540,
+    1760
+   ],
+   "size": 100,
+   "color": "#d61f26",
+   "weight": 900,
+   "anim": "pop",
+   "style": {
+    "border": "8px solid #d61f26",
+    "padding": "4px 40px",
+    "border-radius": "16px",
+    "background": "rgba(255,255,255,0.92)",
+    "rotate": "-5deg"
+   }
+  }
+ ]
+}

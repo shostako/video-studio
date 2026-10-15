@@ -1,0 +1,96 @@
+"""描いた口・目の差分から「元と違う所」だけを切り抜いて部品にする。
+  vm parts <作業フォルダ> [姿勢 ...]            未指定なら全姿勢。parts_<姿勢>/ に m1..m7, e1, e2 と parts.json を作る
+  vm parts <作業フォルダ> --check [姿勢 ...]    貼った結果を並べた確認の絵を parts_check/<姿勢>.png に書く
+口と目の範囲は config.json の face.mouth_roi / face.eye_roi（基本の姿勢 home の絵で測った座標）。
+他の姿勢へは、顔の周りを重ね合わせた変換でその範囲を写す（髪の差分を拾わないため）。"""
+import json, os, sys
+import cv2, numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import Proj, MOUTHS, EYES, die
+
+
+def face_box(P):
+    f = P.cfg["face"]; xs = [f["mouth_roi"][0], f["mouth_roi"][2], f["eye_roi"][0], f["eye_roi"][2]]; ys = [f["mouth_roi"][1], f["mouth_roi"][3], f["eye_roi"][1], f["eye_roi"][3]]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def map_rois(P, pose, pad=8):
+    """home で測った口・目の範囲を、顔を重ね合わせて pose に写す。"""
+    f = P.cfg["face"]; home = P.read_pose(P.home)
+    if pose == P.home: return [max(0, v) for v in f["mouth_roi"]], [max(0, v) for v in f["eye_roi"]], 1.0
+    dst = P.read_pose(pose); x0, y0, x1, y1 = face_box(P); H, W = dst.shape[:2]
+    g0 = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(home, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mask = np.zeros(g0.shape, np.uint8); mask[max(0, y0 - 170):y1 + 170, max(0, x0 - 170):x1 + 170] = 1; M = np.eye(2, 3, dtype=np.float32)
+    cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 400, 1e-6), mask, 5)
+    A = cv2.invertAffineTransform(M)
+    def box(b):
+        pts = np.array([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]], np.float32); q = pts @ A[:, :2].T + A[:, 2]
+        return [int(max(0, q[:, 0].min() - pad)), int(max(0, q[:, 1].min() - pad)), int(min(W, q[:, 0].max() + pad)), int(min(H, q[:, 1].max() + pad))]
+    return box(f["mouth_roi"]), box(f["eye_roi"]), float(cc)
+
+
+def align(base, var, roi):
+    """変形版を元の絵に重ねる。roi の外側の周り（顔の輪郭・髪）だけを手がかりに合わせる（口・目そのものには合わせない）。"""
+    H, W = base.shape[:2]; var = cv2.resize(var, (W, H)) if var.shape[:2] != (H, W) else var
+    g0 = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(var, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mask = np.zeros((H, W), np.uint8); x0, y0, x1, y1 = roi; pd = 140
+    mask[max(0, y0 - pd):y1 + pd, max(0, x0 - pd):x1 + pd] = 1; mask[y0:y1, x0:x1] = 0
+    M = np.eye(2, 3, dtype=np.float32)
+    try: _, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 400, 1e-6), mask, 5)
+    except cv2.error: print("  位置合わせ失敗（そのまま使う）")
+    return cv2.warpAffine(var, M, (W, H), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
+
+
+def cut(base, var_path, roi):
+    """差分の絵から、roi の中で元と違う所を縁をぼかした RGBA の部品にする。戻り値 (RGBA, x, y) か None。"""
+    H, W = base.shape[:2]; var = align(base, cv2.imread(var_path), roi)
+    d = np.linalg.norm(var.astype(np.float32) - base.astype(np.float32), axis=2)
+    m = (cv2.GaussianBlur(d, (0, 0), 2) > 22).astype(np.uint8); m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    r = np.zeros_like(m); r[roi[1]:roi[3], roi[0]:roi[2]] = 1; mm = m * r
+    if mm.sum() == 0: return None
+    ys, xs = np.where(mm > 0); pad = 14
+    x0, x1 = max(0, xs.min() - pad), min(W, xs.max() + pad); y0, y1 = max(0, ys.min() - pad), min(H, ys.max() + pad)
+    mm = cv2.dilate(mm, np.ones((11, 11), np.uint8))
+    a = np.clip(cv2.GaussianBlur(mm.astype(np.float32), (0, 0), 4)[y0:y1, x0:x1] * 1.6, 0, 1)
+    return np.dstack([var[y0:y1, x0:x1], (a * 255).astype(np.uint8)]), int(x0), int(y0)
+
+
+def extract(P, pose):
+    mouth_roi, eye_roi, cc = map_rois(P, pose); base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
+    for names, roi in ((MOUTHS, mouth_roi), (EYES, eye_roi)):
+        for k in names:
+            vp = P.p("parts", f"{pose}_{k}.png")
+            if not os.path.exists(vp): continue
+            r = cut(base, vp, roi)
+            if r is None: print(f"  {pose}_{k}: 範囲の中に差が無い"); continue
+            cv2.imwrite(os.path.join(od, f"{k}.png"), r[0]); meta[k] = [r[1], r[2]]
+    json.dump(meta, open(os.path.join(od, "parts.json"), "w"), indent=1)
+    print(f"{pose}: 部品 {sorted(meta)}  口の範囲 {mouth_roi} 目の範囲 {eye_roi}  顔の合い {cc:.3f}")
+    return meta
+
+
+def check(P, pose):
+    base = P.read_pose(pose); meta = json.load(open(P.p(f"parts_{pose}", "parts.json"))); mouth_roi, eye_roi, _ = map_rois(P, pose)
+    cx = (mouth_roi[0] + mouth_roi[2]) // 2; cy = (eye_roi[1] + mouth_roi[3]) // 2; hh, hw = 150, 190; tiles = []
+    def crop(img):
+        y0 = max(0, cy - hh); x0 = max(0, cx - hw); t = img[y0:y0 + 2 * hh, x0:x0 + 2 * hw].copy()
+        return cv2.resize(t, (2 * hw, 2 * hh)) if t.shape[:2] != (2 * hh, 2 * hw) else t
+    for k in MOUTHS + EYES:
+        if k not in meta: continue
+        im = cv2.imread(P.p(f"parts_{pose}", f"{k}.png"), cv2.IMREAD_UNCHANGED); x, y = meta[k]; h, w = im.shape[:2]
+        out = base.copy(); a = im[:, :, 3:4] / 255.0; out[y:y + h, x:x + w] = (out[y:y + h, x:x + w] * (1 - a) + im[:, :, :3] * a).astype(np.uint8)
+        t = crop(out); cv2.putText(t, f"{pose} {k}", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2); tiles.append(t)
+    b = crop(base); cv2.putText(b, f"{pose} base", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+    cols = 5; rows = []; items = [b] + tiles
+    while len(items) % cols: items.append(np.full_like(b, 255))
+    for i in range(0, len(items), cols): rows.append(np.hstack(items[i:i + cols]))
+    os.makedirs(P.p("parts_check"), exist_ok=True); out = P.p("parts_check", f"{pose}.png"); cv2.imwrite(out, np.vstack(rows)); print("確認の絵:", out)
+
+
+if __name__ == "__main__":
+    a = [x for x in sys.argv[1:] if not x.startswith("--")]
+    if not a: die("使い方: vm parts <作業フォルダ> [--check] [姿勢 ...]")
+    P = Proj(a[0]); poses = a[1:] or P.poses
+    for p in poses:
+        if "--check" in sys.argv: check(P, p)
+        else: extract(P, p)

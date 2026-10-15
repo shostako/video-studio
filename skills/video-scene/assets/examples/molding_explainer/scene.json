@@ -1,0 +1,908 @@
+{
+ "name": "Monday_Figure_Molding_Explainer_VeoLite",
+ "fps": 30,
+ "duration": 33.3,
+ "bg": "#ffffff",
+ "base": {
+  "type": "sequence",
+  "rect": [
+   0,
+   0,
+   1920,
+   1080
+  ],
+  "audio": "video",
+  "clips": [
+   {
+    "src": "c1.mp4",
+    "audio": "ac/c1_1.46.wav"
+   },
+   {
+    "src": "c2.mp4",
+    "audio": "ac/c2_4.78.wav"
+   },
+   {
+    "src": "c3.mp4",
+    "audio": "ac/c3_0.90_4.36.wav"
+   },
+   {
+    "src": "c4b.mp4",
+    "audio": "ac/c4b_final.wav",
+    "hold": 1.3
+   }
+  ]
+ },
+ "overlays": [
+  {
+   "type": "text",
+   "text": "30秒でわかる\n射出成形",
+   "from": 0.1,
+   "to": 1.55,
+   "pos": [
+    1390,
+    430
+   ],
+   "size": 92,
+   "color": "#1b1b1b",
+   "weight": 900,
+   "anim": "pop",
+   "style": {
+    "line-height": "1.2"
+   }
+  },
+  {
+   "type": "svg",
+   "src": "molding.svg",
+   "rect": [
+    900,
+    70,
+    980,
+    745
+   ],
+   "from": 1.3,
+   "to": 26.95,
+   "fade": 0.35,
+   "anims": [
+    {
+     "sel": "#mm-s1a",
+     "prop": "opacity",
+     "keys": [
+      [
+       8.15,
+       0
+      ],
+      [
+       8.3,
+       1
+      ],
+      [
+       11.75,
+       1
+      ],
+      [
+       11.9,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-s2a",
+     "prop": "opacity",
+     "keys": [
+      [
+       11.75,
+       0
+      ],
+      [
+       11.9,
+       1
+      ],
+      [
+       15.9,
+       1
+      ],
+      [
+       16.05,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-s3a",
+     "prop": "opacity",
+     "keys": [
+      [
+       15.9,
+       0
+      ],
+      [
+       16.05,
+       1
+      ],
+      [
+       17.55,
+       1
+      ],
+      [
+       17.7,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-s4a",
+     "prop": "opacity",
+     "keys": [
+      [
+       17.55,
+       0
+      ],
+      [
+       17.7,
+       1
+      ],
+      [
+       23.9,
+       1
+      ],
+      [
+       24.05,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-s5a",
+     "prop": "opacity",
+     "keys": [
+      [
+       23.9,
+       0
+      ],
+      [
+       24.05,
+       1
+      ],
+      [
+       25.15,
+       1
+      ],
+      [
+       25.3,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-s6a",
+     "prop": "opacity",
+     "keys": [
+      [
+       25.15,
+       0
+      ],
+      [
+       25.3,
+       1
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-l1",
+     "prop": "opacity",
+     "keys": [
+      [
+       2.2,
+       0
+      ],
+      [
+       2.5,
+       1
+      ],
+      [
+       15.4,
+       1
+      ],
+      [
+       15.8,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-l2",
+     "prop": "opacity",
+     "keys": [
+      [
+       2.5,
+       0
+      ],
+      [
+       2.8,
+       1
+      ],
+      [
+       15.4,
+       1
+      ],
+      [
+       15.8,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-l3",
+     "prop": "opacity",
+     "keys": [
+      [
+       3.0,
+       0
+      ],
+      [
+       3.3,
+       1
+      ],
+      [
+       15.4,
+       1
+      ],
+      [
+       15.8,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-l4",
+     "prop": "opacity",
+     "keys": [
+      [
+       3.3,
+       0
+      ],
+      [
+       3.6,
+       1
+      ],
+      [
+       15.4,
+       1
+      ],
+      [
+       15.8,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-l5",
+     "prop": "opacity",
+     "keys": [
+      [
+       3.6,
+       0
+      ],
+      [
+       3.9,
+       1
+      ],
+      [
+       15.4,
+       1
+      ],
+      [
+       15.8,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-heat",
+     "prop": "opacity",
+     "keys": [
+      [
+       2.3,
+       0.35
+      ],
+      [
+       2.8,
+       1
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-melt",
+     "prop": "scaleX",
+     "origin": "470 340",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       2.4,
+       0
+      ],
+      [
+       3.4,
+       1
+      ],
+      [
+       12.0,
+       1
+      ],
+      [
+       14.2,
+       0.15
+      ],
+      [
+       18.6,
+       0.15
+      ],
+      [
+       21.6,
+       1
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-screw",
+     "prop": "x",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       12.0,
+       0
+      ],
+      [
+       14.2,
+       -55
+      ],
+      [
+       18.6,
+       -55
+      ],
+      [
+       21.6,
+       0
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-movgrp",
+     "prop": "x",
+     "keys": [
+      [
+       0,
+       -90
+      ],
+      [
+       8.7,
+       -90
+      ],
+      [
+       10.0,
+       0
+      ],
+      [
+       24.2,
+       0
+      ],
+      [
+       25.1,
+       -90
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-part",
+     "prop": "x",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       24.2,
+       0
+      ],
+      [
+       25.1,
+       -90
+      ],
+      [
+       25.3,
+       -90
+      ],
+      [
+       25.6,
+       -62
+      ],
+      [
+       26.2,
+       -80
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-part",
+     "prop": "y",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       25.6,
+       0
+      ],
+      [
+       26.3,
+       175
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-part",
+     "prop": "rotation",
+     "origin": "330 340",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       25.6,
+       0
+      ],
+      [
+       26.3,
+       18
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-pins",
+     "prop": "x",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       25.3,
+       0
+      ],
+      [
+       25.6,
+       30
+      ],
+      [
+       26.4,
+       30
+      ],
+      [
+       26.7,
+       0
+      ]
+     ]
+    },
+    {
+     "sel": "#mm-sprue",
+     "prop": "scaleX",
+     "origin": "420 340",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       12.0,
+       0
+      ],
+      [
+       12.4,
+       1
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-fill",
+     "prop": "scaleX",
+     "origin": "360 340",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       12.4,
+       0
+      ],
+      [
+       14.3,
+       1
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-cold",
+     "prop": "opacity",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       17.8,
+       0
+      ],
+      [
+       22.0,
+       1
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-cool",
+     "prop": "opacity",
+     "keys": [
+      [
+       0,
+       0
+      ],
+      [
+       17.6,
+       0
+      ],
+      [
+       18.0,
+       1
+      ],
+      [
+       23.8,
+       1
+      ],
+      [
+       24.1,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-coollbl",
+     "prop": "opacity",
+     "keys": [
+      [
+       17.8,
+       0
+      ],
+      [
+       18.1,
+       1
+      ],
+      [
+       23.6,
+       1
+      ],
+      [
+       23.9,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-press",
+     "prop": "opacity",
+     "keys": [
+      [
+       16.0,
+       0
+      ],
+      [
+       16.15,
+       1
+      ],
+      [
+       16.45,
+       0.35
+      ],
+      [
+       16.75,
+       1
+      ],
+      [
+       17.05,
+       0.35
+      ],
+      [
+       17.35,
+       1
+      ],
+      [
+       17.65,
+       0.35
+      ],
+      [
+       17.85,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-rot",
+     "prop": "opacity",
+     "keys": [
+      [
+       18.5,
+       0
+      ],
+      [
+       18.8,
+       1
+      ],
+      [
+       21.8,
+       1
+      ],
+      [
+       22.1,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-hike",
+     "prop": "opacity",
+     "keys": [
+      [
+       20.8,
+       0
+      ],
+      [
+       21.1,
+       1
+      ],
+      [
+       23.6,
+       1
+      ],
+      [
+       23.9,
+       0
+      ]
+     ],
+     "ease": "linear"
+    },
+    {
+     "sel": "#mm-done",
+     "prop": "opacity",
+     "keys": [
+      [
+       26.2,
+       0
+      ],
+      [
+       26.4,
+       1
+      ]
+     ],
+     "ease": "linear"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "text": "射出成形ってのは、",
+   "from": 0.05,
+   "to": 2.2,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "溶かした樹脂を金型に詰めて、\n冷やして固める作り方だ",
+   "from": 2.25,
+   "to": 7.5,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "まず、型を閉じて",
+   "from": 8.2,
+   "to": 10.6,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "溶けた樹脂を、すばやく詰める",
+   "from": 11.85,
+   "to": 15.5,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "詰め終わったら、そのまま冷ます",
+   "from": 16.0,
+   "to": 18.9,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "ここで手を抜くと、ヒケが出るぞ",
+   "from": 19.3,
+   "to": 22.8,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "text",
+   "text": "型を開けて、製品を取り出せば完成だ",
+   "from": 24.0,
+   "to": 26.9,
+   "pos": [
+    1390,
+    935
+   ],
+   "size": 38,
+   "color": "#ffffff",
+   "weight": 700,
+   "bg": "rgba(20,24,33,0.82)",
+   "style": {
+    "padding": "10px 28px",
+    "border-radius": "12px",
+    "line-height": "1.35"
+   }
+  },
+  {
+   "type": "wash",
+   "color": [
+    255,
+    110,
+    160
+   ],
+   "segments": [
+    {
+     "type": "fade",
+     "t": 27.1,
+     "from": 0,
+     "to": 0.3,
+     "dur": 0.8
+    }
+   ]
+  },
+  {
+   "type": "mark",
+   "shape": "heart",
+   "t": 30.67,
+   "pos": [
+    1320,
+    330
+   ],
+   "size": 80
+  },
+  {
+   "type": "mark",
+   "shape": "heart",
+   "t": 31.2,
+   "pos": [
+    420,
+    640
+   ],
+   "size": 60,
+   "rotate": -14
+  },
+  {
+   "type": "text",
+   "text": "……しばらく、\nこのまま保圧な",
+   "from": 29.45,
+   "pos": [
+    250,
+    780
+   ],
+   "size": 46,
+   "color": "#ffffff",
+   "weight": 900,
+   "anim": "pop",
+   "bg": "rgba(214,51,108,0.88)",
+   "style": {
+    "padding": "14px 30px",
+    "border-radius": "30px",
+    "line-height": "1.3"
+   }
+  }
+ ]
+}

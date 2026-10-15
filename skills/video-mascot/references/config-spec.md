@@ -1,0 +1,57 @@
+# config.json（作業フォルダの設定）
+
+```json
+{
+ "name": "icm-explainer", "fps": 30, "pad": 100, "home": "home", "seed": 5,
+ "mascot": {"description": "a glossy resin chibi figurine girl with ... (英語。絵を描かせる時の『同じキャラ』の説明)"},
+ "poses": {"home": {"desc": "hands lightly clasped in front of her waist, facing the camera almost straight on"},
+           "point": {"desc": "her left arm extended toward the viewer's right with an open palm, presenting", "refs": ["gassho"]}},
+ "pairs": [["home", "point"]],
+ "face": {"mouth_roi": [450, 575, 600, 680], "eye_roi": [370, 500, 640, 600]},
+ "floor": {"clean": true, "y0": 1180},
+ "anchor": {"mode": "boot"},
+ "events": [{"line": 1, "kw": "そこで", "fallback": 0.65, "pose": "point"}],
+ "voice": {"caption": "...", "seed": 2024, "ref": "voice/ref.wav", "gap": 0.5, "end": 69.0,
+           "candidates": ["説明文1", "説明文2"], "test_lines": [0, 3],
+           "lines": [{"text": "台本どおりの文", "say": "合成に渡す文（読みを直した文）", "start": 0.0}]}
+}
+```
+
+| 項目 | 意味 |
+|---|---|
+| `fps` | 出力のコマ数。既定30 |
+| `pad` | 絵の左右に足す白い余白（画素、絵の幅 941 に対して）。体を動かしたとき指先が切れないための余裕。既定100 |
+| `out_height` | 出力の高さ（既定1280）。幅は絵の縦横比と pad から決まる |
+| `home` | 基本の姿勢の名前（既定は poses の最初）。軸足・口と目の範囲の基準 |
+| `mascot.description` | `vm poses` が絵を描かせる時の、キャラの英語の説明。服・髪・目・台座など、同じに保ちたい特徴を書く |
+| `poses.<名前>.desc` | その姿勢の英語の説明（`vm poses` が絵と中割りの指示に使う） |
+| `poses.<名前>.refs` | 絵を描く時に一緒に参照させる別の姿勢（顔・服をそろえるため） |
+| `pairs` | 中割りを作る姿勢の組。`[a, b]` で `ib/ib_a_b_1..5.png`。行き来のどちらの向きにも使う |
+| `face.mouth_roi` / `face.eye_roi` | home の絵で測った口・目の範囲 `[x0, y0, x1, y1]`（口は差分の外側、目は両目を含む）。`vm grid` で読む |
+| `floor.clean` | 足元の台座・靴の反射を消し、接地の影を足す（台座つきの絵向け）。`y0` は足元の処理を始める高さ（既定は絵の高さの70.5%） |
+| `anchor.mode` | `boot`: 向かって左の黒い靴を軸足にして全部の絵でそろえる（既定）。`manual`: `points` に姿勢ごとの `[x, y]`（と `scales`）を書く。`none`: そろえない |
+| `inbetween_fps` | 中割り5枚を見せる速さ（既定15 = 0.33秒） |
+| `mouth_scale` | 口の開きの全体の倍率（既定1.0）。`--mouth-scale` でも指定できる |
+
+## events（姿勢の切り替え）
+
+上から順に、直前の姿勢から `pose` へ移る。**切り替えが終わる時刻**（ `line` + `kw`/`word` の場合）か、**始まる時刻**（それ以外）を指定する。
+
+| 書き方 | 意味 |
+|---|---|
+| `{"line": 3, "kw": "ばねが", "pose": "gassho"}` | 行3で、声の中の「ばねが」（ひらがな、小さい「ゃゅょ」を含む語は不可）の直前に切り替えが終わる |
+| `{"line": 3, "word": ["しゃ"], "pose": "open"}` | 行3で、聞き取りの語（ひらがな）が一致する最初の語の直前に終わる。小さい「ゃゅょ」を含むとき・Whisper が漢字を取り違えるときはこちら |
+| `{"line_start": 5, "offset": -0.4, "pose": "point"}` | 行5の頭の0.4秒前に始まる |
+| `{"line_end": 8, "offset": 0.05, "pose": "home"}` | 行8の終わりの0.05秒後に始まる |
+| `{"at": 12.3, "pose": "arms"}` | 12.3秒に始まる |
+
+- `fallback`（0〜1）: 声から見つからなかったとき、行の中のこの割合の位置とみなす（標準エラーに「推定」と出る）。
+- `offset`: ± 秒で微調整する。
+- pairs にない組（a→b）は、中割りなしで切り替わる。必要なら間に別の姿勢を挟む（例: open→home→arms）。
+
+## voice
+
+- `lines[].text` は字幕・一致の判定に使う台本、`say` は合成に渡す文（読みが割れる語だけひらがなにする）。`start` を書くと、その秒に行を置く（主動画の流れに合わせたいとき）。省略すると前の行の後ろに `gap` 秒あけて続ける。
+- `ref` を書くと全行をその声で読む。省略すると、最初に作った行が残りの手本になる。
+- `end`: 全体の長さ（省略時は最後の行の終わり＋0.6秒）。主動画の長さに合わせたいとき書く。
+- 説明文（`caption`）は声の人物像と話し方を書く（例: 余裕のある大人の女性。艶のある低めの声。…てきぱきと早めに説明している。クリアな音質）。「テンポよく」「てきぱき」で速さを、「近い距離感」で距離感を、絵文字（台詞の語尾に 😏 など）で口調を足せるが、絵文字は暴れやすい。

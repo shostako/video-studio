@@ -1,0 +1,23 @@
+{
+ "name": "Monday_Figure_ICM_Explainer",
+ "fps": 30,
+ "duration": 60.3,
+ "bg": "#ffffff",
+ "base": {
+  "type": "sequence",
+  "rect": [0, 0, 1920, 1080],
+  "clips": [
+   {"src": "c1.mp4", "cut": 7.2, "audio": "ac/c1.wav"},
+   {"src": "c2.mp4", "cut": 7.4, "audio": "ac/c2.wav"},
+   {"src": "c3.mp4", "cut": 7.5, "audio": "ac/c3.wav"},
+   {"src": "c4.mp4", "cut": 7.9, "audio": "ac/c4.wav"},
+   {"src": "c5.mp4", "cut": 7.6, "audio": "ac/c5.wav"},
+   {"src": "c6.mp4", "cut": 7.8, "audio": "ac/c6.wav"},
+   {"src": "c7.mp4", "cut": 6.0, "audio": "ac/c7.wav"},
+   {"src": "c8.mp4", "cut": 7.7, "audio": "ac/c8.wav", "hold": 1.2}
+  ]
+ },
+ "overlays": [
+  {"type": "video", "src": "panel3d.mp4", "rect": [760, 0, 1160, 1080], "from": 0, "blend": "multiply"}
+ ]
+}
