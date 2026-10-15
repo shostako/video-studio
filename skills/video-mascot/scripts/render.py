@@ -52,11 +52,12 @@ vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)
 lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
 if LIPSYNC == "mora":                             # 行のかな台本（voice.lines[].kana、無ければ say か text をかなにしたもの）をモーラで割り付ける
     VL = C.get("voice", {}).get("lines", []); MO = C.get("mora", {}); segs = []
+    lvl_t = lvl_s / MS if MS > 0 else lvl_s        # 無音を削る判定は口の倍率に左右されない大きさで
     def to_kana(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー" or ch in PAUSE)
     for n in sorted(L):
         if n > len(VL): die(f"lipsync=mora: 行{n} の台本が config.voice.lines に無い")
         kana = VL[n - 1].get("kana") or to_kana(VL[n - 1].get("say", VL[n - 1]["text"]))
-        s_, e_ = voiced_span(lvl_s, FPS, L[n], L[n] + LDUR[n]) if MO.get("trim", True) else (L[n], L[n] + LDUR[n])
+        s_, e_ = voiced_span(lvl_t, FPS, L[n], L[n] + LDUR[n]) if MO.get("trim", True) else (L[n], L[n] + LDUR[n])
         segs += mora_track(kana, s_, e_, float(MO.get("pause_weight", 2.0)), float(MO.get("close_frac", 0.3)), float(MO.get("min_close", 0.067)))
     shape_at = mora_frames(segs, FPS, NALL)
     mouth = [mora_mouth(lvl_s[f], shape_at[f]) for f in range(NALL)]
