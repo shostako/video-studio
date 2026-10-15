@@ -534,6 +534,8 @@ def main():
     lint = subprocess.run(["npx", "--yes", HF, "lint"], cwd=proj, capture_output=True, text=True, env=env)
     txt = re.sub(r"\x1b\[[0-9;]*m", "", lint.stdout + lint.stderr); m = re.search(r"(\d+) error\(s\)", txt)
     if m and int(m.group(1)) > 0: print(txt, file=sys.stderr); die("lint でエラー", 6)
+    if lint.returncode != 0:      # npx 自体の失敗（取得できない等）は「N error(s)」が出ないので、終了コードで見る
+        print(txt, file=sys.stderr); die(f"lint を実行できなかった（終了コード {lint.returncode}）", 6)
     if a.no_render: return
     tmp = os.path.join(proj, "render.mp4")
     r = subprocess.run(["npx", "--yes", HF, "render", "-f", str(sc.fps), "-q", "draft" if a.draft else "high", "-o", tmp],

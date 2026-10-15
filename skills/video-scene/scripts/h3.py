@@ -91,9 +91,11 @@ def graph(prompt, first, last, w, h, length, steps, turbo, seed, prefix):
     return g
 
 
-def check_install():
+def check_install(models=True):
+    """ComfyUI があるか。models=True なら H3 の重みもそろっているか（生成とサーバーの起動に要る）。"""
     if not os.path.exists(WIN_PY):
         die(f"ComfyUI portable が無い: {ROOT}（references/h3.md の「入れ方」）", 3)
+    if not models: return
     missing = [f for k, f in MODELS.items() if not os.path.exists(os.path.join(ROOT, "ComfyUI", "models", MODEL_DIRS[k], f))]
     if missing:
         die("H3 の重みが足りない: " + ", ".join(missing) + "（references/h3.md の「入れ方」）", 3)
@@ -112,7 +114,7 @@ def main():
     ap.add_argument("--side-dir", help="控え（_first.png・_pad.json）の置き場。既定は指示文のフォルダ＝作業フォルダ")
     a = ap.parse_args()
 
-    check_install()
+    check_install(models=a.server in (None, "start"))   # status / free / stop は重みが欠けていても動かせる
     if a.server:
         if a.server == "status":
             r = client("status"); print("running" if r == 0 else "stopped"); sys.exit(0)

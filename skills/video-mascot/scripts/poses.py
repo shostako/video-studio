@@ -65,6 +65,9 @@ def jobs_ib(P):
     return out
 
 
+LIMIT = threading.Event()   # /img が使用量の上限（終了コード 4）を返した
+
+
 def run_jobs(jobs, nworkers, dry, only=None):
     if only: jobs = [j for j in jobs if only in os.path.basename(j[0])]
     todo = [j for j in jobs if not os.path.exists(j[0])]
@@ -81,7 +84,7 @@ def run_jobs(jobs, nworkers, dry, only=None):
             cmd = [IMG, "-p", prompt] + sum([["-r", r] for r in refs], []) + ["-o", out]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=700)
             if r.returncode == 0 and os.path.exists(out): break
-            if r.returncode == 4: stop.set(); print("使用量の上限（終了コード 4）。時間をおいて、同じコマンドをもう一度", flush=True); return
+            if r.returncode == 4: stop.set(); LIMIT.set(); print("使用量の上限（終了コード 4）。時間をおいて、同じコマンドをもう一度", flush=True); return
             time.sleep(5)
         with lock:
             done[0] += 1; print(f"[{done[0]}/{len(todo)}] {'ok' if os.path.exists(out) else 'FAIL'} {os.path.basename(out)}", flush=True)
@@ -102,3 +105,4 @@ if __name__ == "__main__":
     for f in steps:
         ok = run_jobs(f(P), nw, dry, only) and ok
         if not ok and not dry and f is jobs_poses: print("姿勢の絵が足りないので、続きは止める"); break
+    sys.exit(0 if ok else (4 if LIMIT.is_set() else 1))   # 足りない絵があれば失敗で返す（4 は /img の使用量の上限）
