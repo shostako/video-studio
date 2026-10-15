@@ -3,5 +3,6 @@ numpy
 opencv-python-headless
 pillow
 praat-parselmouth
+pyyaml
 pykakasi
 imageio-ffmpeg
