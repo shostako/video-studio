@@ -3,6 +3,8 @@
     alpha（既定）: 背景を透明にした webm（out/mascot.webm、声は入れない）。どんな主動画にも重ねられる
     white       : 背景が白の mp4（声入り、out/mascot_white.mp4）。白っぽい主動画に「乗算」で重ねる用
   --mouth-scale  口の開きを全体に小さく(0.8)・大きく(1.2)する。--from/--to は一部だけ書き出して確かめる用
+  --lipsync amp|mora  口パクの母音の決め方（既定は config.lipsync、無ければ amp）。amp: 聞き取りの語を音の数で等分（今まで）。
+                 mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
 config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
@@ -11,13 +13,16 @@ import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
+from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
 if not a or a[0].startswith("-"): die("使い方: vm render <作業フォルダ> [--mode alpha|white] [--from 秒 --to 秒] [--out ファイル]")
 P = Proj(a[0]); C = P.cfg
 def opt(name, default=None, cast=str): return cast(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
-MODE = opt("--mode", "alpha"); T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
+MODE = opt("--mode", "alpha"); LIPSYNC = opt("--lipsync", C.get("lipsync", "amp"))
+if LIPSYNC not in ("amp", "mora"): die(f"lipsync は amp か mora: {LIPSYNC}")
+T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
 FPS = P.fps; PAD = P.pad; OH = int(C.get("out_height", 1280)); random.seed(int(C.get("seed", 5)))
 timing = json.load(open(P.p("voice", "timing.json"))); L = {x["n"]: x["start"] for x in timing["lines"]}; LDUR = {x["n"]: x["dur"] for x in timing["lines"]}; END = timing["end"]
 T1 = opt("--to", END, float)
@@ -45,7 +50,19 @@ vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)
 
 # ---------- 口・まばたき ----------
 lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
-mouth = [choose(lvl_s[f], vowel_at[f]) for f in range(NALL)]
+if LIPSYNC == "mora":                             # 行のかな台本（voice.lines[].kana、無ければ say か text をかなにしたもの）をモーラで割り付ける
+    VL = C.get("voice", {}).get("lines", []); MO = C.get("mora", {}); segs = []
+    lvl_t = lvl_s / MS if MS > 0 else lvl_s        # 無音を削る判定は口の倍率に左右されない大きさで
+    def to_kana(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー" or ch in PAUSE)
+    for n in sorted(L):
+        if n > len(VL): die(f"lipsync=mora: 行{n} の台本が config.voice.lines に無い")
+        kana = VL[n - 1].get("kana") or to_kana(VL[n - 1].get("say", VL[n - 1]["text"]))
+        s_, e_ = voiced_span(lvl_t, FPS, L[n], L[n] + LDUR[n]) if MO.get("trim", True) else (L[n], L[n] + LDUR[n])
+        segs += mora_track(kana, s_, e_, float(MO.get("pause_weight", 2.0)), float(MO.get("close_frac", 0.3)), float(MO.get("min_close", 0.067)))
+    shape_at = mora_frames(segs, FPS, NALL)
+    mouth = [mora_mouth(lvl_s[f], shape_at[f]) for f in range(NALL)]
+else:
+    mouth = [choose(lvl_s[f], vowel_at[f]) for f in range(NALL)]
 mouth = smooth_mouth(mouth, R)                    # すぐ消える形は直前の形にする
 print("口の形のコマ数:", {str(m): mouth.count(m) for m in sorted(set(mouth), key=str)}, file=sys.stderr)
 blink = [None] * NALL; t = 1.2                  # まばたき: None か "e1"/"e2"、細かい時は (下の段, 上の段, 上の段の割合)
