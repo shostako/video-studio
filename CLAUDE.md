@@ -23,7 +23,7 @@
 
 - 枠の外で決めた事は `ROADMAP.md`（今の段階と次にやること）と `DECISIONS.md`（決めたことと理由）にある。PR ごとに更新する。
 - やるのは `ROADMAP.md` の「クラウドのスレッドがやること」を上から順に1つずつ。「手元待ち」には手を出さない。
-- 毎回 `main` から枝を切って PR を出す。**マージしてよいのは、`python3 scripts/pr_gate.py <PR番号>` が `OK` を返す（終了コード 0）ときだけ。** ci が緑で、Codex のレビューが **PR の先頭コミットに対して**完了していて、未解決の指摘が無いことを見る。
+- 毎回 `main` から枝を切って PR を出す。**マージしてよいのは、`python3 scripts/pr_gate.py <PR番号>` が `OK` を返す（終了コード 0）ときだけ。マージは、門が表示した `gh pr merge ... --match-head-commit <SHA>` の形で行う**（判定のあとに push が入っても、判定していないコミットはマージされない）。 ci が緑で、Codex のレビューが **PR の先頭コミットに対して**完了していて、未解決の指摘が無いことを見る。
   - 終了コード 2 は「待つ」（ci か Codex が走行中、または push の後で再レビュー前）。数分おいてもう一度。
   - 終了コード 1 は「だめ」。指摘を `gh api repos/shostako/video-studio/pulls/<PR番号>/comments` で読み、直して push する。判断に迷う指摘は `DECISIONS.md` の「未決」に書いて止まる。
   - **直した指摘のスレッドは、返信して解決済みにする。** 門は GitHub 上の未解決スレッドの数で判断する（Codex の要約の `has_unresolved_findings` はレビュー時点の写しで、解決しても更新されない）。スレッドの ID は `gh api graphql -f query='query{repository(owner:"shostako",name:"video-studio"){pullRequest(number:<PR番号>){reviewThreads(first:100){nodes{id isResolved path}}}}}'` で取る。返信は `addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id,body:$b})`、解決は `resolveReviewThread(input:{threadId:$id})`（どちらも `gh api graphql -f query='mutation(...){...}' -f id=...`）。

@@ -7,7 +7,7 @@ claude.ai の Project settings > Memory > Project instructions に貼る文面�
 
 - 最初に CLAUDE.md、ROADMAP.md、DECISIONS.md、docs/handoff-2026-10-15.md を読む。
 - やるのは ROADMAP.md の「クラウドのスレッドがやること」を上から順に1つずつ。「手元待ち」には手を出さない。
-- 毎回 main から枝を切って PR を出す。`python3 scripts/pr_gate.py <PR番号>` が OK を返したときに限り、自分でマージしてよい（ci 緑＋先頭コミットへの Codex レビュー完了＋未解決の指摘なし。詳細は CLAUDE.md）。指摘を直して push したら `@codex review` で再レビューを頼む（Codex は push では再レビューしない）。マージしたら ROADMAP.md の「済んだこと」と logs/ を更新する。
+- 毎回 main から枝を切って PR を出す。`python3 scripts/pr_gate.py <PR番号>` が OK を返したときに限り、門が表示する `--match-head-commit` 付きのコマンドで自分でマージしてよい（ci 緑＋先頭コミットへの Codex レビュー完了＋未解決の指摘なし。詳細は CLAUDE.md）。指摘を直して push したら `@codex review` で再レビューを頼む（Codex は push では再レビューしない）。マージしたら ROADMAP.md の「済んだこと」と logs/ を更新する。
 - 既定の挙動は変えない。新しい機能は opt-in で足す。既定を切り替えたくなったら DECISIONS.md の「未決」に書いて止まる。
 - 声の良し悪し・絵の見た目はあなたには判定できない。判定が要る所は「手元待ち」に書いて止まる。
 - 実物の絵・声・動画・顧客名は入れない。テスト用の素材は合成する。

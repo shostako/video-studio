@@ -2,7 +2,7 @@
 """PR をマージしてよいかの門。ci が緑、かつ Codex のレビューが PR の先頭コミットに対して完了していて、未解決の指摘が無いときだけ 0 を返す。
 
 使い方: python3 scripts/pr_gate.py <PR番号> [--repo shostako/video-studio]
-終了コード: 0=マージしてよい / 1=だめ（理由を表示） / 2=まだ待つ（ci か Codex が走行中・未着手）
+終了コード: 0=マージしてよい（判定した先頭 SHA を表示。マージは `--match-head-commit <SHA>` で縛る） / 1=だめ（理由を表示） / 2=まだ待つ（ci か Codex が走行中・未着手・通信失敗）
 """
 import json
 import re
@@ -98,7 +98,15 @@ def main(argv):
         print("だめ: レビュースレッドが100件を超えている。人が見る"); return 1
     unresolved = sum(1 for x in rt["nodes"] if not x["isResolved"])
     code, why = evaluate(codex_summaries(flatten_pages(pages)), head, unresolved)
-    print(("OK: " if code == 0 else "待つ: " if code == 2 else "だめ: ") + why)
+    if code == 0:
+        # 判定している間に push が入っていないことを確かめ、判定した SHA を出す（マージはこの SHA に縛る）
+        now = _gh("pr", "view", n, "-R", repo, "--json", "headRefOid", "-q", ".headRefOid").strip()
+        if now != head:
+            print(f"待つ: 判定の途中で先頭コミットが変わった（{head[:7]} → {now[:7]}）。もう一度流す")
+            return 2
+        print(f"OK: {why}\nマージは判定した SHA に縛る: gh pr merge {n} -R {repo} --merge --match-head-commit {head}")
+        return 0
+    print(("待つ: " if code == 2 else "だめ: ") + why)
     return code
 
 
