@@ -1,0 +1,13 @@
+# 素材・生成物は git に入れない（生成物はマイドライブ、作業フォルダは各PCのローカル）
+*.mp4
+*.webm
+*.mov
+*.wav
+*.mp3
+*.m4a
+*.png
+*.jpg
+work/
+__pycache__/
+.venv/
+.env
