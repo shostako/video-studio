@@ -29,8 +29,12 @@ def flatten_pages(pages):
     return [c for page in pages for c in (page if isinstance(page, list) else [page])]
 
 
-def evaluate(summaries, head_sha, inline_comment_count=0):
-    """Codex の要約コメント本文のリスト（古い順）と PR の先頭 SHA から (コード, 理由) を返す。コード 0/1/2 は上の終了コード。"""
+def evaluate(summaries, head_sha, unresolved_threads=0):
+    """Codex の要約コメント本文のリスト（古い順）、PR の先頭 SHA、未解決のレビュースレッド数から (コード, 理由) を返す。
+
+    要約の has_unresolved_findings は「レビューしたときの写し」で、指摘を直してスレッドを解決しても更新されない。
+    そのため、未解決かどうかは GitHub 上のスレッドの解決状態（unresolved_threads）で見る。要約からは
+    「先頭コミットに対して完了したレビューがあること」だけを使う。"""
     bodies = [b for b in summaries if MARK in b]
     if not bodies:
         return 2, "Codex の要約コメントがまだ無い"
@@ -45,10 +49,10 @@ def evaluate(summaries, head_sha, inline_comment_count=0):
         return 2, f"Codex のレビューが終わっていない（status={cr.get('status')}）"
     sha = cr.get("commit_sha") or ""
     if not sha or not head_sha.startswith(sha[:7]) or not sha.startswith(head_sha[:7]):
-        return 2, f"Codex のレビューが先頭コミットのものではない（レビュー={sha[:7]}, 先頭={head_sha[:7]}）。再レビューを待つ"
-    if cr.get("has_unresolved_findings") is not False:
-        return 1, f"Codex の未解決の指摘がある（has_unresolved_findings={cr.get('has_unresolved_findings')}）"
-    return 0, "Codex のレビューは先頭コミットに対して完了し、未解決の指摘は無い"
+        return 2, f"Codex のレビューが先頭コミットのものではない（レビュー={sha[:7]}, 先頭={head_sha[:7]}）。`@codex review` で再レビューを頼む"
+    if unresolved_threads > 0:
+        return 1, f"未解決のレビュースレッドが {unresolved_threads} 件ある。直して返信し、解決済みにする"
+    return 0, "Codex のレビューは先頭コミットに対して完了し、未解決のスレッドは無い"
 
 
 class GhError(Exception):
@@ -85,7 +89,15 @@ def main(argv):
     if ci[0][1] != "pass":
         print(f"だめ: ci が {ci[0][1]}"); return 1
     pages = json.loads(_gh("api", f"repos/{repo}/issues/{n}/comments", "--paginate", "--slurp") or "[]")
-    code, why = evaluate(codex_summaries(flatten_pages(pages)), head)
+    owner, name = repo.split("/")
+    q = ("query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){"
+         "reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}")
+    th = json.loads(_gh("api", "graphql", "-f", f"query={q}", "-F", f"o={owner}", "-F", f"n={name}", "-F", f"p={n}"))
+    rt = th["data"]["repository"]["pullRequest"]["reviewThreads"]
+    if rt["pageInfo"]["hasNextPage"]:
+        print("だめ: レビュースレッドが100件を超えている。人が見る"); return 1
+    unresolved = sum(1 for x in rt["nodes"] if not x["isResolved"])
+    code, why = evaluate(codex_summaries(flatten_pages(pages)), head, unresolved)
     print(("OK: " if code == 0 else "待つ: " if code == 2 else "だめ: ") + why)
     return code
 

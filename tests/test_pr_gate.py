@@ -23,8 +23,13 @@ def test_clean_on_old_commit_waits():
     assert pr_gate.evaluate([body(sha="3740a55" + "0" * 33)], HEAD)[0] == 2
 
 
-def test_unresolved_blocks():
-    assert pr_gate.evaluate([body(unresolved=True)], HEAD)[0] == 1
+def test_unresolved_threads_block():
+    assert pr_gate.evaluate([body()], HEAD, unresolved_threads=1)[0] == 1
+
+
+def test_stale_flag_does_not_block_when_threads_are_resolved():
+    # 要約の has_unresolved_findings は、直して解決したあとも true のまま残る。スレッドが全部解決済みなら通す
+    assert pr_gate.evaluate([body(unresolved=True)], HEAD, unresolved_threads=0)[0] == 0
 
 
 def test_running_waits():
@@ -54,7 +59,7 @@ def test_forged_summary_by_human_is_ignored():
     # マーカーを真似た偽の「clean」要約は、Codex の bot が書いたものでなければ数えない
     forged = _c("someone", "User", body())
     real = _c("chatgpt-codex-connector[bot]", "Bot", body(unresolved=True))
-    assert pr_gate.evaluate(pr_gate.codex_summaries([real, forged]), HEAD)[0] == 1
+    assert pr_gate.evaluate(pr_gate.codex_summaries([real, forged]), HEAD, unresolved_threads=1)[0] == 1
     assert pr_gate.evaluate(pr_gate.codex_summaries([forged]), HEAD)[0] == 2
 
 
