@@ -141,7 +141,8 @@ def ib_item(item, src_pose):
     ref = PB[src_pose]
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
-    anc = boot_anchor(clean) if AMODE == "boot" else None
+    own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
+    anc = boot_anchor(clean) if AMODE == "boot" and not own else None
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
     allp = list(PARTS[src_pose].values())

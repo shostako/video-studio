@@ -235,3 +235,18 @@ def test_render_gaze_lead_ends_at_instant_cut(vproj, env, tmp_path):
     eye = np.abs(a - b)[:, 88:116, 95:170].max(axis=(1, 2, 3))
     assert eye[72] > 100                       # 2.35〜2.5 秒は右へ先回り（home に戻る前の turn_l で g_c）
     assert eye[80] < 60                        # 2.5 秒で一瞬で home に戻ったあとは、元の目
+
+
+def test_render_ib_uses_pose_anchor_interpolation(vproj, env, tmp_path):
+    """端の姿勢に anchor を書いたら、中割りは靴を測らず両端の anchor の間で補う（測った靴の位置へ跳ばない）。"""
+    p2 = tmp_path / "anc"; shutil.copytree(vproj, p2)
+    cfg = json.loads((p2 / "config.json").read_text(encoding="utf-8")); cfg.pop("transition"); cfg.pop("gaze")
+    cfg["poses"]["point"]["anchor"] = [213.5, 735.0]                            # 測った靴より 20 右を軸足とする → 絵は 20 左へ
+    cfg["events"] = [{"at": 0.6, "pose": "point"}]
+    (p2 / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "a.mp4"; _render(p2, env, out, "--mode", "white"); f = _frames(out, env)
+    def shoe_left(fr):                                                            # 足元の黒の一番左（出力の画素）
+        g = fr[330:375].mean(axis=2); xs = np.where((g < 60).any(axis=0))[0]; return int(xs.min())
+    xs = [shoe_left(f[k]) for k in range(16, 40)]
+    assert max(abs(a - b) for a, b in zip(xs, xs[1:])) <= 4                      # コマの間で跳ばない（20 画素 × 0.5 = 10 の跳びが無い）
+    assert xs[0] - xs[-1] >= 8                                                    # 終わりは 10 ほど左
