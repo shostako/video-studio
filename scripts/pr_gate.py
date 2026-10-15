@@ -35,9 +35,9 @@ def evaluate(summaries, head_sha, inline_comment_count=0):
     return 0, "Codex のレビューは先頭コミットに対して完了し、未解決の指摘は無い"
 
 
-def _gh(*args):
+def _gh(*args, ok_codes=(0,)):
     r = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if r.returncode != 0:
+    if r.returncode not in ok_codes:
         raise SystemExit(f"gh 失敗: {' '.join(args)}\n{r.stderr.strip()}")
     return r.stdout
 
@@ -55,7 +55,8 @@ def main(argv):
     n = args[0]
     head = _gh("pr", "view", n, "-R", repo, "--json", "headRefOid", "-q", ".headRefOid").strip()
     # ci
-    checks = _gh("pr", "checks", n, "-R", repo)
+    # gh pr checks は、走行中だと 8、失敗があると 1 を返す。どちらも出力は読めるので、出力で判断する
+    checks = _gh("pr", "checks", n, "-R", repo, ok_codes=(0, 1, 8))
     ci = [ln.split("\t") for ln in checks.splitlines() if ln.split("\t")[0] == "ci"]
     if not ci:
         print("待つ: ci がまだ無い"); return 2
