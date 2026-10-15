@@ -244,3 +244,84 @@ def smooth_mouth(mouth, R):
             if g - f <= R and g < n and mouth[f] != mouth[f - 1]: mouth[f:g] = [mouth[f - 1]] * (g - f)
             f = g
     return mouth
+
+
+# ---------- モーラ位置の口パク（config.lipsync: "mora"。純関数）----------
+PAUSE = "、。，．,.！？!?…・　 「」『』（）()"   # 台本の句読点など。息つぎ（口を閉じる間）として扱う
+LIPS = set("まみむめもばびぶべぼぱぴぷぺぽ")          # 唇を閉じてから出す音（両唇音）
+VOWELS = ("a", "i", "u", "e", "o")
+
+
+def kata_to_hira(s):
+    """カタカナをひらがなにする（ヴ・ヵ・ヶ・ー と、それ以外の字はそのまま）。"""
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" and c not in "ヵヶ" else c for c in s)
+
+
+def kana_morae(kana):
+    """かな台本をモーラの列 [(字, 種類, 唇を閉じて始まるか), ...] にする。
+    種類: a/i/u/e/o（母音）、n（ん）、q（っ）、pause（句読点などの息つぎ。続く息つぎは1つにまとめる）。
+    小書きの「ゃゅょぁぃぅぇぉ」は前の音と1モーラにまとめ、母音をその音のものにする（「みゃ」は唇を閉じて a）。
+    「ー」は直前の母音を伸ばす1モーラ（直前が母音でなければ捨てる）。「ゔ」は u。前に母音の無い小書きは、その母音の1モーラ。ほかの字（漢字・英字）は捨てる。"""
+    out = []
+    for ch in kata_to_hira(kana):
+        if ch in PAUSE:
+            if out and out[-1][1] != "pause": out.append((ch, "pause", False))
+        elif ch in "ゃゅょぁぃぅぇぉ" and out and out[-1][1] in VOWELS:
+            c, _, lips = out[-1]; out[-1] = (c + ch, VOW[ch], lips)
+        elif ch == "ー":
+            if out and out[-1][1] in VOWELS: out.append((ch, out[-1][1], False))
+        elif ch == "ん": out.append((ch, "n", False))
+        elif ch == "っ": out.append((ch, "q", False))
+        elif ch == "ゔ": out.append((ch, "u", False))
+        elif ch in VOW: out.append((ch, VOW[ch], ch in LIPS))
+    return out
+
+
+def mora_track(kana, start, end, pause_weight=2.0, close_frac=0.3, min_close=0.067):
+    """1行のかな台本を、行の start〜end 秒にモーラの数で割り付けて [(開始秒, 終了秒, 形), ...] にする。
+    形: a/i/u/e/o/n と closed（口を閉じる）。息つぎは pause_weight モーラ分の長さの closed、「っ」は closed。
+    両唇音（まみむめも・ばびぶべぼ・ぱぴぷぺぽ）と、その前の「ん」は、モーラの頭 close_frac（ただし min_close 秒以上、
+    モーラの半分以下）を closed にする。行の頭と終わりの息つぎは捨てる。モーラが無ければ空のリスト。"""
+    ms = kana_morae(kana)
+    while ms and ms[0][1] == "pause": ms.pop(0)
+    while ms and ms[-1][1] == "pause": ms.pop()
+    if not ms or end <= start: return []
+    w = [pause_weight if k == "pause" else 1.0 for _, k, _ in ms]; unit = (end - start) / sum(w)
+    seg = []; t = start
+    for i, (_, k, lips) in enumerate(ms):
+        d = w[i] * unit; t1 = end if i == len(ms) - 1 else t + d
+        if k == "n" and i + 1 < len(ms) and ms[i + 1][2]: k = "closed"             # 「さんぽ」の「ん」は唇を閉じる
+        if k in ("pause", "q"): seg.append((t, t1, "closed"))
+        elif lips:
+            c = min(max(close_frac * d, min_close), d / 2); seg += [(t, t + c, "closed"), (t + c, t1, k)]
+        else: seg.append((t, t1, k))
+        t = t1
+    merged = []
+    for s in seg:                                                              # 続く同じ形は1つにまとめる
+        if merged and merged[-1][2] == s[2]: merged[-1] = (merged[-1][0], s[1], s[2])
+        else: merged.append(s)
+    return merged
+
+
+def voiced_span(levels, fps, start, end, thr=0.15):
+    """コマごとの声の大きさ levels から、start〜end 秒の中で声が thr 以上の最初と最後のコマの範囲（秒）。
+    合成の声は行の頭と終わりに無音を持つので、モーラを割り付ける前に削る。声が無ければ (start, end) のまま。"""
+    f0 = max(0, int(math.floor(start * fps))); f1 = min(len(levels), int(math.ceil(end * fps)))
+    on = [f for f in range(f0, f1) if levels[f] >= thr]
+    if not on: return start, end
+    return max(start, on[0] / fps), min(end, (on[-1] + 1) / fps)
+
+
+def mora_frames(segments, fps, nall):
+    """mora_track の区間（何行分でもつないだ列）から、コマごとの形（区間の外は None）。
+    コマ f は時刻 f/fps を含む区間の形にする。後の区間が前を上書きする。"""
+    shape = [None] * nall
+    for s, e, k in segments:
+        for f in range(max(0, int(math.ceil(s * fps - 1e-9))), min(nall, int(math.ceil(e * fps - 1e-9)))): shape[f] = k
+    return shape
+
+
+def mora_mouth(Lv, k):
+    """モーラの形と声の大きさから口の形。closed と形の無いコマは閉じる（None）。開きの大きさは choose_mouth と同じ。"""
+    if k in (None, "closed"): return None
+    return choose_mouth(Lv, k)
