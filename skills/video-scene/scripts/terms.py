@@ -13,7 +13,7 @@
 
   - accent か type のどちらかは必須。accent の長さは読みのモーラ数と同じにする
   - 同じ word を2回書かない（読みが文脈で割れる語は、どちらを足すか人が決める）
-  - 知らないキーは書き間違いとして止める
+  - 知らないキーと、同じ表に同じキーが2回あるのは書き間違いとして止める
 
 読み込んだ結果は Term の並び。accent は "LHHHHL" の形にそろえ、type が無ければ列から計算する
 （平板と尾高は語の中だけでは同じ列なので、列だけから書いた語の type は 0 にする）。
@@ -156,9 +156,23 @@ def load_terms(path=None):
         import yaml
     except ImportError:
         raise TermsError("PyYAML が無い。video-scene の setup.sh を流す（pyyaml を入れる）")
+    class Loader(yaml.SafeLoader):
+        pass
+
+    def no_dup(loader, node, deep=False):
+        # PyYAML は同じキーが2回あると黙って後ろを採る。書き間違いを見逃さないよう止める
+        seen = set()
+        for k, _ in node.value:
+            key = loader.construct_object(k, deep=deep)
+            if key in seen:
+                raise TermsError(f"{p}: {k.start_mark.line + 1} 行目: キー {key} が同じ表に2回ある")
+            seen.add(key)
+        return loader.construct_mapping(node, deep=deep)
+
+    Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_dup)
     p = Path(path) if path else DEFAULT_PATH
     try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        data = yaml.load(p.read_text(encoding="utf-8"), Loader=Loader)
     except yaml.YAMLError as x:
         raise TermsError(f"{p}: YAML として読めない: {x}")
     return parse_terms(data, src=str(p))

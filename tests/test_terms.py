@@ -102,6 +102,8 @@ BAD = [
     ("terms:\n  - {word: 市場, reading: いちば, accent: HLL}\n  - {word: 市場, reading: しじょう, type: 0}",
      "2 語目: 市場 は 1 語目と同じ word"),
     ("terms: [\n", "YAML として読めない"),
+    ("terms:\n  - word: 型\n    reading: かた\n    accent: HL\n    accent: LH\n", "5 行目: キー accent が同じ表に2回ある"),
+    ("terms:\n  - {word: 板, reading: いた, accent: HL}\nterms: []\n", "キー terms が同じ表に2回ある"),
 ]
 
 
