@@ -15,6 +15,7 @@
 - `research/` は調査で使った使い捨てに近いスクリプト。本採用するものはスキル側へ移す
 
 ## 実行環境
+- スキルの Python は `~/.local/share/video-scene/venv`（3.12 以上）。システムの Python が 3.12 未満の機体（旧PC の 22.04 は 3.10）では、`setup.sh` が uv でユーザー領域に 3.12 の venv を作る（apt の Python には触らない）。古い venv は `venv.py310.bak` に退避する
 - 書き出しは手元のPC（WSL）で行う。H3（新PCの GPU）、Irodori-TTS、/img（ChatGPT の枠）はクラウドでは動かない
 - クラウドセッションでは、コードと手順書の改修、ffmpeg・HyperFrames・Gemini TTS での確認まで
 
