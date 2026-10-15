@@ -7,7 +7,7 @@
 ## 前提
 
 - 仕事の解説動画のマスコット。**落ち着いた動きだけ**を基本にする。後ろ向き・前かがみは「バリエーション」として持つだけで、普段は使わない。
-- 左右は**見る人から見て**（画面の左・右）。既存の `poses.*.desc` の書き方（"toward the viewer's right"）に揃える。
+- 左右は**見る人から見て**（画面の左・右）。ただし描かせる文では "toward the viewer's left" だけだと逆を向くことがある（2026-10-15 の実測で turn_l が画面の右を向いた）。**「画面の左端の方を向く。鼻とつま先が絵の左を指す」**と、絵の中の向きで書く（下の config の desc はそう書いてある）。
 - 名前の末尾 `_l` は画面の左へ向く、`_r` は画面の右へ向く。マスコットを画面の右に置いて、解説の中身が左にあるなら `_l` を使う。
 
 ## 用語
@@ -46,7 +46,7 @@
 - **背の高さ（基準点 2）**: 靴の底から頭のてっぺんまでが `home` と同じ。目安 ±3%。斜め・横で頭の形が変わっても、背は縮めない。
 - **首の位置（基準点 3）**: 正面と斜めでは、あごの下（首の付け根）が `home` と同じ高さ。目安 ±15 画素。首の傾きの二次運動は、ここを中心に頭を回す。
 - **顔の大きさ・描き方・服・照明**: `home` と同じ。`mascot.description` の説明を毎回そのまま使う（`vm poses` が自動で入れる）。
-- **表情**: 口を閉じた落ち着いた顔。目は開いて、**顔の向いている方を見る**（斜め・横の絵で、目だけカメラを見るのは部品 `g_c` で出す）。
+- **表情**: 口を閉じた落ち着いた顔。目は開いて、**顔の向いている方を見る**（斜め・横の絵で、目だけカメラを見るのは部品 `g_c` で出す）。参照の `home` の目（正面を見ている）に引っぱられて黒目が逆に残りやすいので、desc に「黒目は向いている側の目尻に寄せる。参照の目の向きは写さない」と最初から書く。
 - **全身が画面に入る**: 手を差し出す絵（`present_*`）の指先が端で切れない。
 
 ## 口・目・視線の部品
@@ -77,17 +77,17 @@
 ```json
 "poses": {
   "home": {"desc": "...（今のまま）"},
-  "head_l": {"desc": "exactly the same pose and body as the reference, standing facing the camera, only her head is turned about 30 degrees toward the viewer's left, her eyes looking in the same direction as her face, calm closed mouth",
+  "head_l": {"desc": "exactly the same pose and body as the reference, shoulders and feet still facing the camera, only her head is turned about 30 degrees so that her nose points toward the LEFT edge of the image, her irises sit near the corners of her eyes on the image-left side; do not copy the eye direction of the reference image, calm closed mouth",
              "refs": ["home"], "yaw": 0, "head_yaw": -30},
-  "head_r": {"desc": "exactly the same pose and body as the reference, standing facing the camera, only her head is turned about 30 degrees toward the viewer's right, her eyes looking in the same direction as her face, calm closed mouth",
+  "head_r": {"desc": "exactly the same pose and body as the reference, shoulders and feet still facing the camera, only her head is turned about 30 degrees so that her nose points toward the RIGHT edge of the image, her irises sit near the corners of her eyes on the image-right side; do not copy the eye direction of the reference image, calm closed mouth",
              "refs": ["home"], "yaw": 0, "head_yaw": 30},
-  "turn_l": {"desc": "her whole body turned about 40 degrees toward the viewer's left (three-quarter view), feet planted on the same spot, hands lightly clasped in front of her waist, head facing the same direction as her body, eyes looking where her face points, calm closed mouth, same height as the reference",
+  "turn_l": {"desc": "her whole body turned about 40 degrees (three-quarter view) so that her nose and her toes point toward the LEFT edge of the image, standing on exactly the same spot as the reference, hands lightly clasped in front of her waist, head facing the same direction as her body, her irises sit near the corners of her eyes on the image-left side; do not copy the eye direction of the reference image, calm closed mouth, same height as the reference",
              "refs": ["home"], "yaw": -40},
-  "turn_r": {"desc": "her whole body turned about 40 degrees toward the viewer's right (three-quarter view), feet planted on the same spot, hands lightly clasped in front of her waist, head facing the same direction as her body, eyes looking where her face points, calm closed mouth, same height as the reference",
+  "turn_r": {"desc": "her whole body turned about 40 degrees (three-quarter view) so that her nose and her toes point toward the RIGHT edge of the image, standing on exactly the same spot as the reference, hands lightly clasped in front of her waist, head facing the same direction as her body, her irises sit near the corners of her eyes on the image-right side; do not copy the eye direction of the reference image, calm closed mouth, same height as the reference",
              "refs": ["home"], "yaw": 40},
-  "present_l": {"desc": "the same three-quarter view as the reference, body turned about 40 degrees toward the viewer's left, her arm on that side extended toward the viewer's left with an open palm, presenting something, calm closed mouth",
+  "present_l": {"desc": "keep exactly the same three-quarter body angle as the reference (her nose and her toes point toward the LEFT edge of the image); her torso must NOT turn back toward the camera. Her arm on the image-left side is extended toward the LEFT edge of the image with an open palm, presenting something, her irises sit near the corners of her eyes on the image-left side; do not copy the eye direction of the reference image, calm closed mouth, same spot and height as the reference",
                 "refs": ["turn_l"], "yaw": -40},
-  "present_r": {"desc": "the same three-quarter view as the reference, body turned about 40 degrees toward the viewer's right, her arm on that side extended toward the viewer's right with an open palm, presenting something, calm closed mouth",
+  "present_r": {"desc": "keep exactly the same three-quarter body angle as the reference (her nose and her toes point toward the RIGHT edge of the image); her torso must NOT turn back toward the camera. Her arm on the image-right side is extended toward the RIGHT edge of the image with an open palm, presenting something, her irises sit near the corners of her eyes on the image-right side; do not copy the eye direction of the reference image, calm closed mouth, same spot and height as the reference",
                 "refs": ["turn_r"], "yaw": 40}
 },
 "pairs": [["turn_l", "present_l"], ["turn_r", "present_r"]]
@@ -96,8 +96,22 @@
 - `refs` の絵が先に要るので、`head_*`・`turn_*` を描いてから `present_*` を描く（`vm poses <作業フォルダ> poses --only turn` → `--only present`）。`vm poses` は描けている絵を飛ばす。
 - 既存の `pairs` は残して、上の2組を足す。
 - 斜めの姿勢の口と目の範囲は、描けてから `vm grid poses/pose_turn_l.png …` で測り、`"face": {"mouth_roi": [...], "eye_roi": [...]}` をその姿勢に足す（`home` の `face` と同じ書き方）。
-- 足元が黒い靴で揃わないキャラ・姿勢は、その姿勢に `"anchor": [x, y]`（足元の基準点）を足す。
+- 足元の高さ（靴の底）と背の高さは、`vm render` が軸足の靴（`anchor.mode: boot`）で自動で揃える。立ち位置の横のずれ（斜めは靴の見え方が変わり、向かって左の靴で揃えると体の真ん中がずれる）は、`vm views <作業フォルダ>` が出す「anchor の候補」（両足の真ん中を `home` に揃える点）をその姿勢の `"anchor": [x, y]` に書く。靴が見つからない姿勢は `vm grid` で読んで書く。
 - 段階 B は同じ形で `side_l`（`"yaw": -90`、refs `turn_l`）ほか、段階 C の `back` は `"yaw": 180, "face": false`（部品を作らない）。
+
+## 実測（2026-10-15、新PC・スーツのマスコット、段階 A の6枚）
+
+| 姿勢 | 足元のずれ | 立ち位置の横のずれ | 背 |
+|---|---|---|---|
+| `head_l` / `head_r` | 0〜1 | 0〜1 | ±1.3% 以内 |
+| `turn_l` | +15 | −28 | 同 |
+| `turn_r` | 0 | +20 | 同 |
+| `present_l` | +14 | +12 | 同 |
+| `present_r` | +5 | +43 | 同 |
+
+- 足元のずれは render が自動で吸収する。横のずれは `vm views` の候補の `anchor` で揃える。
+- `present_*` は手を出すと体が正面へ戻りやすく、20 度くらいにしか回らなかった。上の desc は「体の角度は参照のまま、正面に戻さない」と書き足してある。
+- 左右の取り違えと黒目の残りは、上の「前提」「表情」の書き方で直った。
 
 ## 描く順番と枚数（段階 A）
 
@@ -105,7 +119,7 @@
 |---|---|---|---|
 | 1 | `vm poses <作業フォルダ> poses --only head` と `--only turn` | 4 | 今すぐ（今の `vm poses` で描ける） |
 | 2 | `vm poses <作業フォルダ> poses --only present` | 2 | 1 のあと |
-| 3 | 下の「描けたら確かめること」 | — | 2 のあと |
+| 3 | 下の「描けたら確かめること」と `vm views <作業フォルダ>` | — | 2 のあと |
 | 4 | `vm poses <作業フォルダ> inbetweens --only turn` | 10 | 3 のあと |
 | 5 | config に `"gaze": {}` を足して `vm poses <作業フォルダ> parts`（新しい姿勢の口7・目2 と、全姿勢の視線）→ 斜めの `face` を測って書く → `vm parts` | 新しい姿勢 6×9＋視線（正面の姿勢×3、斜め6×2） | 3 のあと |
 | 6 | `transition`・`events` の `via`・`gaze.events` を書いて `vm render <作業フォルダ> --mode white --from … --to …` で見比べ | — | 5 のあと |
@@ -115,8 +129,8 @@
 ## 描けたら確かめること（見るのは人か、手元の Claude Code）
 
 1. 6 枚を `home` と横に並べて見る: 同じキャラか、服・髪型・顔つきが揃っているか、指が崩れていないか。崩れた絵は消して描き直す。
-2. 足元: 靴の底の高さが揃っているか（`vm grid poses/pose_turn_l.png 0 <高さの7割> <幅> <高さ>` で足元に方眼を引いて y を読む）。
-3. 背の高さ: 頭のてっぺんの y が `home` と ±3% に入るか。
+2. 足元・立ち位置・背の高さ: `vm views <作業フォルダ>` の表を見る（足元のずれと背の比は render が揃える。背が ±3% を超えたら描き直し。立ち位置は `anchor` の候補を書く）。
+3. 大きさ: 表に「大きさが home と違う」が出たら、縦横比を変えずに縮めて白で埋める（`vm render` は大きさが違うと止まる）。
 4. 向き: `_l` が本当に画面の左を向いているか（取り違えが一番起きやすい）。
 5. `head_*` は体が `home` と同じままか（肩や手まで回っていたら描き直す）。
 
