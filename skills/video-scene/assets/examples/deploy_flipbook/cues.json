@@ -1,0 +1,3 @@
+{"duration": 10.0, "typing": [{"from": 0.05, "to": 4.2, "rate": 11}],
+ "cues": [{"t": 4.5, "type": "enter"}, {"t": 5.5, "type": "beep"}, {"t": 5.67, "type": "beep", "freq": 440, "dur": 0.25},
+          {"t": 6.57, "type": "alarm", "count": 5}, {"t": 8.33, "type": "boom"}, {"t": 2.0, "type": "whoosh"}, {"t": 3.0, "type": "pop"}]}

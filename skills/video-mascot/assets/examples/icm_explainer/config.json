@@ -1,0 +1,191 @@
+{
+ "name": "icm-explainer",
+ "fps": 30,
+ "pad": 100,
+ "home": "home",
+ "seed": 5,
+ "mascot": {
+  "description": "a glossy resin chibi figurine girl with messy black hair tied in a loose bun, half-lidded brown eyes, navy work uniform (zip jacket with two chest pockets, rolled-up sleeves, black inner shirt, navy cargo pants), black lace-up boots, standing on a small clear round acrylic display base."
+ },
+ "poses": {
+  "home": {
+   "desc": "hands lightly clasped in front of her waist, facing the camera almost straight on"
+  },
+  "point": {
+   "desc": "her left arm extended toward the viewer's right with an open palm, presenting"
+  },
+  "open": {
+   "desc": "both hands spread apart to the sides at chest height with palms up"
+  },
+  "gassho": {
+   "desc": "both palms pressed flat together in front of her chest in a prayer-like gassho gesture"
+  },
+  "gap": {
+   "desc": "both palms raised vertical and facing each other with a narrow gap about one finger wide, not touching"
+  },
+  "arms": {
+   "desc": "arms crossed over her chest with a smug smile"
+  }
+ },
+ "pairs": [
+  [
+   "home",
+   "point"
+  ],
+  [
+   "home",
+   "open"
+  ],
+  [
+   "open",
+   "gassho"
+  ],
+  [
+   "gassho",
+   "gap"
+  ],
+  [
+   "gap",
+   "point"
+  ],
+  [
+   "home",
+   "arms"
+  ]
+ ],
+ "face": {
+  "mouth_roi": [
+   450,
+   575,
+   600,
+   680
+  ],
+  "eye_roi": [
+   370,
+   500,
+   640,
+   600
+  ]
+ },
+ "floor": {
+  "clean": true
+ },
+ "anchor": {
+  "mode": "boot"
+ },
+ "events": [
+  {
+   "line": 1,
+   "kw": "そこで",
+   "fallback": 0.65,
+   "pose": "point"
+  },
+  {
+   "line_start": 3,
+   "offset": -0.5,
+   "pose": "home"
+  },
+  {
+   "line": 3,
+   "word": [
+    "しゃ"
+   ],
+   "fallback": 0.12,
+   "pose": "open"
+  },
+  {
+   "line": 3,
+   "kw": "ばねが",
+   "fallback": 0.72,
+   "pose": "gassho"
+  },
+  {
+   "line": 4,
+   "word": [
+    "あつ"
+   ],
+   "fallback": 0.55,
+   "pose": "gap"
+  },
+  {
+   "line_start": 5,
+   "offset": -0.4,
+   "pose": "point"
+  },
+  {
+   "line": 6,
+   "kw": "ばね",
+   "fallback": 0.2,
+   "pose": "gap"
+  },
+  {
+   "line": 6,
+   "kw": "ぜろ",
+   "fallback": 0.78,
+   "pose": "gassho"
+  },
+  {
+   "line": 7,
+   "word": [
+    "おう",
+    "おし"
+   ],
+   "fallback": 0.52,
+   "pose": "open"
+  },
+  {
+   "line_end": 8,
+   "offset": 0.05,
+   "pose": "home"
+  },
+  {
+   "line_end": 8,
+   "offset": 0.3833,
+   "pose": "arms"
+  }
+ ],
+ "voice": {
+  "caption": "余裕のある大人の女性。艶のある低めの声。相手をからかうように楽しげに、てきぱきと早めに説明している。クリアな音質。",
+  "seed": 2024,
+  "lines": [
+   {
+    "text": "薄い板は、普通の射出成形だと、樹脂が奥まで届かない。そこで射出圧縮成形だ。",
+    "start": 0.0
+   },
+   {
+    "text": "外周の枠はバネで浮いてて、バネの力でこの隙間があいてる。こいつを覚えとけ。",
+    "start": 7.94
+   },
+   {
+    "text": "金型が射出待機位置まで閉じる。この型締力で、バネが縮む。",
+    "start": 14.84
+   },
+   {
+    "text": "バネの力で、外周のPL面が密着。さっきの隙間の残りが、圧縮ストロークだ。",
+    "start": 21.06
+   },
+   {
+    "text": "バルブを開いて、少し広めのキャビティに樹脂を流し込む。途中まで入ったら、バルブを閉じる。",
+    "start": 29.0
+   },
+   {
+    "text": "ここが本番。バネがさらに縮んで、コアだけ前に出る。圧縮ストロークがゼロになるまでだ。",
+    "start": 36.9
+   },
+   {
+    "text": "その力で、途中まで流れた樹脂が、キャビティ全体に押し広げられる。だから薄くても、奥まで届く。",
+    "start": 44.8
+   },
+   {
+    "text": "冷やして型をひらけば、成形品は可動側に食い付いて残る。",
+    "start": 54.0
+   },
+   {
+    "text": "広く入れて、押し広げて、薄く仕上げる。圧が均一だから、反りも出にくい。それが射出圧縮成形だ。",
+    "start": 59.3
+   }
+  ],
+  "gap": 0.5,
+  "end": 69.0
+ }
+}

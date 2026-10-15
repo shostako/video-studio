@@ -1,0 +1,310 @@
+{
+ "name": "Monday_Figure_Deploy_Flipbook_videoscene",
+ "fps": 30,
+ "duration": 10.0,
+ "bg": "#fefdfd",
+ "base": {
+  "type": "flipbook",
+  "states_dir": "states",
+  "rect": [
+   -300,
+   0,
+   1620.0,
+   1080
+  ],
+  "fade_right": 0.86,
+  "timeline": [
+   {
+    "from": 0,
+    "to": 4.2667,
+    "step": 0.13333333333333333,
+    "cycle": [
+     "N",
+     "F",
+     "N",
+     "B",
+     "F",
+     "N",
+     "F",
+     "F",
+     "N",
+     "B",
+     "N",
+     "F"
+    ],
+    "template": "hand-{}_head-B"
+   },
+   [
+    4.2667,
+    "hand-B_head-B"
+   ],
+   [
+    4.5,
+    "hand-F_head-B"
+   ],
+   [
+    4.6333,
+    "hand-B_head-B"
+   ],
+   [
+    5.6,
+    "shock"
+   ],
+   [
+    6.5,
+    "panic"
+   ],
+   [
+    8.3333,
+    "angry"
+   ]
+  ],
+  "overrides": [
+   {
+    "from": 3.3333,
+    "to": 5.6,
+    "set": {
+     "head": "S"
+    }
+   },
+   {
+    "from": 1.0,
+    "to": 1.1333,
+    "set": {
+     "head": "K"
+    }
+   },
+   {
+    "from": 2.7333,
+    "to": 2.8667,
+    "set": {
+     "head": "K"
+    }
+   }
+  ]
+ },
+ "audio": [
+  {
+   "src": "sfx.wav",
+   "start": 0
+  }
+ ],
+ "camera": {
+  "push": [
+   {
+    "from": 0,
+    "to": 5.5,
+    "scale": 1.04,
+    "origin": [
+     564.84375,
+     590.625
+    ]
+   }
+  ],
+  "shake": [
+   {
+    "from": 6.5,
+    "to": 8.3333,
+    "amp": 14
+   }
+  ],
+  "punch": [
+   {
+    "t": 8.3333,
+    "scale": 1.1,
+    "origin": [
+     375.0,
+     274.21875
+    ]
+   }
+  ]
+ },
+ "overlays": [
+  {
+   "type": "terminal",
+   "rect": [
+    1105,
+    150,
+    770,
+    700
+   ],
+   "title": "monday@vaio: ~/app",
+   "typing": [
+    {
+     "text": "export const ship = async () => {\n  await build();\n  await test();   // たぶん通る\n  await deploy(\"production\");\n};\n$ git push origin main",
+     "from": 0.05,
+     "to": 4.2333
+    }
+   ],
+   "cursor_until": 4.5,
+   "lines": [
+    {
+     "t": 4.7,
+     "text": "Enumerating objects: 7, done.",
+     "kind": "dim"
+    },
+    {
+     "t": 4.9,
+     "text": "remote: Running CI ...",
+     "kind": "dim"
+    },
+    {
+     "t": 5.1333,
+     "text": "remote:   build  ✓",
+     "kind": "ok"
+    },
+    {
+     "t": 5.3333,
+     "text": "remote:   test   ...",
+     "kind": "dim"
+    },
+    {
+     "t": 5.5,
+     "text": "remote:   test   ✗  47 failed",
+     "kind": "err"
+    },
+    {
+     "t": 5.6,
+     "text": "✖ deploy aborted (production)",
+     "kind": "err"
+    },
+    {
+     "t": 6.6333,
+     "text": "FAIL  src/billing.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.7667,
+     "text": "FAIL  src/auth.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.9,
+     "text": "FAIL  src/deploy.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.0333,
+     "text": "FAIL  src/cart.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.1667,
+     "text": "FAIL  src/user.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.3,
+     "text": "FAIL  src/api.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.4333,
+     "text": "FAIL  src/cache.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.5667,
+     "text": "FAIL  src/queue.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.7,
+     "text": "FAIL  src/mail.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.8333,
+     "text": "FAIL  src/search.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 7.9667,
+     "text": "FAIL  src/report.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 8.1,
+     "text": "FAIL  src/admin.test.ts",
+     "kind": "err"
+    }
+   ],
+   "glow": [
+    {
+     "type": "flash",
+     "t": 5.5
+    },
+    {
+     "type": "pulse",
+     "from": 6.5,
+     "to": 8.3333
+    }
+   ]
+  },
+  {
+   "type": "wash",
+   "segments": [
+    {
+     "type": "flash",
+     "t": 5.5,
+     "peak": 0.42,
+     "decay": 0.37,
+     "hold": 0.1,
+     "until": 6.5
+    },
+    {
+     "type": "pulse",
+     "from": 6.5,
+     "to": 8.3333,
+     "low": 0.1,
+     "high": 0.18,
+     "period": 0.35
+    },
+    {
+     "type": "fade",
+     "t": 8.3333,
+     "from": 0.3,
+     "to": 0.08,
+     "dur": 0.67
+    }
+   ]
+  },
+  {
+   "type": "mark",
+   "shape": "anger",
+   "t": 8.4333,
+   "pos": [
+    470.0,
+    64.21875
+   ],
+   "size": 90,
+   "attach": true
+  },
+  {
+   "type": "bubble",
+   "text": "よし、これで通る",
+   "from": 3.3333,
+   "to": 5.0
+  },
+  {
+   "type": "bubble",
+   "text": "……は？",
+   "from": 5.7333,
+   "to": 6.5
+  },
+  {
+   "type": "bubble",
+   "text": "待て待て待て待て",
+   "from": 6.6667,
+   "to": 8.3333,
+   "style": "panic"
+  },
+  {
+   "type": "bubble",
+   "text": "誰だよこのテスト書いたの",
+   "from": 8.5333,
+   "to": 10.0,
+   "style": "angry"
+  }
+ ]
+}

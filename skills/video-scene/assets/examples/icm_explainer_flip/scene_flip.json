@@ -1,0 +1,10 @@
+{
+ "name": "Monday_Figure_ICM_Explainer_Flip",
+ "fps": 30,
+ "duration": 68.94,
+ "bg": "#fdfdfd",
+ "base": {"type": "video", "src": "flip/flip_full.mp4", "rect": [60, 0, 607, 1080], "audio": "video"},
+ "overlays": [
+  {"type": "video", "src": "panel3d_v2.mp4", "rect": [740, 0, 1160, 1080], "from": 0, "blend": "multiply"}
+ ]
+}

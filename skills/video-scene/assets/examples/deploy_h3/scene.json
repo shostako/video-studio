@@ -1,0 +1,213 @@
+{
+ "name": "Monday_Figure_Deploy_H3restrained_HyperFrames_8s",
+ "fps": 30,
+ "duration": 8.0,
+ "bg": "#fcfcfc",
+ "base": {
+  "type": "video",
+  "src": "clip.mp4",
+  "rect": [
+   -462,
+   0,
+   1944,
+   1080
+  ],
+  "fade_right": 0.86,
+  "audio": "video"
+ },
+ "camera": {
+  "shake": [
+   {
+    "from": 5.3,
+    "to": 6.2,
+    "amp": 3
+   }
+  ],
+  "punch": [
+   {
+    "t": 6.5,
+    "scale": 1.06,
+    "origin": [
+     352,
+     259
+    ]
+   }
+  ]
+ },
+ "overlays": [
+  {
+   "type": "terminal",
+   "rect": [
+    1105,
+    150,
+    770,
+    700
+   ],
+   "title": "monday@vaio: ~/app",
+   "prefill": "export const ship = async () => {\n  await build();\n  await test();   // たぶん通る\n  await deploy(\"production\");\n};\n",
+   "typing": [
+    {
+     "text": "$ git push origin main",
+     "from": 0.4,
+     "to": 2.6
+    }
+   ],
+   "cursor_until": 3.4,
+   "lines": [
+    {
+     "t": 3.45,
+     "text": "Enumerating objects: 7, done.",
+     "kind": "dim"
+    },
+    {
+     "t": 3.52,
+     "text": "remote: Running CI ...",
+     "kind": "dim"
+    },
+    {
+     "t": 3.6,
+     "text": "remote:   build  ✓",
+     "kind": "ok"
+    },
+    {
+     "t": 3.72,
+     "text": "remote:   test   ✗  47 failed",
+     "kind": "err"
+    },
+    {
+     "t": 3.85,
+     "text": "✖ deploy aborted (production)",
+     "kind": "err"
+    },
+    {
+     "t": 5.3,
+     "text": "FAIL  src/billing.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.4,
+     "text": "FAIL  src/auth.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.5,
+     "text": "FAIL  src/deploy.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.6,
+     "text": "FAIL  src/cart.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.7,
+     "text": "FAIL  src/user.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.8,
+     "text": "FAIL  src/api.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 5.9,
+     "text": "FAIL  src/cache.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.0,
+     "text": "FAIL  src/queue.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.1,
+     "text": "FAIL  src/mail.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.2,
+     "text": "FAIL  src/search.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.3,
+     "text": "FAIL  src/report.test.ts",
+     "kind": "err"
+    },
+    {
+     "t": 6.4,
+     "text": "FAIL  src/admin.test.ts",
+     "kind": "err"
+    }
+   ],
+   "glow": [
+    {
+     "type": "flash",
+     "t": 3.72
+    },
+    {
+     "type": "pulse",
+     "from": 5.3,
+     "to": 6.4
+    }
+   ]
+  },
+  {
+   "type": "wash",
+   "segments": [
+    {
+     "type": "pulse",
+     "from": 5.3,
+     "to": 6.4,
+     "low": 0,
+     "high": 0.1,
+     "period": 0.5
+    },
+    {
+     "type": "fade",
+     "t": 6.5,
+     "from": 0.18,
+     "to": 0.06,
+     "dur": 0.6
+    }
+   ]
+  },
+  {
+   "type": "mark",
+   "shape": "anger",
+   "t": 6.6,
+   "pos": [
+    545,
+    205
+   ],
+   "size": 80,
+   "attach": true
+  },
+  {
+   "type": "bubble",
+   "text": "よーし、これで通る",
+   "from": 0.85,
+   "to": 3.15
+  },
+  {
+   "type": "bubble",
+   "text": "……は？",
+   "from": 4.6,
+   "to": 5.0
+  },
+  {
+   "type": "bubble",
+   "text": "待て待て待て",
+   "from": 5.36,
+   "to": 6.35,
+   "style": "soft"
+  },
+  {
+   "type": "bubble",
+   "text": "誰だよこのテスト書いたの",
+   "from": 6.58,
+   "to": 8.0,
+   "style": "angry"
+  }
+ ]
+}
