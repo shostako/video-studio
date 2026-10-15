@@ -15,6 +15,8 @@
 - 用語辞書は `skills/video-scene/data/terms.yaml` に置く（ROADMAP の `data/terms.yaml` を、リポの一番上ではなくスキルの中と読んだ）。理由: `~/.claude/skills/video-scene` の symlink から相対で見つかり、スキルを別の場所へ写しても一緒に動く。video-mascot から使うときは video-scene の `terms.py` を読む
 - 辞書の `accent` は東京式の型になる列だけ通す（`accent_from_type` で作れる列）。`vs accent` の語.json は自由な列のまま。理由: 辞書は「正しい型」を書く所なので、`LL`・`LHLH` は書き間違いとして早く止めたい。測った結果の列を書く所ではない
 - 辞書の同じ `word` は1回だけ。理由: 読みが文脈で割れる語を自動で選ぶ手立てが無い。どちらを載せるかは人が決める
+- 書き出しのスモークの合成マスコットは、絵のファイルではなく描くスクリプト（`tests/fixtures/synth_mascot.py`）で置き、テストのたびに作る。理由: public のリポに画像を増やさず、形を変えるときも差分が読める。CI に ffmpeg が無くても `imageio-ffmpeg` の ffmpeg で回す（ワークフローの YAML は変えられないため）。
+- 二次運動は `config.motion`（か `--motion on`）の時だけ。無い時の息づかいとまばたきは前のコードのまま残し、乱数の使い方も変えない。理由: 既定を変えない決まり。合成マスコットで、変更前後の書き出しがコマ単位で一致することを確かめた。
 
 ## 未決
 

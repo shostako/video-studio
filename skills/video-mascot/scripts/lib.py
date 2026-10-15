@@ -1,5 +1,5 @@
 """video-mascot の共通部分: 設定の読み込み、足元の台座消し、軸足の靴の位置、背景の切り抜き、口パクと姿勢の時間割の純関数。"""
-import json, math, os, sys
+import json, math, os, random, sys
 import cv2, numpy as np
 
 BG = 253          # マスコットの絵の背景（/img が描く「ほぼ白」）の明るさ
@@ -205,13 +205,17 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
     return ev
 
 
-def plan_at(t, ev, home, ib_seq, ibfps, nib):
+def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None):
     """時刻 t に出す絵。("pose", 姿勢) か、切り替えの途中なら ("ib", 中割りの項目, 部品を借りる姿勢)。
-    ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。"""
+    ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。
+    ease_name（二次運動の時だけ）: 切り替えの長さ nib/ibfps は同じまま、何枚目を出すかをイージングで決める（None は等速）。"""
     cur = home
     for (s, a_, b_) in ev:
         if t < s: break
-        seq = ib_seq(a_, b_); k = int((t - s) * ibfps) if seq else 99
+        seq = ib_seq(a_, b_)
+        if not seq: k = 99
+        elif ease_name is None: k = int((t - s) * ibfps)
+        else: u = (t - s) * ibfps / nib; k = min(nib - 1, int(ease(ease_name, u) * nib)) if u < 1 else 99
         if seq and k < nib: return ("ib", seq[k], a_ if k < int(nib * 0.4 + 0.5) else b_)
         cur = b_
     return ("pose", cur)
@@ -325,3 +329,174 @@ def mora_mouth(Lv, k):
     """モーラの形と声の大きさから口の形。closed と形の無いコマは閉じる（None）。開きの大きさは choose_mouth と同じ。"""
     if k in (None, "closed"): return None
     return choose_mouth(Lv, k)
+
+
+# ---------- 二次運動（config.motion。opt-in。純関数）----------
+MOTION_DEFAULTS = {
+    "breath": {"period": 3.6, "jitter": 0.12, "inhale": 0.4, "scale": 0.004, "lift": 2.0},   # 呼吸: 周期のゆらぎ、吸う側の割合、伸び縮み、持ち上がり（画素）
+    "body": {"sway": 1.5, "period": 5.3},                                                      # 体の左右の揺れ（画素）
+    "head": {"roll": 0.8, "period": 4.1, "nod": 2.0, "neck": 0.6, "radius": 0.9},            # 首: 傾き（度）、声の出だしでうなずく（画素）、首と頭の大きさの目安
+    "blink": {"mean": 3.4, "spread": 0.35, "min": 1.6, "max": 7.0, "double": 0.15, "on_switch": True},   # まばたきの間隔のゆらぎ、2回続ける割合、姿勢の切り替えでまばたく
+    "switch": {"ease": "in_out", "anticipate": 0.15, "anticipate_px": 5.0, "overshoot_px": 4.0, "settle": 0.45},  # 姿勢の切り替え: イージング、予備動作、オーバーシュート
+}
+
+
+def motion_config(value, flag=None):
+    """config.motion と --motion on|off から、二次運動の設定（既定を埋めた辞書）か None（使わない）。
+    value: 無し・false は使わない、true と {} は全部既定、辞書は項目ごとに上書き（項目を false にするとその動きだけ止める）。
+    flag: "on" は value が無くても既定で使う、"off" は使わない。"""
+    if flag not in (None, "on", "off"): raise ValueError(f"--motion は on か off: {flag}")
+    if flag == "off" or (flag is None and (value is None or value is False)): return None
+    if not isinstance(value, (dict, bool, type(None))): raise ValueError(f"motion は true/false か辞書: {value!r}")
+    user = value if isinstance(value, dict) else {}
+    unknown = set(user) - set(MOTION_DEFAULTS)
+    if unknown: raise ValueError(f"motion に知らない項目: {sorted(unknown)}")
+    out = {}
+    for k, d in MOTION_DEFAULTS.items():
+        u = user.get(k, {})
+        if u is False: out[k] = None; continue
+        if u is True: u = {}
+        if not isinstance(u, dict): raise ValueError(f"motion.{k} は辞書か true/false: {u!r}")
+        bad = set(u) - set(d)
+        if bad: raise ValueError(f"motion.{k} に知らない項目: {sorted(bad)}")
+        out[k] = {**d, **u}
+    if out["switch"] is not None: ease(out["switch"]["ease"], 0.5)          # 名前の検査
+    for k in ("breath", "body", "head"):                                    # 周期で割るので 0 以下は止める
+        if out[k] is not None and not out[k]["period"] > 0: raise ValueError(f"motion.{k}.period は 0 より大きく: {out[k]['period']}")
+    if out["head"] is not None and not (out["head"]["radius"] > 0 and out["head"]["neck"] >= 0):   # 半幅で割るので 0 以下は止める（止めるのは head: false）
+        raise ValueError(f"motion.head は radius > 0、neck >= 0: radius={out['head']['radius']} neck={out['head']['neck']}")
+    br = out["breath"]
+    if br is not None and not (0 <= br["jitter"] < 1 and 0 < br["inhale"] < 1):
+        raise ValueError(f"motion.breath は 0 <= jitter < 1、0 < inhale < 1: jitter={br['jitter']} inhale={br['inhale']}")
+    b = out["blink"]
+    if b is not None and not (b["mean"] > 0 and 0 < b["min"] <= b["max"]):  # 間隔が進まないと書き出しが終わらない
+        raise ValueError(f"motion.blink は mean > 0 かつ 0 < min <= max: mean={b['mean']} min={b['min']} max={b['max']}")
+    return out
+
+
+def smooth01(u):
+    """0..1 に切ってから 3u²-2u³（端で傾き 0）。"""
+    u = min(1.0, max(0.0, u)); return u * u * (3 - 2 * u)
+
+
+def ease(name, u):
+    """イージング。u（0..1、外は切る）を 0..1 に写す。linear / in（3乗）/ out / in_out（3乗の前後）/ sine。"""
+    u = min(1.0, max(0.0, u))
+    if name == "linear": return u
+    if name == "in": return u ** 3
+    if name == "out": return 1 - (1 - u) ** 3
+    if name == "in_out": return 4 * u ** 3 if u < 0.5 else 1 - (-2 * u + 2) ** 3 / 2
+    if name == "sine": return (1 - math.cos(math.pi * u)) / 2
+    raise ValueError(f"知らないイージング: {name}")
+
+
+_WOB = ((1.0, 1.0), (1.618034, 0.5), (2.718282, 0.25))   # 周波数の比（互いに割り切れない）と重み
+
+
+def wobble(t, period, seed=0):
+    """周期 period 秒を基本に、割り切れない周波数の正弦を3つ重ねた -1..1 のなめらかなゆらぎ。seed で位相が変わる。"""
+    r = random.Random(seed); ph = [r.uniform(0, 2 * math.pi) for _ in _WOB]
+    return sum(a * math.sin(2 * math.pi * k * t / period + p) for (k, a), p in zip(_WOB, ph)) / sum(a for _, a in _WOB)
+
+
+def breath_phase(t, period=3.6, jitter=0.12, seed=0):
+    """呼吸の位相（回数、単調に増える）。周期は ±jitter の割合でゆっくりゆらぐ（ゆらぎの周期は呼吸の 4.3 倍と 7.1 倍）。
+    φ(t) = t/T + Σ c_i sin(2π t / S_i + p_i)。dφ/dt = (1/T)(1 + jitter·c(t))、|c(t)| ≤ 1 なので jitter < 1 なら逆戻りしない。"""
+    if not 0 <= jitter < 1: raise ValueError(f"breath.jitter は 0 以上 1 未満: {jitter}")
+    r = random.Random(seed); out = t / period
+    for S, wgt in ((4.3, 0.6), (7.1, 0.4)):
+        Sp = S * period; out += jitter * wgt * Sp / (2 * math.pi * period) * math.sin(2 * math.pi * t / Sp + r.uniform(0, 2 * math.pi))
+    return out
+
+
+def breath_wave(t, period=3.6, jitter=0.12, inhale=0.4, seed=0):
+    """呼吸の深さ 0（吐ききった）..1（吸いきった）。1回の呼吸のうち inhale の割合で吸い、残りでゆっくり吐く。つなぎ目もなめらか。"""
+    if not 0 < inhale < 1: raise ValueError(f"breath.inhale は 0 と 1 の間: {inhale}")
+    u = breath_phase(t, period, jitter, seed) % 1.0
+    return smooth01(u / inhale) if u < inhale else 1 - smooth01((u - inhale) / (1 - inhale))
+
+
+def onset_env(levels, fps, tau=0.25):
+    """コマごとの声の大きさから、声の出だし（大きくなる所）で立ち上がり tau 秒で減る包絡 0..1。うなずきに使う。"""
+    k = math.exp(-1.0 / max(1e-6, tau * fps)); env = []; e = 0.0; prev = levels[0] if len(levels) else 0.0
+    for v in levels:
+        e = e * k + max(0.0, float(v) - prev); prev = float(v); env.append(e)
+    env = np.array(env, np.float32)
+    top = float(np.percentile(env[env > 0], 95)) if (env > 0).any() else 0.0
+    return np.clip(env / top, 0, 1) if top > 0 else env
+
+
+def head_weight(x, y, pivot, rx, band):
+    """頭の中で 1、首 pivot より下と頭の横の外で 0 になる重み（x, y は配列可）。
+    縦は首の高さ pivot[1]（0）から 2·band 上（1）へつなぎ、横は頭の半幅 rx（1）から 1.6rx（0）へつなぐ。肩は首より下なので動かない。"""
+    px, py = pivot
+    uy = np.clip((py - np.asarray(y, np.float32)) / (2 * band), 0, 1); wy = uy * uy * (3 - 2 * uy)
+    ux = np.clip((np.abs(np.asarray(x, np.float32) - px) - rx) / (0.6 * rx), 0, 1); wx = 1 - ux * ux * (3 - 2 * ux)
+    return wy * wx
+
+
+def head_move(x, y, pivot, angle, dy, rx, band):
+    """点 (x, y) を、首 pivot を中心に angle 度（画面で時計回りが正）回して dy 画素下げた位置へ動かす。
+    重み head_weight の割合だけ動くので、首より下は動かない。戻り値 (x', y')。"""
+    w = head_weight(x, y, pivot, rx, band); th = np.radians(angle) * w; c, s = np.cos(th), np.sin(th)
+    X = np.asarray(x, np.float32) - pivot[0]; Y = np.asarray(y, np.float32) - pivot[1]
+    return pivot[0] + c * X - s * Y, pivot[1] + s * X + c * Y + dy * w
+
+
+def head_maps(x0, y0, x1, y1, pivot, angle, dy, rx, band):
+    """cv2.remap 用の写像。出力の矩形 [x0,x1)×[y0,y1) の各画素を、元の絵のどこから取るか（head_move の逆）。
+    重みは出力の点で取る近似（角度が小さいので十分）。戻り値 (map_x, map_y)、形は (y1-y0, x1-x0)。"""
+    xs, ys = np.meshgrid(np.arange(x0, x1, dtype=np.float32), np.arange(y0, y1, dtype=np.float32))
+    w = head_weight(xs, ys, pivot, rx, band); th = -np.radians(angle) * w; c, s = np.cos(th), np.sin(th)
+    X = xs - pivot[0]; Y = ys - pivot[1] - dy * w
+    return (pivot[0] + c * X - s * Y).astype(np.float32), (pivot[1] + s * X + c * Y).astype(np.float32)
+
+
+def head_rig(mouth_roi, eye_roi, neck=0.6, radius=0.9):
+    """口と目の範囲から、首の位置（回す中心）・頭の半幅・首のつなぎの幅を見積もる。
+    首は口の下端から「目の中心→口の中心」の neck 倍下、頭の半幅は目の範囲の幅の radius 倍、つなぎは目→口の距離の半分。"""
+    mcx, mcy = (mouth_roi[0] + mouth_roi[2]) / 2, (mouth_roi[1] + mouth_roi[3]) / 2
+    ecx, ecy = (eye_roi[0] + eye_roi[2]) / 2, (eye_roi[1] + eye_roi[3]) / 2
+    d = max(1.0, mcy - ecy)
+    return ((mcx + ecx) / 2, mouth_roi[3] + neck * d), radius * (eye_roi[2] - eye_roi[0]), d / 2
+
+
+def rig_affine(rig, A):
+    """head_rig の結果 (首, 頭の半幅, つなぎの幅) を 2×3 のアフィン A で写す（中割りで顔が動いた分）。
+    首は A で写し、長さは A の線形部分の面積の倍率の平方根で伸び縮みさせる。rig が None なら None。"""
+    if rig is None: return None
+    (px, py), rx, band = rig; A = np.asarray(A, np.float64); k = math.sqrt(abs(float(np.linalg.det(A[:, :2]))))
+    return (float(A[0, 0] * px + A[0, 1] * py + A[0, 2]), float(A[1, 0] * px + A[1, 1] * py + A[1, 2])), rx * k, band * k
+
+
+_SETTLE = 0.0
+for _i in range(1, 1000): _SETTLE = max(_SETTLE, math.sin(2 * math.pi * _i / 1000) * (1 - _i / 1000) ** 2)
+
+
+def switch_offset(t, switches, anticipate=0.15, anticipate_px=5.0, overshoot_px=4.0, settle=0.45):
+    """姿勢の切り替えに足す縦のずれ（画素、下が正）。switches=[(開始秒, 長さ秒), ...]。
+    予備動作: 開始の anticipate 秒前から沈み（最大 anticipate_px）、動きの前半で戻る。
+    オーバーシュート: 終わってから settle 秒、上へ行き過ぎて（最大 overshoot_px）少し戻り、0 で止まる。"""
+    out = 0.0
+    for s, d in switches:
+        if anticipate > 0 and s - anticipate <= t < s: out += anticipate_px * smooth01((t - (s - anticipate)) / anticipate)
+        elif s <= t < s + d / 2 and d > 0: out += anticipate_px * (1 - smooth01((t - s) / (d / 2)))
+        e = s + d
+        if settle > 0 and e <= t < e + settle:
+            x = (t - e) / settle; out -= overshoot_px * math.sin(2 * math.pi * x) * (1 - x) ** 2 / _SETTLE
+    return out
+
+
+def blink_times(end, rng, mean=3.4, spread=0.35, lo=1.6, hi=7.0, double=0.15, start=1.2, extra=(), gap=0.3):
+    """まばたきの時刻（秒）の列。間隔は中央値 mean・ばらつき spread の対数正規を [lo, hi] に切ったもの。
+    double の割合で 0.3〜0.45 秒後にもう1回。extra（姿勢の切り替えなど）にも足し、前と gap 秒未満の所は捨てる。rng は random.Random。"""
+    if not (mean > 0 and 0 < lo <= hi): raise ValueError(f"まばたきの間隔は mean > 0 かつ 0 < lo <= hi: {mean}, {lo}, {hi}")
+    ts = []; t = start
+    while t < end:
+        ts.append(t)
+        if rng.random() < double: ts.append(t + rng.uniform(0.3, 0.45))
+        t += min(hi, max(lo, rng.lognormvariate(math.log(mean), spread)))
+    out = []
+    for t in sorted(ts + [x for x in extra if 0 <= x < end]):
+        if t < end and (not out or t - out[-1] >= gap): out.append(t)
+    return out
