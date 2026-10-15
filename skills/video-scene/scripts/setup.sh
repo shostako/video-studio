@@ -52,6 +52,11 @@ else
   say "ok   python venv"
 fi
 
+# parselmouth（vs accent の F0 計測。無くても他は動くので、必須の一括インストールには入れずここで足す）
+if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import parselmouth" 2>/dev/null; then say "ok   parselmouth"
+elif [ $CHECK -eq 1 ]; then say "--   parselmouth が無い（vs accent が使えない。setup.sh を引数なしで流すと入る）"
+elif [ -x "$VENV/bin/python" ]; then say "..   parselmouth を入れる"; "$VENV/bin/pip" install -q praat-parselmouth && say "ok   parselmouth" || say "--   parselmouth を入れられない（vs accent が使えない）"; fi
+
 # HyperFrames（版を固定。使い方の統計は送らない。AI 用スキルの自動導入はしない）
 export HYPERFRAMES_SKIP_SKILLS=1
 if [ $CHECK -eq 0 ]; then
