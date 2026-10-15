@@ -363,6 +363,8 @@ def motion_config(value, flag=None):
     if out["switch"] is not None: ease(out["switch"]["ease"], 0.5)          # 名前の検査
     for k in ("breath", "body", "head"):                                    # 周期で割るので 0 以下は止める
         if out[k] is not None and not out[k]["period"] > 0: raise ValueError(f"motion.{k}.period は 0 より大きく: {out[k]['period']}")
+    if out["head"] is not None and not (out["head"]["radius"] > 0 and out["head"]["neck"] >= 0):   # 半幅で割るので 0 以下は止める（止めるのは head: false）
+        raise ValueError(f"motion.head は radius > 0、neck >= 0: radius={out['head']['radius']} neck={out['head']['neck']}")
     br = out["breath"]
     if br is not None and not (0 <= br["jitter"] < 1 and 0 < br["inhale"] < 1):
         raise ValueError(f"motion.breath は 0 <= jitter < 1、0 < inhale < 1: jitter={br['jitter']} inhale={br['inhale']}")
@@ -457,6 +459,14 @@ def head_rig(mouth_roi, eye_roi, neck=0.6, radius=0.9):
     ecx, ecy = (eye_roi[0] + eye_roi[2]) / 2, (eye_roi[1] + eye_roi[3]) / 2
     d = max(1.0, mcy - ecy)
     return ((mcx + ecx) / 2, mouth_roi[3] + neck * d), radius * (eye_roi[2] - eye_roi[0]), d / 2
+
+
+def rig_affine(rig, A):
+    """head_rig の結果 (首, 頭の半幅, つなぎの幅) を 2×3 のアフィン A で写す（中割りで顔が動いた分）。
+    首は A で写し、長さは A の線形部分の面積の倍率の平方根で伸び縮みさせる。rig が None なら None。"""
+    if rig is None: return None
+    (px, py), rx, band = rig; A = np.asarray(A, np.float64); k = math.sqrt(abs(float(np.linalg.det(A[:, :2]))))
+    return (float(A[0, 0] * px + A[0, 1] * py + A[0, 2]), float(A[1, 0] * px + A[1, 1] * py + A[1, 2])), rx * k, band * k
 
 
 _SETTLE = 0.0

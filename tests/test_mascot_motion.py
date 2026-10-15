@@ -28,7 +28,8 @@ def test_motion_config_on_fills_defaults():
                                          ({"switch": {"ease": "bounce"}}, None), (True, "yes"), ("on", None),
                                          ({"blink": {"max": 0}}, None), ({"blink": {"min": 3, "max": 2}}, None), ({"blink": {"mean": 0}}, None),
                                          ({"breath": {"period": 0}}, None), ({"body": {"period": -1}}, None), ({"head": {"period": 0}}, None),
-                                         ({"breath": {"jitter": 1.0}}, None), ({"breath": {"inhale": 0}}, None)])
+                                         ({"breath": {"jitter": 1.0}}, None), ({"breath": {"inhale": 0}}, None),
+                                         ({"head": {"radius": 0}}, None), ({"head": {"radius": -1}}, None), ({"head": {"neck": -0.1}}, None)])
 def test_motion_config_rejects_typos(value, flag):
     with pytest.raises(ValueError):
         lib.motion_config(value, flag)
@@ -206,3 +207,15 @@ def test_plan_at_ease_keeps_duration_and_order():
 def test_blink_times_rejects_intervals_that_cannot_advance(mean, lo, hi):
     with pytest.raises(ValueError):
         lib.blink_times(10, random.Random(0), mean=mean, lo=lo, hi=hi)
+
+
+def test_rig_affine_moves_pivot_and_scales_lengths():
+    rig = ((100.0, 200.0), 50.0, 20.0)
+    assert lib.rig_affine(rig, [[1, 0, 0], [0, 1, 0]]) == rig
+    assert lib.rig_affine(None, [[1, 0, 0], [0, 1, 0]]) is None
+    (px, py), rx, band = lib.rig_affine(rig, [[2, 0, 5], [0, 2, -3]])          # 2倍して平行移動
+    assert (px, py) == (205.0, 397.0) and rx == pytest.approx(100.0) and band == pytest.approx(40.0)
+    c, s = math.cos(0.3), math.sin(0.3)
+    (px, py), rx, band = lib.rig_affine(rig, [[c, -s, 0], [s, c, 0]])          # 回転は長さを変えない
+    assert px == pytest.approx(c * 100 - s * 200) and py == pytest.approx(s * 100 + c * 200)
+    assert rx == pytest.approx(50.0) and band == pytest.approx(20.0)

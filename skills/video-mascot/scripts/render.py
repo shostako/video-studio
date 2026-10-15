@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
-from lib import motion_config, breath_wave, wobble, onset_env, head_rig, head_maps, head_move, switch_offset, blink_times
+from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -133,14 +133,15 @@ def ib_item(item, src_pose):
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
     allp = list(PARTS[src_pose].values()); xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
     roi = (max(0, min(xs) - 80), max(0, min(ys) - 100), min(img.shape[1], max(xs) + 80), min(img.shape[0], max(ys) + 60))
-    A, cc = face_affine(PB[src_pose], clean, roi); parts = {}
+    A, cc = face_affine(PB[src_pose], clean, roi); parts = {}; rig = HEAD[src_pose]
     if cc >= 0.80:
+        rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
         H, W = clean.shape[:2]
         for k, (im, px, py) in PARTS[src_pose].items():
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0)); yy, xx = np.where(full[:, :, 3] > 0)
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
-    IBCACHE[key] = (clean, shadow, parts, anc, sc); return IBCACHE[key]
+    IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
 def ib_seq(a_, b_):
     d = P.pair_dir(a_, b_)
@@ -185,15 +186,15 @@ def paste(img, part):
     al = im[:, :, 3:4].astype(np.float32) / 255; roi = img[py:py + h, px:px + w].astype(np.float32); img[py:py + h, px:px + w] = (roi * (1 - al) + im[:, :, :3] * al).astype(np.uint8)
 def compose(pl, mth, blk):
     if pl[0] == "ib":
-        clean, shadow, parts, anc, sc = ib_item(pl[1], pl[2]); img = clean.copy()
+        clean, shadow, parts, anc, sc, rig = ib_item(pl[1], pl[2]); img = clean.copy()
     else:
-        img = PB[pl[1]].copy(); shadow = SH[pl[1]]; parts = PARTS[pl[1]]; anc = ANCH[pl[1]]; sc = SCALE[pl[1]]
+        img = PB[pl[1]].copy(); shadow = SH[pl[1]]; parts = PARTS[pl[1]]; anc = ANCH[pl[1]]; sc = SCALE[pl[1]]; rig = HEAD[pl[1]]
     paste(img, part_of(parts, mth))
     if isinstance(blk, tuple):                    # 細かいまばたき: 2つの段を割合で溶かす
         lo_, hi_, al_ = blk; i_lo = img.copy(); paste(i_lo, part_of(parts, lo_)); paste(img, part_of(parts, hi_)); img = cv2.addWeighted(img, al_, i_lo, 1 - al_, 0)
     else: paste(img, part_of(parts, blk))
     k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
-    return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k])
+    return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k], rig)
 
 SWITCHES = [(s_, IBDUR) for s_, _, _ in ev]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
 W1 = W0 + 2 * PAD; OW = 2 * round(OH * W1 / H0 / 2)
@@ -219,7 +220,7 @@ for f in range(f0, min(f1, NALL)):
             b_ = MOT["breath"]; v_ = 2 * breath_wave(tt, b_["period"], b_["jitter"], b_["inhale"], SEED) - 1; s += b_["scale"] * v_; dy -= b_["lift"] * v_
         if MOT["body"]: dx = MOT["body"]["sway"] * wobble(tt, MOT["body"]["period"], SEED + 1)
         if MOT["switch"]: dy += switch_offset(tt, SWITCHES, MOT["switch"]["anticipate"], MOT["switch"]["anticipate_px"], MOT["switch"]["overshoot_px"], MOT["switch"]["settle"])
-        rig = HEAD[pl[2] if pl[0] == "ib" else pl[1]]
+        rig = kinfo[2]                            # 首（絵の座標。中割りは顔の動きに合わせて写したもの）
         if rig:                                   # 首: 首から上だけを傾け、声の出だしで少し下げる（首より下は動かさない）
             m1_ = kinfo[0]; sc_ = float(m1_[0, 0]); pv = (m1_[0, 0] * rig[0][0] + m1_[0, 2], m1_[1, 1] * rig[0][1] + m1_[1, 2])
             hb = (pv, MOT["head"]["roll"] * wobble(tt, MOT["head"]["period"], SEED + 2), MOT["head"]["nod"] * NOD[f], rig[1] * sc_, rig[2] * sc_)
@@ -232,7 +233,7 @@ for f in range(f0, min(f1, NALL)):
     sh = cv2.warpAffine(sh, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     img = cv2.resize(img, (OW, OH), interpolation=cv2.INTER_AREA); sh = cv2.resize(sh, (OW, OH), interpolation=cv2.INTER_AREA)
     if MODE == "alpha":
-        m1, kbs = kinfo; fxs, fys = OW / W, OH / H; keep = []
+        m1, kbs = kinfo[0], kinfo[1]; fxs, fys = OW / W, OH / H; keep = []
         for kb in kbs:                                                                    # 顔の箱を、移動・息づかい・縮小の変換で最終の画素に写す
             pts = np.array([[kb[0], kb[1]], [kb[2], kb[3]]], np.float32); p1 = pts @ m1[:, :2].T + m1[:, 2]
             if hb:                                                                        # 首の傾きで顔の箱も動かす（箱の中心の動きだけずらす）
