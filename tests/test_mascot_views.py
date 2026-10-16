@@ -250,3 +250,21 @@ def test_render_ib_uses_pose_anchor_interpolation(vproj, env, tmp_path):
     xs = [shoe_left(f[k]) for k in range(16, 40)]
     assert max(abs(a - b) for a, b in zip(xs, xs[1:])) <= 4                      # コマの間で跳ばない（20 画素 × 0.5 = 10 の跳びが無い）
     assert xs[0] - xs[-1] >= 8                                                    # 終わりは 10 ほど左
+
+
+def test_render_alpha_fade_blends_color_and_alpha(vproj, env, tmp_path):
+    """透明の書き出しで溶かす時は、姿勢ごとに切り抜いてから混ぜる。片方の姿勢にしか無い所（伸ばした腕）は、
+    途中で半透明の腕の色になり、白と混ざった不透明の灰色にならない。"""
+    p2 = tmp_path / "fade"; shutil.copytree(vproj, p2)
+    cfg = json.loads((p2 / "config.json").read_text(encoding="utf-8")); cfg.pop("gaze")
+    cfg["transition"] = {"mode": "fade", "dur": 0.4}
+    cfg["events"] = [{"at": 1.0, "pose": "point", "via": "fade"}]
+    (p2 / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "f.webm"; _render(p2, env, out, "--mode", "alpha"); f = _frames(out, env, True)
+    before, mid, after = f[27], f[36], f[48]                                     # 0.9 秒・1.2 秒（真ん中）・1.6 秒
+    arm = (after[..., 3] > 250) & (before[..., 3] < 5)
+    assert arm.sum() > 50
+    a_mid = mid[..., 3][arm]
+    assert 70 < np.median(a_mid) < 190                                           # 半透明
+    d = np.abs(mid[..., :3][arm] - after[..., :3][arm]).mean()
+    assert d < 40                                                                 # 色は腕の色のまま（白と混ざった灰色ではない）

@@ -265,19 +265,29 @@ else:
     tmp = OUTF + ".noaudio.mp4"
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
                             "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", tmp], stdin=subprocess.PIPE)
+def squash(img, sh, boxes, sq_):
+    """turn の途中: 体の真ん中（home の軸足の x）を軸に横へ (1 - sq_) 倍に縮める。"""
+    cx_ = REF[0] + PAD; S_ = np.array([[1 - sq_, 0, sq_ * cx_], [0, 1, 0]], np.float32); H, W = img.shape[:2]
+    img = cv2.warpAffine(img, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
+    sh = cv2.warpAffine(sh, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return img, sh, [b_ @ S_[:, :2].T + S_[:, 2] for b_ in boxes]
+
+def finish(img, sh, boxes, sdd):
+    """息づかい sdd=(伸び縮み, 横, 縦) の変換と縮小をかけ、alpha なら背景を透明にした BGRA、white なら影を焼き込んだ BGR にする。"""
+    H, W = img.shape[:2]; s, dx, dy = sdd
+    M = np.array([[s, 0, (1 - s) * W / 2 + dx], [0, s, (1 - s) * H + dy]], np.float32)     # 息づかい: 足元を中心にわずかに伸び縮み
+    img = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
+    sh = cv2.warpAffine(sh, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    img = cv2.resize(img, (OW, OH), interpolation=cv2.INTER_AREA); sh = cv2.resize(sh, (OW, OH), interpolation=cv2.INTER_AREA)
+    if MODE != "alpha": return bake_shadow(img, sh)
+    fxs, fys = OW / W, OH / H; keep = []
+    for p1 in boxes:                                                                      # 顔の箱を、息づかい・縮小の変換で最終の画素に写す
+        p2 = p1 @ M[:, :2].T + M[:, 2]
+        keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
+    return matte(img, sh, keep)
+
 for f in range(f0, min(f1, NALL)):
-    pl = plan(f)
-    if pl[0] == "mix":                             # 向きの切り替え: 前と次の姿勢を溶かす（turn は横に少し縮めて回って見せる）
-        ia, sa, ba = body(("pose", pl[1]), f); ib_, sb, bb = body(("pose", pl[2]), f); u_, sq_ = pl[3], pl[4]
-        img = cv2.addWeighted(ib_, u_, ia, 1 - u_, 0); sh = sb * u_ + sa * (1 - u_); boxes = ba + bb
-        if sq_ > 0:
-            cx_ = REF[0] + PAD; S_ = np.array([[1 - sq_, 0, sq_ * cx_], [0, 1, 0]], np.float32); H, W = img.shape[:2]
-            img = cv2.warpAffine(img, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
-            sh = cv2.warpAffine(sh, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-            boxes = [b_ @ S_[:, :2].T + S_[:, 2] for b_ in boxes]
-    else:
-        img, sh, boxes = body(pl, f)
-    H, W = img.shape[:2]; tt = f / FPS
+    pl = plan(f); tt = f / FPS
     if MOT is None:
         s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * math.sin(2 * math.pi * tt / 5.3); dy = -2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]
     else:
@@ -286,18 +296,20 @@ for f in range(f0, min(f1, NALL)):
             b_ = MOT["breath"]; v_ = 2 * breath_wave(tt, b_["period"], b_["jitter"], b_["inhale"], SEED) - 1; s += b_["scale"] * v_; dy -= b_["lift"] * v_
         if MOT["body"]: dx = MOT["body"]["sway"] * wobble(tt, MOT["body"]["period"], SEED + 1)
         if MOT["switch"]: dy += switch_offset(tt, SWITCHES, MOT["switch"]["anticipate"], MOT["switch"]["anticipate_px"], MOT["switch"]["overshoot_px"], MOT["switch"]["settle"])
-    M = np.array([[s, 0, (1 - s) * W / 2 + dx], [0, s, (1 - s) * H + dy]], np.float32)     # 息づかい: 足元を中心にわずかに伸び縮み
-    img = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
-    sh = cv2.warpAffine(sh, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-    img = cv2.resize(img, (OW, OH), interpolation=cv2.INTER_AREA); sh = cv2.resize(sh, (OW, OH), interpolation=cv2.INTER_AREA)
-    if MODE == "alpha":
-        fxs, fys = OW / W, OH / H; keep = []
-        for p1 in boxes:                                                                  # 顔の箱を、息づかい・縮小の変換で最終の画素に写す
-            p2 = p1 @ M[:, :2].T + M[:, 2]
-            keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
-        rgba = matte(img, sh, keep); enc.stdin.write(rgba.tobytes())
+    M = (s, dx, dy)
+    if pl[0] == "mix":                             # 向きの切り替え: 前と次の姿勢を溶かす（turn は横に少し縮めて回って見せる）
+        A_ = body(("pose", pl[1]), f); B_ = body(("pose", pl[2]), f); u_, sq_ = pl[3], pl[4]
+        if sq_ > 0: A_ = squash(*A_, sq_); B_ = squash(*B_, sq_)
+        if MODE == "alpha":                        # 透明は姿勢ごとに切り抜いてから、色と透明度を重みで混ぜる（白い背景ごと混ぜると灰色の縁が残る）
+            ra = finish(*A_, M).astype(np.float32); rb = finish(*B_, M).astype(np.float32)
+            aa, ab = ra[:, :, 3:4] / 255 * (1 - u_), rb[:, :, 3:4] / 255 * u_; at = aa + ab
+            col = (ra[:, :, :3] * aa + rb[:, :, :3] * ab) / np.maximum(at, 1e-6)
+            out = np.dstack([np.clip(col, 0, 255), np.clip(at * 255, 0, 255)]).round().astype(np.uint8)
+        else:
+            out = finish(cv2.addWeighted(B_[0], u_, A_[0], 1 - u_, 0), B_[1] * u_ + A_[1] * (1 - u_), A_[2] + B_[2], M)
     else:
-        enc.stdin.write(bake_shadow(img, sh).tobytes())
+        out = finish(*body(pl, f), M)
+    enc.stdin.write(out.tobytes())
     if f % 300 == 0: print(f"  {f}/{NALL}", file=sys.stderr, flush=True)
 enc.stdin.close(); rc_enc = enc.wait()
 if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
