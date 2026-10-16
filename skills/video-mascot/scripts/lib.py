@@ -274,6 +274,7 @@ def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None, ib_d
         if not seq: k = 99
         elif di is not None:                      # コマ補間: 細かくした列を、その組の秒とイージングで出す
             n = len(seq); u = (t - s) / di[0]; k = min(n - 1, int(ease(di[1], u) * n)) if u < 1 else 99
+            if i + 1 < len(ev) and ev[i + 1][0] <= t: k = 99   # 長い補間の途中で次の切り替えが始まったら、次を優先
         elif ease_name is None: k = int((t - s) * ibfps)
         else: u = (t - s) * ibfps / nib; k = min(nib - 1, int(ease(ease_name, u) * nib)) if u < 1 else 99
         if seq and k < n: return ("ib", seq[k], a_ if k < int(n * 0.4 + 0.5) else b_)

@@ -73,3 +73,13 @@ def test_plan_at_ib_dur_none_keeps_old_behaviour():
     seq = [f"ib{k}" for k in range(1, 6)]; ib = lambda a, b: seq
     for t in (0.5, 1.0, 1.1, 1.3, 1.5):
         assert lib.plan_at(t, EV, "gap", ib, 15, 5, None, None, lambda a, b: None) == lib.plan_at(t, EV, "gap", ib, 15, 5)
+
+
+def test_plan_at_ib_dur_yields_to_next_event():
+    ev = [(1.0, "gap", "gassho"), (1.5, "gassho", "open")]
+    seq2 = [f"e{j}" for j in range(1, 48)]
+    ib = lambda a, b: SEQ if (a, b) == ("gap", "gassho") else (seq2 if (a, b) == ("gassho", "open") else None)
+    dur = lambda a, b: (1.2, "linear")
+    assert lib.plan_at(1.4, ev, "gap", ib, 15, 5, None, None, dur)[1] in SEQ
+    f = lib.plan_at(1.5, ev, "gap", ib, 15, 5, None, None, dur)
+    assert f == ("ib", "e1", "gassho")             # 次の切り替えが始まったら、前の補間は打ち切る
