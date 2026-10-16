@@ -11,7 +11,7 @@
 | 段階 | 名前 | 動き | 使いどころ（台詞の例） | 背の高さ |
 |---|---|---|---|---|
 | A | `think` | 手をあごに当てて考える | 「なぜでしょう」「ここで疑問が」 | 変わらない |
-| A | `bow` | はっきりしたお辞儀（上体を 30 度ほど前へ。頭のてっぺんが 1 割ほど下がる） | 冒頭のあいさつ、締めの「以上です」 | 低くなる（`scale` 固定） |
+| A | `bow` | はっきりしたお辞儀（上体を 45 度ほど前へ。頭のてっぺんが背の 15% ほど下がり、頭頂が見える） | 冒頭のあいさつ、締めの「以上です」 | 低くなる（`scale` 固定） |
 | A | `raise_r` | 片手を顔の高さに挙げ、人差し指を立てる | 「ポイントは一つ」「ここで注意」 | 変わらない |
 | A | `stretch` | 両手を頭の上で組んで軽く伸び | 話の区切り、「さて」「一息」 | 高くなる（`scale` 固定） |
 | B | `crouch` | 屈んで、画面の右下を指す | 画面の下の方（図の下・足元の部品）を示す | 低くなる（`scale` 固定） |
@@ -28,7 +28,7 @@
 - **顔を隠さない**: お辞儀・屈むでも顔が見える角度にとどめる（口と目の部品を作るため）。
 - **背の高さが変わるポーズは `"scale": 1.0`**: `vm render` は姿勢ごとに背の高さで大きさを揃える（描いた絵の数%の大きさの違いを吸収するため）。伸びは背が高く、お辞儀・屈むは低くなるのが正しいので、揃えると伸びが縮み、お辞儀が大きくなる。`scale` を書いたポーズは揃えずにその倍率で置く。描いた絵の大きさが home と違って見えたら、頭の幅を `vm grid` で比べて `scale` を直す（例 home の頭の幅 / そのポーズの頭の幅）。
 - **中割りは前の1枚から少しずつ**: config に `"inbetween_prompt": "chain"`（`vm init` は書く）。始めの姿勢だけを参照に「全体の 17% だけ動かす」編集で1枚目、それを参照に2枚目、と順に描く（両端を参照に渡すと、割合を数で言っても 1 枚目から動き切った）。
-- **背の比の想定 `expect_height`**: 背の変わるポーズには想定の範囲（home=1）を書き、`vm views` が外れを知らせる。お辞儀は描かせても背の比 0.998 と浅かった（2026-10-16 の実物。中割りの方が深く下がった）ので、お辞儀の文を「30 度ほど、頭のてっぺんが背の 1 割ほど下がる」に強め、範囲 `[0.85, 0.96]` で浅いのを拾う。
+- **背の比の想定 `expect_height`**: 背の変わるポーズには想定の範囲（home=1）を書き、`vm views` が外れを知らせる。お辞儀は描かせても背の比 0.998 と浅かった（2026-10-16 の実物。中割りの方が深く下がった）ので、お辞儀の文を「45 度ほど、頭のてっぺんが背の 15% ほど下がり、頭頂が見える」に強め（「30 度・1 割」では 3 回描いて背の比 0.963〜0.971 と範囲に届かず、この強さで 0.958）、範囲 `[0.85, 0.96]` で浅いのを拾う。
 - 口と目の範囲: お辞儀・屈むは顔の位置が home から大きく動くので、`vm face <作業フォルダ> bow crouch` で測るか、怪しければ `vm grid` で読んで `poses.<名前>.face` に書く。考える・片手・伸びは home からの自動の写しで足りるはず（`vm parts --check` で確かめる）。
 
 ## config.json に足すもの
@@ -40,7 +40,7 @@
 ```json
 "poses": {
   "think": {"desc": "facing the camera, standing on exactly the same spot as the reference, her hand on the image-right side raised so that her index finger and thumb lightly touch her chin, the other arm folded across her waist supporting that elbow, thinking calmly, calm closed mouth", "refs": ["home"]},
-  "bow": {"desc": "a clear polite bow: her upper body bent forward about 30 degrees from the hips, so that the top of her head is clearly lower than in the reference (about 10 percent of her height lower), head lowered with the face still visible, hands lightly clasped in front of her waist, feet on exactly the same spot as the reference, calm closed mouth", "refs": ["home"], "scale": 1.0, "expect_height": [0.85, 0.96]},
+  "bow": {"desc": "a clear polite bow: her upper body bent forward about 45 degrees from the hips, so that the top of her head is clearly lower than in the reference (about 15 percent of her height lower) and the top of her head is visible to the camera, head lowered with the face still visible, hands lightly clasped in front of her waist, feet on exactly the same spot as the reference, calm closed mouth", "refs": ["home"], "scale": 1.0, "expect_height": [0.85, 0.96]},
   "raise_r": {"desc": "facing the camera, her hand on the image-right side raised to the height of her face with the index finger pointing straight up, as when saying 'here is one point', the other arm relaxed at her side, standing on exactly the same spot as the reference, calm closed mouth", "refs": ["home"]},
   "stretch": {"desc": "a light, relaxed stretch: both arms raised above her head with the hands lightly clasped, back straight, facing the camera, standing on exactly the same spot as the reference, eyes open, calm closed mouth", "refs": ["home"], "scale": 1.0, "expect_height": [1.03, 1.6]}
 },

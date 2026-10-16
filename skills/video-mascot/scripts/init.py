@@ -86,9 +86,9 @@ def extra_presets(tiers):
         out["think"] = {"desc": ("facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised so that "
                                  "{p} index finger and thumb lightly touch {p} chin, the other arm folded across {p} waist supporting that elbow, "
                                  "thinking calmly, calm closed mouth"), "refs": ["home"]}
-        out["bow"] = {"desc": ("a clear polite bow: {p} upper body bent forward about 30 degrees from the hips, so that the top of {p} head is clearly lower "
-                               "than in the reference (about 10 percent of {p} height lower), head lowered with the face still visible, hands lightly clasped "
-                               "in front of {p} waist, feet on exactly the same spot as the reference, calm closed mouth"),
+        out["bow"] = {"desc": ("a clear polite bow: {p} upper body bent forward about 45 degrees from the hips, so that the top of {p} head is clearly lower "
+                               "than in the reference (about 15 percent of {p} height lower) and the top of {p} head is visible to the camera, head lowered "
+                               "with the face still visible, hands lightly clasped in front of {p} waist, feet on exactly the same spot as the reference, calm closed mouth"),
                       "refs": ["home"], "scale": 1.0, "expect_height": [0.85, 0.96]}
         out["raise_r"] = {"desc": ("facing the camera, {p} hand on the image-right side raised to the height of {p} face with the index finger pointing straight up, "
                                    "as when saying 'here is one point', the other arm relaxed at {p} side, standing on exactly the same spot as the reference, "
