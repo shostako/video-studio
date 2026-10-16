@@ -130,6 +130,12 @@ def test_gaze_track_lead_and_priority():
     assert lib.gaze_track(10, 30, []) == [None] * 10
 
 
+def test_gaze_track_lead_zero_disables_switch_gaze():
+    yaw = {"home": 0, "turn_l": -40}.get
+    g = lib.gaze_track(90, 30, [(2.0, 2.5, "u")], [(1.0, 0.3, "home", "turn_l")], yaw, lead=0.0)
+    assert all(x is None for x in g[:60]) and g[60] == "u"                       # 切り替えの間も動かない。台本の指定は残る
+
+
 # ---------- 書き出し（合成のマスコット）----------
 @pytest.fixture(scope="module")
 def env(tmp_path_factory):

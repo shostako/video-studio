@@ -616,9 +616,9 @@ def resolve_gaze(events, starts, durs, hira_stream, words_hira, hold=1.0, log=No
 def gaze_track(nall, fps, spans, switches=(), yaw_of=None, lead=0.15):
     """コマごとの視線（c/l/r/u か None）。spans=[(開始, 終わり, 視線), ...]（台本の指定）が最優先。
     switches=[(開始, 長さ, 前の姿勢, 次の姿勢), ...] と yaw_of(姿勢)→顔の向き を渡すと、顔の向きが変わる切り替えの
-    lead 秒前から切り替えの終わりまで、目が先に新しい向きへ動く（左へ回るなら l、右へなら r）。"""
+    lead 秒前から切り替えの終わりまで、目が先に新しい向きへ動く（左へ回るなら l、右へなら r）。lead が 0 なら先回りしない。"""
     out = [None] * nall
-    if yaw_of is not None:
+    if yaw_of is not None and lead > 0:
         for s, d, a, b in switches:
             dy = yaw_of(b) - yaw_of(a)
             if abs(dy) < 1e-6: continue
