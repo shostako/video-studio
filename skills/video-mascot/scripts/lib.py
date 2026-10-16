@@ -84,6 +84,45 @@ def boot_anchor(img, min_area=2500):
     return (x0 + w / 2.0, float(y0 + h))
 
 
+def feet_center(img, min_area=2500):
+    """足元の黒い塊（靴）全部の、左右の端の真ん中と一番下の y。見つからなければ None。boot_anchor と同じ範囲（絵の下 22.5%）で探す。
+    斜め・横の姿勢で、立ち位置（両足の真ん中）を home と揃えるための目安。"""
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY); H = img.shape[0]; m = (g < 70).astype(np.uint8); m[:int(H * 0.775)] = 0
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m)
+    cand = [i for i in range(1, n) if st[i, cv2.CC_STAT_AREA] > min_area]
+    if not cand: return None
+    x0 = min(st[i, 0] for i in cand); x1 = max(st[i, 0] + st[i, 2] for i in cand); y1 = max(st[i, 1] + st[i, 3] for i in cand)
+    return ((x0 + x1) / 2.0, float(y1))
+
+
+def fg_mask(img, bg=BG, thr=24):
+    """背景（ほぼ白の無地）と違う所。色・服に依らない前景の目安。"""
+    return (np.abs(img.astype(np.int16) - bg).max(axis=2) > thr).astype(np.uint8)
+
+
+def feet_anchor(img, band=0.02, min_area=400):
+    """足元の基準点（色に依らない）: 前景の一番下の y と、そこから絵の高さの band の帯の中の前景の左右の端の真ん中。
+    靴が黒くないキャラ用（anchor.mode: feet）。両足の真ん中なので、斜めの姿勢でも立ち位置が揃う。見つからなければ None。"""
+    m = fg_mask(img); n, lab, st, _ = cv2.connectedComponentsWithStats(m)
+    big = np.isin(lab, [i for i in range(1, n) if st[i, cv2.CC_STAT_AREA] > min_area])
+    rows = np.where(big.any(axis=1))[0]
+    if not len(rows): return None
+    y1 = int(rows.max()); y0 = max(0, y1 - max(2, int(round(img.shape[0] * band))))
+    xs = np.where(big[y0:y1 + 1].any(axis=0))[0]
+    return ((xs.min() + xs.max()) / 2.0, float(y1 + 1))
+
+
+def fg_height(img, anc):
+    """前景の一番上から基準点の y まで（anchor.mode: feet の背の高さ）。"""
+    rows = np.where(fg_mask(img).sum(1) > 3)[0]; return anc[1] - rows.min()
+
+
+def centered_anchor(boot_p, feet_p, boot_home, feet_home):
+    """姿勢の anchor（render が home の軸足 boot_home に重ねる点）を、両足の真ん中が home の両足の真ん中に来るように選ぶ。
+    横は feet_p.x − (feet_home.x − boot_home.x)、縦は靴の底（boot_p の y）。"""
+    return (round(float(feet_p[0] - (feet_home[0] - boot_home[0])), 1), round(float(boot_p[1]), 1))
+
+
 def body_height(img, anc):
     g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY); rows = np.where((g < 150).sum(1) > 3)[0]; return anc[1] - rows.min()
 

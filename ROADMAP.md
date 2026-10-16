@@ -24,6 +24,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 二次運動（`--motion on`）と今までの動きの見比べ。首の傾き・うなずき・予備動作の大きさが実物の絵で自然か（`vm render <作業フォルダ> --motion on --mode white --from 0 --to 20` と既定を並べる）
 - 作った機能を既定にするかの判断
 - マスコットの向き・顔・視線の絵（`docs/mascot-views-spec.md` の段階 A）を `/img` で描き、揃い（足元・背の高さ・向きの取り違え）を確かめる。別の作業フォルダ `<名前>-views` で
+- 新しいキャラ（別の絵）で `references/new-character.md` を通して試す。`vm init` の雛形・`vm face` の測った範囲・`anchor.mode: feet` が実物の絵で合うか
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
 ## 済んだこと
@@ -37,3 +38,5 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 二次運動を足した（opt-in、`config.motion` か `vm render --motion on`）。呼吸の周期のゆらぎと吸う・吐くの非対称、体の揺れ、首から上だけの傾きと声の出だしのうなずき、まばたきの間隔のゆらぎ（2回続け・切り替えの頭）、姿勢の切り替えのイージング・予備動作・オーバーシュート。純関数を `lib.py` に足し `tests/test_mascot_motion.py` でテスト。`tests/fixtures/synth_mascot.py`（PIL で描いた合成の人型）で書き出しのスモーク（`tests/test_mascot_render_smoke.py`）。既定の出力は前とコマ単位で一致を確認。見た目の良し悪しは手元で確かめる（2026-10-15）
 - マスコットの向き・顔・視線の絵の仕様を書いた（`docs/mascot-views-spec.md`）。段階 A（`head_l/r`・`turn_l/r`・`present_l/r`）、B（`side_l/r`）、C（`back`・`lean_in`）、足元・背の高さ・首の位置の揃え方、視線の部品、描く順番（2026-10-15）
 - 向き・視線の描画を足した（opt-in）。`poses.<名前>.yaw`・`head_yaw`・`face`（姿勢ごとの口と目の範囲、`false` は顔なし）・`anchor`、`transition`（中割りの無い切り替えを `fade`/`turn` でつなぐ）、`events[].via`、`gaze`（視線の部品 `g_l` `g_r` `g_u` `g_c` と台本からの指定、顔の向きが変わる前に目が先に動く）。`vm poses parts` は `gaze` がある時だけ視線の部品も描く。テストは `tests/test_mascot_views.py`（合成の斜め・後ろ向きの人型）。既定の書き出しは前とコマ単位で一致（2026-10-15）
+- 新PCで描いた段階 A の6枚の結果（左右の取り違え・黒目・present の回りの浅さ・足元と立ち位置のずれ）を仕様の desc と実測の表に入れた。立ち位置を揃える `anchor` の候補を出す `vm views` と、/img の codex・node が Windows 側を指すのを見つける `setup.sh` の検査を足した（2026-10-15）
+- キャラが替わっても同じ手順で立ち上がるようにした。`vm init`（絵1枚と英語の説明から作業フォルダと config の雛形。向き・視線の姿勢の desc は代名詞を差し替えて書く。黒い靴が無ければ足元を `feet` で揃える）、`vm face`（描いた口・目の差分から範囲を測る）、`anchor.mode: feet`（色に依らない足元）、`mascot.pronoun`、手順書 `skills/video-mascot/references/new-character.md`（新PCで分かった描かせ方の注意を含む）（2026-10-16）

@@ -75,7 +75,10 @@ fi
 if "$VENV/bin/python" "$(dirname "$0")/common.py" --check-key 2>/dev/null; then say "ok   Gemini API キー"; else say "--   Gemini API キーが見つからない（veo / analyze / ear の Gemini 部分が使えない）"; fi
 
 # /img（flipbook の素材づくり。ChatGPT のサブスク枠）
-if [ -x "$HOME/.claude/skills/img/scripts/img.sh" ] && command -v codex >/dev/null 2>&1; then say "ok   /img（codex）"; else say "--   /img が使えない（flipbook の素材は別途用意）"; fi
+CX="$(command -v codex 2>/dev/null || true)"; ND="$(command -v node 2>/dev/null || true)"
+if [ -x "$HOME/.claude/skills/img/scripts/img.sh" ] && [ -n "$CX" ] && [ "${CX#/mnt/}" = "$CX" ] && [ -n "$ND" ] && [ "${ND#/mnt/}" = "$ND" ]; then say "ok   /img（codex: $CX、node: $ND）"
+elif [ -n "$CX" ]; then say "--   /img が使えない: codex か node が無いか Windows 側を指している（codex: $CX、node: ${ND:-無し}）。WSL の node（nvm など）の bin を PATH の先頭に足す"
+else say "--   /img が使えない（flipbook の素材は別途用意）"; fi
 
 # H3（この PC の ComfyUI。入れるのは手作業: references/h3.md の「入れ方」。約 44GB）
 CR="${VS_COMFY_ROOT:-/mnt/c/ComfyUI/ComfyUI_windows_portable}"

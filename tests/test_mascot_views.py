@@ -284,3 +284,24 @@ def test_render_alpha_fade_blends_color_and_alpha(vproj, env, tmp_path):
     assert 70 < np.median(a_mid) < 190                                           # 半透明
     d = np.abs(mid[..., :3][arm] - after[..., :3][arm]).mean()
     assert d < 40                                                                 # 色は腕の色のまま（白と混ざった灰色ではない）
+
+
+# ---------- vm views（足元・立ち位置の揃いの表）----------
+def test_views_table_and_centered_anchor(vproj, tmp_path):
+    from PIL import Image
+    import views
+    p2 = tmp_path / "shift"; shutil.copytree(vproj, p2)
+    im = Image.open(p2 / "poses/pose_turn_l.png"); bg = Image.new("RGB", im.size, (253, 253, 253)); bg.paste(im, (30, 10))
+    bg.save(p2 / "poses/pose_turn_l.png")                                        # 右へ 30、下へ 10 ずらして描けた絵
+    rows = {r["pose"]: r for r in views.table(lib.Proj(str(p2)), ["home", "turn_l"])}
+    h, t = rows["home"], rows["turn_l"]
+    assert h["dx"] == 0 and h["dy"] == 0 and h["anchor"] == h["boot"]
+    assert t["dx"] == 30 and t["dy"] == 10 and abs(t["height"] - 1) < 0.01
+    # 候補の anchor を render の式（anchor を home の軸足に重ねる）に入れると、両足の真ん中が home と同じ所に来る
+    assert abs((t["feet"][0] - t["anchor"][0] + h["boot"][0]) - h["feet"][0]) < 1e-6
+    assert t["anchor"][1] == t["boot"][1]
+
+
+def test_views_command_runs(vproj, env):
+    r = subprocess.run([sys.executable, "-B", str(ROOT / "skills/video-mascot/scripts/views.py"), str(vproj)], env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and "turn_l" in r.stdout and "anchor" in r.stdout
