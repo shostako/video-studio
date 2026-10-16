@@ -86,9 +86,21 @@ const start = Date.now();
 let lastSrc = null, stableSince = 0;
 while (Date.now() - start < timeoutMs) {
   await sleep(2000);
-  // 上限はトースト・バナーに出ることもあるので、30秒以上かかっていれば画面全体も見る
+  // 上限はトースト・バナーに出ることもあるので、30秒以上かかっていれば、今の会話の最後の返答と
+  // 知らせ（role=alert/status、トースト）を見る。横の会話の一覧の題（「rate limit」など）は見ない
   if (Date.now() - start > 30000) {
-    let body = await page.evaluate(() => document.body.innerText).catch(() => '');
+    let body = await page
+      .evaluate(() => {
+        const main = document.querySelector('main');
+        const turns = main ? [...main.querySelectorAll('[data-message-author-role="assistant"], article, [data-testid^="conversation-turn"]')] : [];
+        const last = turns.length ? turns[turns.length - 1].innerText : '';
+        const tail = main ? main.innerText.slice(-1500) : ''; // 返答の要素が見つからない作りでも、会話の終わりだけ
+        const notes = [...document.querySelectorAll('[role="alert"], [role="status"], [data-sonner-toast], .toast-root')]
+          .map((e) => e.innerText)
+          .join('\n');
+        return [last, tail, notes].join('\n');
+      })
+      .catch(() => '');
     if (opt.prompt) body = body.split(opt.prompt).join(' '); // 自分の指示文に上限の語があっても拾わない
     const m = body.match(LIMIT_RE);
     if (m) await done(4, `LIMIT_DETECTED: ...${body.slice(Math.max(0, m.index - 120), m.index + 180).replace(/\s+/g, ' ')}`);

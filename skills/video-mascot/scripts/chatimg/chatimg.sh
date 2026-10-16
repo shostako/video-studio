@@ -55,12 +55,19 @@ command -v "$NODE" >/dev/null 2>&1 || { echo "ERROR: $NODE が見つからない
 ARGS=(--prompt "$PROMPT" --out "$(winout "$OUT_ABS")" --timeout "$TIMEOUT_SEC" --minimized)
 for r in ${REFS[@]+"${REFS[@]}"}; do ARGS+=(--ref "$(winpath "$(cd "$(dirname "$r")" && pwd)/$(basename "$r")")"); done
 
-# 画面は1枚ずつしか扱えないので、同時に呼ばれても順に通す
+# 画面は1枚ずつしか扱えないので、同時に呼ばれても順に通す。
+# 待つ時間と描く時間には上限を付ける（既定 180 + 420 + 60 秒。vm poses は1回の呼び出しを 700 秒で打ち切る）
 LOCK="${TMPDIR:-/tmp}/chatimg.lock"
+LOCK_WAIT="${CHATIMG_LOCK_WAIT:-180}"
 exec 9>"$LOCK"
-command -v flock >/dev/null 2>&1 && flock 9
+if command -v flock >/dev/null 2>&1; then
+  flock -w "$LOCK_WAIT" 9 || { echo "ERROR: 別の chatimg が ${LOCK_WAIT} 秒たっても終わらない" >&2; exit 1; }
+fi
+HARD=()
+command -v timeout >/dev/null 2>&1 && HARD=(timeout -k 10 "$((TIMEOUT_SEC + 60))")
 
-LOG="$("$NODE" "$(winpath "$DIR/generate.mjs")" "${ARGS[@]}" 2>&1)"; rc=$?
+LOG="$(${HARD[@]+"${HARD[@]}"} "$NODE" "$(winpath "$DIR/generate.mjs")" "${ARGS[@]}" 2>&1)"; rc=$?
+[ "$rc" -eq 124 ] && rc=5   # timeout に打ち切られたらタイムアウト扱い
 if [ "$rc" -eq 0 ] && [ -f "$OUT_ABS" ]; then echo "$OUT_ABS"; exit 0; fi
 echo "$LOG" | tail -5 >&2
 case "$rc" in 2|3|4|5) exit "$rc" ;; 0) exit 1 ;; *) exit 1 ;; esac
