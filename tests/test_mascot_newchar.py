@@ -373,3 +373,19 @@ def test_scale_fixes_size_of_height_changing_pose(tmp_path, env):
     cfg["anchor"] = {"mode": "boot"}; cfg["poses"]["point"]["scale"] = 1.0; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
     out = _run("views.py", proj)
     assert "scale 固定" in out.stdout and "背が±3%を超える" not in out.stdout
+
+
+def test_init_redraw_home_draws_clasped_hands_from_source(tmp_path):
+    """--redraw-home: 元の絵を home に写さず、vm poses が元の絵から「両手を前で軽く組む」立ち姿を描く（他の姿勢は home が描けるまで待つ）。付けなければ今まで通り写す。"""
+    import poses
+    src = tmp_path / "src.png"; sm.figure(0).save(src)
+    plain = _run("init.py", tmp_path / "a", src, "--desc", "a test figure")
+    assert plain.returncode == 0 and (tmp_path / "a/poses/pose_home.png").exists()
+    r = _run("init.py", tmp_path / "b", src, "--desc", "a test figure", "--redraw-home")
+    assert r.returncode == 0 and not (tmp_path / "b/poses/pose_home.png").exists() and "--only home" in r.stderr
+    jobs = {os.path.basename(j[0]): j for j in poses.jobs_poses(lib.Proj(str(tmp_path / "b")))}
+    home = jobs["pose_home.png"]
+    assert home[2] == [str(tmp_path / "b/mascot.png")] and "hands lightly clasped together in front of her lower belly" in home[1]
+    assert "do NOT hang down" in home[1] and str(tmp_path / "b/poses/pose_home.png") in jobs["pose_turn_l.png"][2]
+    r = _run("init.py", tmp_path / "a", src, "--desc", "a test figure", "--redraw-home", "--force")   # 前に写した home は消して描き直す
+    assert r.returncode == 0 and not (tmp_path / "a/poses/pose_home.png").exists()

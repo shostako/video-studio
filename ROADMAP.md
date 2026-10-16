@@ -43,3 +43,4 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - キャラが替わっても同じ手順で立ち上がるようにした。`vm init`（絵1枚と英語の説明から作業フォルダと config の雛形。向き・視線の姿勢の desc は代名詞を差し替えて書く。黒い靴が無ければ足元を `feet` で揃える）、`vm face`（描いた口・目の差分から範囲を測る）、`anchor.mode: feet`（色に依らない足元）、`mascot.pronoun`、手順書 `skills/video-mascot/references/new-character.md`（新PCで分かった描かせ方の注意を含む）（2026-10-16）
 - 新PCで実物を回した結果を直した（2026-10-16）。`vm views` と `vm render`（boot）が、靴でない所（紺のズボンの裾）を軸足に拾った姿勢を知らせ `feet` を勧める（`vm views` の足元・背は色に依らずに測る）。`vm face` は目を頭の辺りの高さの揃った2つの塊から、口を目の下の目の幅の中から探し、怪しい範囲は書かない。中割りの言い方に `inbetween_prompt: "percent"`（opt-in、`vm init` は書く）。手順書に枚数・上限・再開。setup の /img を1行に
 - 足すポーズの仕様を書いた（`docs/mascot-poses-spec.md`、2026-10-16）。段階 A（`think`・`bow`・`raise_r`・`stretch`）、B（`crouch`・`knee_bend`）、ターンは向きの絵をつなぐ形で後回し。`vm init --extras a|ab` が雛形を書く。背が変わるポーズの大きさを固定する `poses.<名前>.scale`（opt-in）
+- 新しいキャラの基本の立ち姿を「両手を前で軽く組む」にした（手順書の元の絵の決まり、`vm init --redraw-home`、2026-10-16）
