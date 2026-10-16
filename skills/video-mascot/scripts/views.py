@@ -1,16 +1,18 @@
 """姿勢の絵の揃い（大きさ・足元・立ち位置・背の高さ）を home と比べて表にする。向きの違う姿勢を描いたあとの確かめ用（docs/mascot-views-spec.md）。
   vm views <作業フォルダ> [姿勢 ...]
-列: 絵の大きさ、軸足（向かって左の靴の底）、両足の真ん中、靴の底の高さのずれ、立ち位置の横のずれ、背の高さの比（home=1）、
+列: 絵の大きさ、軸足（向かって左の靴の底。anchor.mode が feet なら色に依らない足元の真ん中）、両足の真ん中、靴の底の高さのずれ、立ち位置の横のずれ、背の高さの比（home=1）、
     立ち位置を home に揃える anchor の候補（config の poses.<名前>.anchor にそのまま書ける）。
 config の floor.clean が true なら、台座を消してから測る（vm render と同じ）。絵は読むだけで、何も書き換えない。"""
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, defloor, boot_anchor, feet_center, centered_anchor, body_height, die
+from lib import Proj, defloor, boot_anchor, feet_center, centered_anchor, body_height, feet_anchor, fg_height, die
 
 
 def measure(P, pose, y0=None):
     img = P.read_pose(pose); H = img.shape[0]; fl = P.cfg.get("floor", {"clean": True})
     if fl.get("clean", False): img, _ = defloor(img, int(fl.get("y0", round(H * 0.705))) if y0 is None else y0)
+    if P.cfg.get("anchor", {}).get("mode", "boot") == "feet":                  # 色に依らない足元: 軸足がそのまま両足の真ん中
+        b = c = feet_anchor(img); return {"size": (img.shape[1], img.shape[0]), "boot": b, "feet": c, "height": fg_height(img, b) if b else None}
     b = boot_anchor(img); c = feet_center(img)
     return {"size": (img.shape[1], img.shape[0]), "boot": b, "feet": c, "height": body_height(img, b) if b else None}
 

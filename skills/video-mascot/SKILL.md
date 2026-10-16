@@ -23,6 +23,8 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 ## 進め方
 
+**新しいキャラの絵が来たら**、references/new-character.md の順に通す（`vm init` で雛形 → 姿勢 → 中割り → 差分 → `vm face` → `vm parts`）。キャラに固有の値は作業フォルダの config にだけ置く。
+
 作業フォルダ `~/.local/share/video-scene/work/<名前>/` に、`mascot.png`（元の絵）と `config.json`（設定。references/config-spec.md、実例は assets/examples/icm_explainer/）を置く。配置と各コマンドの出力先は `vm` が作る（poses/ parts/ parts_<姿勢>/ ib/ voice/ out/）。
 
 1. **台本を決める**: 主動画の流れに合わせて、1行 6〜9 秒に区切る。**どの言葉で姿勢を変えるか**を決める（例:「そこで…」で右を指す、「バネが縮む」で合掌）。専門用語や読みが割れる漢字は、`say`（合成に渡す文）にひらがなを混ぜる。
@@ -56,8 +58,11 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 ## 参照
 
+- `vm init <作業フォルダ> <元の絵> --desc "…"` — 新しいキャラの作業フォルダと config の雛形（向き・視線の姿勢つき）を作る。手順は references/new-character.md
+- `vm face <作業フォルダ> [--write]` — 描いた口・目の差分から口と目の範囲（`face`）を測る（`vm grid` で読む代わり）
 - `vm views <作業フォルダ>` — 姿勢の絵の大きさ・足元・立ち位置・背の高さを home と比べた表と、立ち位置を揃える anchor の候補（向きの違う姿勢を描いたあとに）
 - references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md
+- references/new-character.md — 新しいキャラの絵から、雛形・姿勢・向き・部品・足元までを通す手順と、描かせる文の書き方で分かったこと
 - references/pose-design.md — 姿勢と pairs の決め方、描かせる時の注意、口・目の範囲の測り方
 - references/lessons.md — うまくいかなかった所と直し方（声・絵・切り抜き・足元・重ね）
 - assets/examples/icm_explainer/ — 実例（射出圧縮成形の解説、69秒、姿勢6・中割り30）

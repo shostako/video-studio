@@ -15,7 +15,7 @@ config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると
 import json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, matte, die
+from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
@@ -89,11 +89,12 @@ for p in P.poses:
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
     else: PB[p], SH[p] = img, np.zeros(img.shape[:2], np.float32)
 AN = C.get("anchor", {"mode": "boot"}); AMODE = AN.get("mode", "boot")
-if AMODE == "boot":
-    ANCH = {p: tuple(map(float, PCFG[p]["anchor"])) if "anchor" in PCFG[p] else boot_anchor(PB[p]) for p in P.poses}
+DETECT, HEIGHT = {"boot": (boot_anchor, body_height), "feet": (feet_anchor, fg_height)}.get(AMODE, (None, None))   # feet: 色に依らない足元（opt-in）
+if DETECT:
+    ANCH = {p: tuple(map(float, PCFG[p]["anchor"])) if "anchor" in PCFG[p] else DETECT(PB[p]) for p in P.poses}
     miss = [p for p, v in ANCH.items() if v is None]
-    if miss: die(f"軸足の靴が見つからない姿勢: {miss}（config.anchor を manual にするか none に）")
-    HT = {p: body_height(PB[p], ANCH[p]) for p in P.poses}; SCALE = {p: HT[P.home] / HT[p] for p in P.poses}
+    if miss: die(f"軸足{'の靴' if AMODE == 'boot' else '（足元）'}が見つからない姿勢: {miss}（config.anchor を {'feet か ' if AMODE == 'boot' else ''}manual にするか none に）")
+    HT = {p: HEIGHT(PB[p], ANCH[p]) for p in P.poses}; SCALE = {p: HT[P.home] / HT[p] for p in P.poses}
 elif AMODE == "manual":
     ANCH = {p: tuple(v) for p, v in AN["points"].items()}
     for p in P.poses:
@@ -142,7 +143,7 @@ def ib_item(item, src_pose):
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
-    anc = boot_anchor(clean) if AMODE == "boot" and not own else None
+    anc = DETECT(clean) if DETECT and not own else None
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
     allp = list(PARTS[src_pose].values())

@@ -72,6 +72,8 @@
 
 ## config.json に足すもの（段階 A の例）
 
+新しいキャラなら `vm init <作業フォルダ> <元の絵> --desc "…" --pronoun she|he|it|they --views a` が、下と同じ姿勢（代名詞はキャラに合わせる）を書く（手順は `skills/video-mascot/references/new-character.md`）。下の例は `--pronoun she` の時の中身で、テストが `vm init` の雛形と一致することを確かめている。desc を直すときは `skills/video-mascot/scripts/init.py` と両方を直す。
+
 今の作業フォルダを丸ごと写した**別の作業フォルダ**（例 `<名前>-views`）で作業する（見比べが済むまで普段使いの作業フォルダは変えない）。斜め・横の姿勢は `face` を書くまで `vm parts`・`vm render` が口と目の範囲を自動で写そうとして止まることがある。
 
 ```json
