@@ -121,6 +121,9 @@ elif AMODE == "manual":
     SCALE = {p: float(AN.get("scales", {}).get(p, PCFG[p].get("scale", 1.0))) for p in P.poses}
 else:
     ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: float(PCFG[p].get("scale", 1.0)) for p in P.poses}
+if LEGS:                                          # 差し替える姿勢は基準と同じ大きさの絵（中割りは端の姿勢の大きさに直してから差し替える）
+    bad = [p for p in P.poses if legs_on(p) and RAW[p].shape != LEGS_SRC.shape]
+    if bad: die(f"legs_lock: 絵の大きさが {LEGS['from']} と違う姿勢: {bad}（同じ大きさにするか legs_lock.poses から外す）")
 if LEGS and LEGS["from"] not in ANCH: die(f"legs_lock.from の姿勢 {LEGS['from']} の足元が無い（anchor.points に書く）")
 if LEGS:                                          # 足元と大きさを元の絵で決めてから差し替え、足元の点は元の姿勢の足元を写した点にする（手で書いた anchor も）
     for p in P.poses:

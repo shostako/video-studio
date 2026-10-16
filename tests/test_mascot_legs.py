@@ -117,6 +117,11 @@ def test_lock_legs_canon_scale_and_transform():
     assert w(out) == pytest.approx(0.9 * w(canon), abs=3)                       # 足首の幅が 0.9 倍
 
 
+def test_lock_legs_rejects_a_different_canvas():
+    img, canon = wide(), bgr(sm.figure(0))
+    with pytest.raises(ValueError): lib.lock_legs(img[:-8], canon)
+
+
 def test_lock_legs_band_stays_inside_the_image():
     """帯が絵の上端より上に出る値でも、負の添字で絵の下の行を書き換えない。"""
     img, canon = wide(), bgr(sm.figure(0))
@@ -172,6 +177,14 @@ def test_render_with_legs_lock(tmp_path, env):
         for fr in f_:
             m = lib.fg_mask(fr[:, :, ::-1].copy()); y = int(fr.shape[0] * 0.86); xs = np.where(m[y])[0]; edges.append((xs.min(), xs.max()))
         e = np.array(edges); assert np.ptp(e[:, 0]) <= 4 and np.ptp(e[:, 1]) <= 4, (np.ptp(e[:, 0]), np.ptp(e[:, 1]))   # 呼吸の伸び縮みと縮小の丸めで 2〜3px。直す前は 8〜30px
+    import cv2 as cv2_
+    small = cv2_.resize(cv2_.imread(str(root / "poses" / "pose_point.png")), (sm.W - 10, sm.H - 16))
+    cv2_.imwrite(str(root / "poses" / "pose_point.png"), small)                 # 基準と大きさの違う絵は止める
+    del cfg["poses"]["point"]["scale"]; del cfg["poses"]["point"]["anchor"]
+    (root / "config.json").write_text(json.dumps(cfg, ensure_ascii=False))
+    r = subprocess.run([sys.executable, "-B", str(RENDER), str(root), "--out", str(out), "--mode", "white"],
+                       env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode != 0 and "絵の大きさが home と違う姿勢: ['point']" in r.stderr
     cfg["legs_lock"] = {"cut": 2}
     (root / "config.json").write_text(json.dumps(cfg, ensure_ascii=False))
     r = subprocess.run([sys.executable, "-B", str(RENDER), str(root), "--out", str(out), "--mode", "white"],
