@@ -251,12 +251,14 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
     return ev
 
 
-def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None):
+def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None, ib_dur=None):
     """時刻 t に出す絵。("pose", 姿勢) か、切り替えの途中なら ("ib", 中割りの項目, 部品を借りる姿勢)。
     ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。
     ease_name（二次運動の時だけ）: 切り替えの長さ nib/ibfps は同じまま、何枚目を出すかをイージングで決める（None は等速）。
     trans_of(前, 次, via)（向きの切り替えを使う時だけ）: None なら今までどおり、("cut", 0, 0) は一瞬、("fade"|"turn", 秒, 縮み) なら
-    その長さのあいだ ("mix", 前の姿勢, 次の姿勢, 溶かす割合 0..1, 横の縮み 0..) を返す（途中で次の切り替えが始まれば次へ移る）。ev は3つ組か4つ組（4つ目が via）。"""
+    その長さのあいだ ("mix", 前の姿勢, 次の姿勢, 溶かす割合 0..1, 横の縮み 0..) を返す（途中で次の切り替えが始まれば次へ移る）。ev は3つ組か4つ組（4つ目が via）。
+    ib_dur(前, 次)（コマ補間の時だけ）: (秒, イージング名) を返す組は、中割りの列（補間で細かくした列。長さは nib と違ってよい）を
+    その秒で出し、何枚目かをそのイージングで決める。None を返す組は今までどおり。"""
     cur = home
     for i, e_ in enumerate(ev):
         s, a_, b_ = e_[:3]
@@ -268,11 +270,13 @@ def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None):
             if t < s + d_ and not (i + 1 < len(ev) and ev[i + 1][0] <= t):   # 溶かしの途中で次の切り替えが始まったら、次を優先
                 u = (t - s) / d_; return ("mix", a_, b_, smooth01(u), sq_ * math.sin(math.pi * u) if tr[0] == "turn" else 0.0)
             cur = b_; continue
-        seq = ib_seq(a_, b_)
+        seq = ib_seq(a_, b_); n = nib; di = ib_dur(a_, b_) if (ib_dur is not None and seq) else None
         if not seq: k = 99
+        elif di is not None:                      # コマ補間: 細かくした列を、その組の秒とイージングで出す
+            n = len(seq); u = (t - s) / di[0]; k = min(n - 1, int(ease(di[1], u) * n)) if u < 1 else 99
         elif ease_name is None: k = int((t - s) * ibfps)
         else: u = (t - s) * ibfps / nib; k = min(nib - 1, int(ease(ease_name, u) * nib)) if u < 1 else 99
-        if seq and k < nib: return ("ib", seq[k], a_ if k < int(nib * 0.4 + 0.5) else b_)
+        if seq and k < n: return ("ib", seq[k], a_ if k < int(n * 0.4 + 0.5) else b_)
         cur = b_
     return ("pose", cur)
 
@@ -786,3 +790,61 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     out = (imgW.astype(np.float32) * (1 - w) + cW.astype(np.float32) * w) * (1 - k) + img.astype(np.float32) * k
     M = M0.copy(); M[0, 2] += dx; M[1, 2] += dy
     return np.clip(out + 0.5, 0, 255).astype(np.uint8), {"cut": cy, "feather": fb, "dx": int(dx), "dy": int(dy), "M": M}
+
+
+# ---------- 中割りのコマ補間（config.interp、opt-in）----------
+INTERP_DEFAULTS = {
+    "engine": "rife",       # 今は RIFE（rife-ncnn-vulkan）だけ
+    "mult": 8,              # 描いた絵（端の姿勢と中割り）の間を何倍に細かくするか
+    "dur": 0.6,             # 中割りのある組の切り替えの秒（描いた枚数によらない）
+    "ease": "in_out",       # 何枚目を出すかのイージング（linear / in / out / in_out / sine）
+    "durs": {},             # 組ごとの秒 {"gap>gassho": 1.2}（逆向きの組にも効く）
+    "pairs": None,          # 補間する組 ["gap>gassho", ...]（None は中割りのある全部の組）
+    "model": "rife-v4.6",
+    "exe": "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe",
+    "tmp": "/mnt/c/Users/shost/AppData/Local/Temp/vm_rife",   # Windows の exe が読み書きできる所
+}
+
+
+def _pair_key(k):
+    if not isinstance(k, str) or k.count(">") != 1 or not all(k.split(">")): raise ValueError(f"interp の組は \"前>次\" の形: {k!r}")
+    return k
+
+
+def interp_config(value, flag=None):
+    """config.interp と --interp rife|off から、中割りのコマ補間の設定（既定を埋めた辞書）か None（使わない）。
+    value: 無し・false は使わない、true と {} は全部既定、辞書は項目ごとに上書き。知らない項目・おかしな値は ValueError。"""
+    if flag not in (None, "rife", "off"): raise ValueError(f"--interp は rife か off: {flag}")
+    if flag == "off": return None
+    if value in (None, False) and flag != "rife": return None
+    v = {} if value is None or isinstance(value, bool) else value
+    if not isinstance(v, dict): raise ValueError(f"config.interp は true か辞書: {value!r}")
+    bad = sorted(set(v) - set(INTERP_DEFAULTS))
+    if bad: raise ValueError(f"config.interp に知らない項目: {bad}")
+    out = dict(INTERP_DEFAULTS); out.update(v)
+    if out["engine"] != "rife": raise ValueError(f"interp.engine は rife だけ: {out['engine']}")
+    if not isinstance(out["mult"], int) or isinstance(out["mult"], bool) or out["mult"] < 2: raise ValueError(f"interp.mult は 2 以上の整数: {out['mult']!r}")
+    if isinstance(out["dur"], bool) or not isinstance(out["dur"], (int, float)) or out["dur"] <= 0: raise ValueError(f"interp.dur は正の秒: {out['dur']!r}")
+    ease(out["ease"], 0.5)                        # 名前の検査
+    if not isinstance(out["durs"], dict): raise ValueError("interp.durs は {\"前>次\": 秒}")
+    out["durs"] = {_pair_key(k): float(d) for k, d in out["durs"].items()}
+    if any(d <= 0 for d in out["durs"].values()): raise ValueError("interp.durs の秒は正")
+    if out["pairs"] is not None:
+        if not isinstance(out["pairs"], list): raise ValueError("interp.pairs は [\"前>次\", ...]")
+        out["pairs"] = [_pair_key(k) for k in out["pairs"]]
+    return out
+
+
+def interp_on(cfg, a, b):
+    """組 a↔b を補間するか（向きは問わない）。"""
+    return cfg["pairs"] is None or f"{a}>{b}" in cfg["pairs"] or f"{b}>{a}" in cfg["pairs"]
+
+
+def interp_dur(cfg, a, b):
+    """a→b の切り替えの秒。durs の "a>b"、無ければ "b>a"、無ければ dur。"""
+    d = cfg["durs"]; return float(d.get(f"{a}>{b}", d.get(f"{b}>{a}", cfg["dur"])))
+
+
+def dense_ks(div, mult):
+    """端の姿勢（k=0 と k=div）の間の、補間した列の位置（div 等分の単位。k が整数の所は描いた中割り）。"""
+    return [j / mult for j in range(1, div * mult)]
