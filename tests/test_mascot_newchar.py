@@ -210,11 +210,47 @@ def test_face_eyes_not_taken_from_symmetric_hair_or_brows(tmp_path):
     assert face.pick_eyes([(2000, 10, 10, 60, 30)]) == [10, 10, 60, 30]                 # 組が無ければ一番大きい塊
 
 
+def test_face_eyes_not_taken_from_shoulders_or_hands(tmp_path):
+    """目の差分が、肩や手の左右の組まで（目より大きく、目より下で）描き変えても、目は頭の辺りの上の方から取る。
+    新PCの実物で、目の範囲が胴に広がり、口の範囲が胴（y 700〜1090）に出た。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    for k, part in (("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24))): _variant(base, part, sm.MOUTH_ROI).save(proj / f"parts/home_{k}.png")
+    for k, h in (("e1", 6), ("e2", 1)):
+        im = _variant(base, sm.eye_part(h), sm.EYE_ROI); d = ImageDraw.Draw(im)
+        d.rectangle([150, 335, 200, 370], fill=(200, 60, 60)); d.rectangle([270, 335, 320, 370], fill=(200, 60, 60))   # 肩・手の組（目より下）
+        im.save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    ex0, ey0, ex1, ey1 = r["eye_roi"]
+    assert ey0 >= 175 and ey1 <= 232 and 170 <= ex0 <= 196 and 274 <= ex1 <= 300 and not face.suspicious(r)
+
+
+def test_face_votes_across_variants(tmp_path):
+    """各差分が別々の所（髪・手）も描き変えていても、何枚にも共通する口と目の所だけを拾う。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    junk = [[150, 230, 172, 250], [300, 236, 322, 262], [205, 300, 265, 310], [140, 470, 170, 500], [290, 420, 330, 450], [160, 110, 190, 130], [260, 280, 300, 290]]
+    for i, (k, part) in enumerate((("m1", sm.mouth_part(26, 6)), ("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24)), ("m6", sm.mouth_part(36, 8)))):
+        im = _variant(base, part, sm.MOUTH_ROI); ImageDraw.Draw(im).rectangle(junk[i], fill=(90, 160, 90)); im.save(proj / f"parts/home_{k}.png")
+    for i, (k, h) in enumerate((("e1", 6), ("e2", 1))):
+        im = _variant(base, sm.eye_part(h), sm.EYE_ROI); ImageDraw.Draw(im).rectangle(junk[5 - i], fill=(90, 160, 90)); im.save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    mx0, my0, mx1, my1 = r["mouth_roi"]
+    assert 195 <= mx0 and mx1 <= 275 and 226 <= my0 and my1 <= 280 and not face.suspicious(r)
+
+
 def test_face_suspicious_flags():
     import face
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180]}) == []
     assert "口が目より上" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 60, 170, 90]})
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [0, 150, 400, 700]})       # 口が体じゅうに広がった
+    assert "口が目から離れすぎ" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 300, 170, 330]})
+    assert "口が両目の間に無い" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [210, 150, 250, 180]})
+    wide = {"eye_roi": [40, 300, 560, 380], "mouth_roi": [200, 700, 400, 1090], "head": [30, 50, 570, 600], "eye_zone_y": 400}
+    assert {"目の範囲が頭の幅に近い（顔より広い）", "口が頭の辺りの外"} <= set(face.suspicious(wide))   # 新PCの実物の外れ方
+    assert "目が頭の辺りより下" in face.suspicious({**wide, "eye_zone_y": 250})
     assert "目が片方しか取れていない" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180], "eye_single": True})
     near, far = (600, 100, 100, 130, 125), (200, 160, 102, 175, 122)                 # 斜めの顔: 奥の目は手前の 1/3
     assert face.eye_pair([near, far]) == ([100, 100, 175, 125], 2)
@@ -257,4 +293,83 @@ def test_inbetween_percent_prompt_is_opt_in(tmp_path):
     pc = poses.jobs_ib(lib.Proj(str(proj)))
     assert "17% of the way" in pc[0][1] and "only 17% extended" in pc[0][1] and "closer to the first" in pc[0][1]
     assert "halfway" in pc[2][1] and "closer to the second" in pc[4][1] and [j[2] for j in pc] == [j[2] for j in plain]
-    assert init.build("x", "d")["inbetween_prompt"] == "percent"                   # 新しいキャラは割合の言い方で始める
+    assert init.build("x", "d")["inbetween_prompt"] == "chain"                     # 新しいキャラは前の1枚から少しずつ描く
+
+
+def test_inbetween_chain_draws_from_previous_frame_in_order(tmp_path, monkeypatch):
+    """chain: 1枚目は始めの姿勢だけ、k 枚目は k-1 枚目だけを参照に描き、vm poses は前の枚が描けてから次を描く（参照に終わりの絵を渡さない）。"""
+    import poses
+    proj = Path(sm.make(str(tmp_path / "p"))); cfg = json.loads((proj / "config.json").read_text(encoding="utf-8"))
+    cfg["mascot"] = {"description": "x"}; cfg["inbetween_prompt"] = "chain"; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    for f in (proj / "ib").glob("*.png"): f.unlink()
+    jobs = poses.jobs_ib(lib.Proj(str(proj)))
+    assert [j[2] for j in jobs] == [[str(proj / "poses/pose_home.png")]] + [[str(proj / f"ib/ib_home_point_{k}.png")] for k in range(1, 5)]
+    assert "17% of the way" in jobs[0][1] and "exactly 33% of the way" in jobs[1][1] and "only about 17% of the total distance" in jobs[4][1]
+    assert all("pose_point" not in r for j in jobs for r in j[2])
+    log = tmp_path / "log.txt"; fake = tmp_path / "img.sh"
+    fake.write_text('#!/bin/bash\nwhile [ $# -gt 0 ]; do case "$1" in -r) r="$2"; shift 2;; -o) o="$2"; shift 2;; *) shift;; esac; done\n'
+                    '[ -f "$r" ] || exit 1; cp "$r" "$o"; echo "$(basename "$o")" >> ' + str(log) + '\n')
+    fake.chmod(0o755); monkeypatch.setattr(poses, "IMG", str(fake))
+    assert poses.run_jobs(jobs, 4, False)
+    assert log.read_text().split() == [f"ib_home_point_{k}.png" for k in range(1, 6)]
+    import time
+    time.sleep(0.05); (proj / "ib/ib_home_point_2.png").unlink()               # 2枚目だけ消して描き直すと、3〜5枚目は古い2枚目から描いたもの
+    assert poses.chain_stale(lib.Proj(str(proj))) == [str(proj / f"ib/ib_home_point_{k}.png") for k in (3, 4, 5)]
+    log.write_text("")
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "poses.py"), str(proj), "inbetweens"], capture_output=True, text=True, timeout=60,
+                       env={**os.environ, "HOME": str(tmp_path / "home")})
+    assert "ib/old/" in r.stdout and (proj / "ib/old/ib_home_point_3.png").exists()
+    log2 = tmp_path / "log2.txt"; log.write_text("")
+    for f in (proj / "ib").glob("ib_home_point_[345].png"): f.unlink(missing_ok=True)
+    fake.write_text(fake.read_text().replace('[ -f "$r" ] || exit 1; cp', '[ -f "$r" ] || exit 1; case "$o" in *_2.png) exit 1;; esac; cp'))
+    (proj / "ib/ib_home_point_2.png").unlink(missing_ok=True)
+    jobs = poses.jobs_ib(lib.Proj(str(proj)))
+    assert not poses.run_jobs(jobs, 4, False)                                     # 2枚目が描けなければ、3枚目からは呼ばない
+    assert log.read_text().split() == []
+
+
+def _spec_blocks():
+    import re
+    blks = re.findall(r"```json\n(.*?)```", (ROOT / "docs/mascot-poses-spec.md").read_text(encoding="utf-8"), re.S)
+    return [json.loads("{" + b + "}") for b in blks]
+
+
+def test_extra_presets_match_poses_spec_doc():
+    """docs/mascot-poses-spec.md の段階 A・B の config の例と、vm init --extras が書く雛形（she）が同じ（片方だけ直してずれないように）。"""
+    import init
+    a, b = _spec_blocks()
+    for tier, doc in (("a", a), ("b", b)):
+        x, xp = init.extra_presets(tier)
+        assert init.fill(x, "she") == doc["poses"] and xp == doc["pairs"]
+
+
+def test_init_extras_are_opt_in():
+    import init
+    plain = init.build("x", "d", "he", "a"); ex = init.build("x", "d", "he", "a", extras="ab")
+    assert not set(plain["poses"]) & {"think", "bow", "raise_r", "stretch", "crouch", "knee_bend"}
+    assert set(ex["poses"]) - set(plain["poses"]) == {"think", "bow", "raise_r", "stretch", "crouch", "knee_bend"}
+    assert ex["poses"]["bow"]["scale"] == 1.0 and "scale" not in ex["poses"]["think"] and "his" in ex["poses"]["bow"]["desc"]
+    assert ["home", "crouch"] in ex["pairs"] and all("{" not in c["desc"] for c in ex["poses"].values())
+    assert set(init.build("x", "d", extras="a")["poses"]) - set(plain["poses"]) == {"think", "bow", "raise_r", "stretch"}
+
+
+def test_scale_fixes_size_of_height_changing_pose(tmp_path, env):
+    """伸び（背が高くなる）を背の高さで揃えると縮む。poses.<名前>.scale を書くと、その倍率に固定する（書かない姿勢は今まで通り）。"""
+    import re
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); pp = proj / "poses/pose_point.png"
+    im = Image.open(pp).convert("RGB"); d = ImageDraw.Draw(im); d.rectangle([225, 30, 245, 100], fill=(40, 40, 60)); im.save(pp)   # 頭の上に挙げた腕（暗い袖）
+    def scales():
+        r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "render.py"), str(proj), "--out", str(tmp_path / "o.mp4"), "--mode", "white", "--to", "0.3"],
+                           env=env, capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, r.stderr
+        return eval(re.search(r"大きさ: (\{.*?\})", r.stderr).group(1))
+    assert scales()["point"] < 0.95                                                 # 既定: 背で揃えて縮む
+    cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg["poses"]["point"]["scale"] = 1.0
+    (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert scales() == {"home": 1.0, "point": 1.0}
+    cfg["anchor"] = {"mode": "none"}; cfg["poses"]["point"]["scale"] = 0.9; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert scales() == {"home": 1.0, "point": 0.9}                                  # 揃えない（none）でも scale は効く
+    cfg["anchor"] = {"mode": "boot"}; cfg["poses"]["point"]["scale"] = 1.0; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    out = _run("views.py", proj)
+    assert "scale 固定" in out.stdout and "背が±3%を超える" not in out.stdout

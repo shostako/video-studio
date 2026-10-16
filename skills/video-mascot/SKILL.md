@@ -61,7 +61,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 - `vm init <作業フォルダ> <元の絵> --desc "…"` — 新しいキャラの作業フォルダと config の雛形（向き・視線の姿勢つき）を作る。手順は references/new-character.md
 - `vm face <作業フォルダ> [--write]` — 描いた口・目の差分から口と目の範囲（`face`）を測る（`vm grid` で読む代わり）
 - `vm views <作業フォルダ>` — 姿勢の絵の大きさ・足元・立ち位置・背の高さを home と比べた表と、立ち位置を揃える anchor の候補（向きの違う姿勢を描いたあとに）
-- references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md
+- references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md。足すポーズ（考える・お辞儀・伸びなど。`vm init --extras`）は docs/mascot-poses-spec.md
 - references/new-character.md — 新しいキャラの絵から、雛形・姿勢・向き・部品・足元までを通す手順と、描かせる文の書き方で分かったこと
 - references/pose-design.md — 姿勢と pairs の決め方、描かせる時の注意、口・目の範囲の測り方
 - references/lessons.md — うまくいかなかった所と直し方（声・絵・切り抜き・足元・重ね）

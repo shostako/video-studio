@@ -1,10 +1,11 @@
 """口と目の範囲（face の mouth_roi / eye_roi）を、描いた口・目の差分から測る。vm grid で目で読む代わり（キャラに依らない）。
   vm face <作業フォルダ> [姿勢 ...] [--write]
 姿勢の絵と parts/<姿勢>_m1..m7（口）・_e1 _e2（目）を重ねて、変わった所を囲む。差分が無い姿勢は飛ばす。
---write: home の範囲を config.face に、顔が正面でない姿勢（head_yaw が 15 度以上）の範囲を poses.<姿勢>.face に書く
+--write: home の範囲を config.face に、顔が正面でない姿勢（head_yaw が 15 度以上）と背の変わる姿勢（scale を書いた姿勢。お辞儀・屈むなど）の範囲を poses.<姿勢>.face に書く
 （正面の姿勢は vm parts が home から自動で写すので書かない）。書く前の config.json は config.json.bak に残す。
-目は「頭の辺り（前景の上から背の 45%。--head で指定もできる）の中で、高さの揃った2つの塊」、口は「目の下で、目の幅の中に真ん中がある塊」
-を探すので、差分が髪・手・服まで描き変えていても、そこは拾わない。おかしそうな範囲（口が目より上、口が目の幅より大きい等）は書かずに知らせる。
+目は「頭の辺り（前景の上から背の 35%。--head で指定もできる）の中で、高さの揃った2つの塊」、口は「目の下で、目の幅の中に真ん中がある塊」を、
+差分の何枚にも共通して変わった所から探すので、差分が髪・手・服まで描き変えていても、そこは拾わない。
+おかしそうな範囲（口が目より上・目から離れすぎ・両目の間に無い・頭の外、目の範囲が顔より広い等）は書かずに知らせる。
 測った範囲は vm parts --check の絵で確かめる。"""
 import json, os, shutil, sys
 import cv2, numpy as np
@@ -12,8 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, pose_view, fg_mask, die
 
 
-def diff_boxes(base, var, thr=30, min_area=12, region=None):
-    """var を base に平行移動で重ねてから、違う所の塊の箱 [(面積, x0, y0, x1, y1), ...]（大きい順）。region=[x0,y0,x1,y1] の外は見ない。"""
+def diff_mask(base, var, thr=30, region=None):
+    """var を base に平行移動で重ねてから、違う所の 0/1 の画（base の座標）。region=[x0,y0,x1,y1] の外は 0。"""
     H, W = base.shape[:2]
     if var.shape[:2] != (H, W): var = cv2.resize(var, (W, H))
     g0 = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(var, cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -26,9 +27,34 @@ def diff_boxes(base, var, thr=30, min_area=12, region=None):
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)); m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
     if region is not None:
         r = np.zeros_like(m); x0, y0, x1, y1 = [int(round(v)) for v in region]; r[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = 1; m = m * r
-    n, _, st, _ = cv2.connectedComponentsWithStats(m)
+    return m
+
+
+def boxes_of(m, min_area=12):
+    """0/1 の画の塊の箱 [(面積, x0, y0, x1, y1), ...]（大きい順）。"""
+    n, _, st, _ = cv2.connectedComponentsWithStats(m.astype(np.uint8))
     out = [(int(st[i, 4]), int(st[i, 0]), int(st[i, 1]), int(st[i, 0] + st[i, 2]), int(st[i, 1] + st[i, 3])) for i in range(1, n) if st[i, 4] >= min_area]
     return sorted(out, reverse=True)
+
+
+def diff_boxes(base, var, thr=30, min_area=12, region=None):
+    """var を base に重ねて、違う所の塊の箱（大きい順）。"""
+    return boxes_of(diff_mask(base, var, thr, region), min_area)
+
+
+def voted(masks, need):
+    """need 枚以上の差分で変わった所（口や目の差分ならどれも変わる所。髪・手・服の描き変えは枚ごとにばらばらなので落ちる）。"""
+    return (np.sum(masks, axis=0) >= need).astype(np.uint8) if masks else None
+
+
+def near(b, box, pad):
+    """塊 b（面積つき）が箱 box を pad だけ広げた範囲に重なるか。"""
+    return b[1] < box[2] + pad and b[3] > box[0] - pad and b[2] < box[3] + pad and b[4] > box[1] - pad
+
+
+def fg_rows(img):
+    m = fg_mask(img); rows = np.where(m.any(axis=1))[0]
+    return (int(rows.min()), int(rows.max())) if len(rows) else (0, img.shape[0])
 
 
 def head_box(img, frac=0.45):
@@ -38,6 +64,9 @@ def head_box(img, frac=0.45):
     top, bot = int(rows.min()), int(rows.max()); y1 = top + int((bot - top) * frac)
     xs = np.where(m[top:y1].any(axis=0))[0]
     return [int(xs.min()), top, int(xs.max()) + 1, y1]
+
+
+EYE_ZONE = 0.35   # 目は前景の上から背の 35% までにある（頭身の高いキャラはもっと上。チビキャラでも 30% 前後）
 
 
 def pick_eyes(boxes, head=None):
@@ -91,27 +120,57 @@ def _variants(P, pose, names):
 
 
 def measure(P, pose, head=None):
-    """目を先に（頭の辺りの中で、高さの揃った2つの塊）、口はその下で目の幅の中から探す。差分が髪・手・服まで変えていても、そこは拾わない。"""
+    """目を先に、口はその下で目の幅の中から探す。どちらも、差分の何枚にも共通して変わった所（投票）で場所を決め、
+    その場所に重なる塊だけを各枚から集めて範囲にする。差分が髪・手・服まで描き変えていても（枚ごとにばらばら）、そこは拾わない。
+    目は頭の辺りの、前景の上から背の 35% まで（--head を渡せばその中）で探す（胴の手や服の組を目と取り違えない）。"""
     base = P.read_pose(pose); H, W = base.shape[:2]; res = {}; hb = head or head_box(base)
-    found = [e for e in (eye_pair(diff_boxes(base, v, region=hb), hb) for v in _variants(P, pose, EYES)) if e]
-    eyes = [e[0] for e in found]; res["eye_single"] = any(e[1] < 2 for e in found)
+    top, bot = fg_rows(base); zone = list(hb) if head else [hb[0], hb[1], hb[2], min(hb[3], top + EYE_ZONE * (bot - top))]
+    res["head"] = list(hb); res["eye_zone_y"] = zone[3]
+    em = [diff_mask(base, v, region=zone) for v in _variants(P, pose, EYES)]
+    if not em: return res
+    pr = eye_pair(boxes_of(voted(em, len(em) if len(em) <= 2 else len(em) - 1)), zone) or eye_pair(boxes_of(voted(em, 1)), zone)
+    if not pr: return res
+    (vx0, vy0, vx1, vy1), npair = pr; res["eye_single"] = npair < 2; pad = max(6, 0.1 * (vx1 - vx0))
+    eyes = []
+    for m_ in em:
+        bs = [b for b in boxes_of(m_) if near(b, (vx0, vy0, vx1, vy1), pad)]
+        if bs: eyes.append([min(b[1] for b in bs), min(b[2] for b in bs), max(b[3] for b in bs), max(b[4] for b in bs)])
     m = merge(eyes)
     if not m: return res
     (ex0, ey0, ex1, ey1), used, total = m; res["eye_roi"] = [max(0, ex0), max(0, ey0), min(W, ex1), min(H, ey1)]; res["eye_roi_n"] = f"{used}/{total}"
     ew = ex1 - ex0; reg = [ex0 - 0.25 * ew, (ey0 + ey1) / 2, ex1 + 0.25 * ew, ey1 + 1.2 * ew]   # 口を探す所: 目の下、目の幅の 1.2 倍まで
-    mouths = [b for b in (pick_mouth(diff_boxes(base, v, region=reg), res["eye_roi"]) for v in _variants(P, pose, MOUTHS)) if b]
+    mm = [diff_mask(base, v, region=reg) for v in _variants(P, pose, MOUTHS)]
+    if not mm: return res
+    loc = None
+    for need in sorted({max(1, (len(mm) + 1) // 2), 1}, reverse=True):              # 半分以上の差分で変わった所 → 無ければ1枚でも
+        loc = pick_mouth(boxes_of(voted(mm, need)), res["eye_roi"])
+        if loc: break
+    if not loc: return res
+    pad = max(6, 0.15 * (loc[2] - loc[0])); mouths = []
+    for m_ in mm:
+        bs = [b for b in boxes_of(m_) if near(b, loc, pad)]
+        if bs: mouths.append([min(b[1] for b in bs), min(b[2] for b in bs), max(b[3] for b in bs), max(b[4] for b in bs)])
     m = merge(mouths)
     if m: r, used, total = m; res["mouth_roi"] = [max(0, r[0]), max(0, r[1]), min(W, r[2]), min(H, r[3])]; res["mouth_roi_n"] = f"{used}/{total}"
     return res
 
 
 def suspicious(r):
-    """測った範囲がおかしそうな理由（無ければ空）。人か Claude が方眼（vm grid）で読み直す目安。"""
-    e, mo = r["eye_roi"], r["mouth_roi"]; ew = e[2] - e[0]; why = []
-    if mo[1] < (e[1] + e[3]) / 2: why.append("口が目より上")
+    """測った範囲がおかしそうな理由（無ければ空）。人か Claude が方眼（vm grid）で読み直す目安。
+    目と口の並び（口は目の下、目の間、目から離れすぎない）、大きさ（目の幅に比べて）、頭の中にあるかを見る。"""
+    e, mo = r["eye_roi"], r["mouth_roi"]; ew = max(e[2] - e[0], 1); why = []
+    ecx, ecy = (e[0] + e[2]) / 2, (e[1] + e[3]) / 2; mcx, mcy = (mo[0] + mo[2]) / 2, (mo[1] + mo[3]) / 2
+    if mo[1] < ecy: why.append("口が目より上")
+    if mcy - ecy > 1.3 * ew: why.append("口が目から離れすぎ")
+    if not e[0] <= mcx <= e[2]: why.append("口が両目の間に無い")
     if (mo[2] - mo[0]) > 1.2 * ew or (mo[3] - mo[1]) > 0.8 * ew: why.append("口の範囲が目の幅に比べて大きすぎる")
     if (e[3] - e[1]) > 0.8 * ew: why.append("目の範囲が縦に長すぎる")
     if r.get("eye_single"): why.append("目が片方しか取れていない")
+    hb = r.get("head")
+    if hb:
+        if ew > 0.8 * (hb[2] - hb[0]): why.append("目の範囲が頭の幅に近い（顔より広い）")
+        if not (hb[0] <= mo[0] and mo[2] <= hb[2] and mo[3] <= hb[3]): why.append("口が頭の辺りの外")
+    if r.get("eye_zone_y") is not None and ecy > r["eye_zone_y"]: why.append("目が頭の辺りより下")
     return why
 
 
@@ -132,7 +191,7 @@ if __name__ == "__main__":
         if why: bad.append(p); continue
         face = {"mouth_roi": r["mouth_roi"], "eye_roi": r["eye_roi"]}
         if p == P.home: cfg["face"] = face; wrote.append(p)
-        elif abs(pose_view(cfg["poses"][p])[1]) >= 15: cfg["poses"][p]["face"] = face; wrote.append(p)
+        elif abs(pose_view(cfg["poses"][p])[1]) >= 15 or "scale" in cfg["poses"][p]: cfg["poses"][p]["face"] = face; wrote.append(p)   # scale: 背が変わるポーズは顔も動く
     if "--write" in sys.argv and wrote:
         cp = P.p("config.json"); shutil.copyfile(cp, cp + ".bak")
         with open(cp, "w", encoding="utf-8") as f: json.dump(cfg, f, ensure_ascii=False, indent=1)

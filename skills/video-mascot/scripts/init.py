@@ -1,5 +1,5 @@
 """新しいマスコットの作業フォルダを、絵1枚と英語の説明から作る（キャラに依らない雛形。手順は references/new-character.md）。
-  vm init <作業フォルダ> <元の絵.png> --desc "英語の説明" [--pronoun she|he|it|they] [--views none|a|ab|abc] [--gestures] [--pedestal] [--force]
+  vm init <作業フォルダ> <元の絵.png> --desc "英語の説明" [--pronoun she|he|it|they] [--views none|a|ab|abc] [--gestures] [--extras none|a|ab] [--pedestal] [--force]
   vm init <作業フォルダ> --print [--pronoun ...] [--views ...] [--gestures]    書き込まずに、できる config.json を出すだけ
 作るもの: mascot.png（元の絵の写し）、poses/pose_home.png（元の絵をそのまま home に使う）、config.json。
 config.json には、キャラの説明・代名詞・足元の揃え方（黒い靴が見つかれば boot、無ければ色に依らない feet）・姿勢の雛形
@@ -61,21 +61,48 @@ def gesture_presets():
     return out, [["home", n] for n in out]
 
 
+def extra_presets(tiers):
+    """足すポーズ（docs/mascot-poses-spec.md）。どれも正面で、home と行き来する（中割りあり）。背の高さが変わるポーズは
+    "scale": 1.0（背の高さで大きさを揃えない。揃えると伸びは縮み、お辞儀・屈むは大きくなる）。"""
+    out = {}
+    if "a" in tiers:
+        out["think"] = {"desc": ("facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised so that "
+                                 "{p} index finger and thumb lightly touch {p} chin, the other arm folded across {p} waist supporting that elbow, "
+                                 "thinking calmly, calm closed mouth"), "refs": ["home"]}
+        out["bow"] = {"desc": ("a light polite bow: {p} upper body bent forward about 15 degrees from the hips, head lowered a little with the face still "
+                               "clearly visible, hands lightly clasped in front of {p} waist, feet on exactly the same spot as the reference, calm closed mouth"),
+                      "refs": ["home"], "scale": 1.0}
+        out["raise_r"] = {"desc": ("facing the camera, {p} hand on the image-right side raised to the height of {p} face with the index finger pointing straight up, "
+                                   "as when saying 'here is one point', the other arm relaxed at {p} side, standing on exactly the same spot as the reference, "
+                                   "calm closed mouth"), "refs": ["home"]}
+        out["stretch"] = {"desc": ("a light, relaxed stretch: both arms raised above {p} head with the hands lightly clasped, back straight, facing the camera, "
+                                   "standing on exactly the same spot as the reference, eyes open, calm closed mouth"), "refs": ["home"], "scale": 1.0}
+    if "b" in tiers:
+        out["crouch"] = {"desc": ("crouching down on exactly the same spot as the reference with both knees bent and {p} body lowered, facing the camera, "
+                                  "{p} hand on the image-right side pointing down toward the lower right of the image, face still clearly visible, calm closed mouth"),
+                         "refs": ["home"], "scale": 1.0}
+        out["knee_bend"] = {"desc": ("a slight knee bend: both knees bent a little so that {p} whole body is about 5 percent lower, back straight, "
+                                     "hands lightly clasped in front of {p} waist, facing the camera, feet on exactly the same spot as the reference, calm closed mouth"),
+                            "refs": ["home"], "scale": 1.0}
+    return out, [["home", n] for n in out]
+
+
 def fill(poses, pron):
     p = POSS[pron]
     return {n: {**c, "desc": c["desc"].replace("{p}", p).replace("{P}", p.capitalize())} for n, c in poses.items()}
 
 
-def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot", pedestal=False):
+def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot", pedestal=False, extras="none"):
     tiers = "" if tiers == "none" else tiers
     poses = {"home": {"desc": HOME_DESC}}; pairs = []
     if gestures: g, gp = gesture_presets(); poses.update(g); pairs += gp
     if tiers: v, vp = view_presets(tiers); poses.update(v); pairs += vp
+    if extras != "none": x, xp = extra_presets(extras); poses.update(x); pairs += xp
     cfg = {"name": name, "fps": 30, "pad": 100, "home": "home", "seed": 5,
            "mascot": {"description": desc, "pronoun": pron},
            "poses": fill(poses, pron), "pairs": pairs,
            "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode},
-           "inbetween_prompt": "percent"}
+           "inbetween_prompt": "chain"}
     if tiers: cfg["transition"] = {"mode": "fade", "dur": 0.25}; cfg["gaze"] = {}
     cfg["events"] = []
     cfg["voice"] = {"candidates": [], "lines": []}
@@ -89,12 +116,13 @@ if __name__ == "__main__":
     ap.add_argument("--pronoun", choices=sorted(POSS), default="she", help="描かせる文の代名詞（既定 she）")
     ap.add_argument("--views", choices=["none", "a", "ab", "abc"], default="a", help="向き・視線の姿勢の段階（既定 a）")
     ap.add_argument("--gestures", action="store_true", help="正面の基本の身振り open・point_l・point_r を足す")
+    ap.add_argument("--extras", choices=["none", "a", "ab"], default="none", help="足すポーズの段階（a: 考える・お辞儀・片手を挙げる・伸び、b: 屈む・軽い屈伸。docs/mascot-poses-spec.md）")
     ap.add_argument("--pedestal", action="store_true", help="台座つきの絵（floor.clean: true。黒い靴と紺の服の前提の処理）")
     ap.add_argument("--print", action="store_true", help="書き込まずに config.json を出す")
     ap.add_argument("--force", action="store_true", help="既にある config.json を上書きする")
     a = ap.parse_args(); root = os.path.abspath(a.dir); name = os.path.basename(root.rstrip("/"))
     if a.print:
-        print(json.dumps(build(name, a.desc or "(英語の説明)", a.pronoun, a.views, a.gestures, "boot", a.pedestal), ensure_ascii=False, indent=1)); sys.exit(0)
+        print(json.dumps(build(name, a.desc or "(英語の説明)", a.pronoun, a.views, a.gestures, "boot", a.pedestal, a.extras), ensure_ascii=False, indent=1)); sys.exit(0)
     if not a.image or not a.desc: die("使い方: vm init <作業フォルダ> <元の絵.png> --desc \"英語の説明\"（--print なら絵と説明なしで雛形だけ出す）")
     img = cv2.imread(a.image)
     if img is None: die(f"絵が読めない: {a.image}")
@@ -115,7 +143,7 @@ if __name__ == "__main__":
     shutil.copyfile(a.image, os.path.join(root, "mascot.png"))
     hp = os.path.join(root, "poses", "pose_home.png")
     if not os.path.exists(hp) or a.force: shutil.copyfile(a.image, hp)
-    cfg = build(name, a.desc, a.pronoun, a.views, a.gestures, mode, a.pedestal)
+    cfg = build(name, a.desc, a.pronoun, a.views, a.gestures, mode, a.pedestal, a.extras)
     with open(cfgp, "w", encoding="utf-8") as f: json.dump(cfg, f, ensure_ascii=False, indent=1)
     print(f"作った: {root}（姿勢 {len(cfg['poses'])}: {', '.join(cfg['poses'])}、pairs {len(cfg['pairs'])}）")
     print("次: vm poses <作業フォルダ> poses --dry-run で描く予定を見てから、references/new-character.md の順に")
