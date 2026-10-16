@@ -21,7 +21,12 @@ BACKENDS = ("codex", "chat", "chat+codex")
 
 def img_backend(argv, cfg):
     """描く道具を決める。--img が config の "img" より優先。どちらも無ければ codex（今まで通りの /img）。"""
-    v = argv[argv.index("--img") + 1] if "--img" in argv and argv.index("--img") + 1 < len(argv) else cfg.get("img", "codex")
+    if "--img" in argv:
+        i = argv.index("--img") + 1
+        if i >= len(argv) or argv[i].startswith("-"): die(f"--img の後に {' | '.join(BACKENDS)} のどれかを書く")   # 黙って codex に落ちない
+        v = argv[i]
+    else:
+        v = cfg.get("img", "codex")
     if v not in BACKENDS: die(f"--img / config.img は {' | '.join(BACKENDS)} のどれか: {v}")
     return v
 

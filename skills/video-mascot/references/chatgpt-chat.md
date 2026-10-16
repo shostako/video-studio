@@ -20,7 +20,7 @@ cd ~/.claude/skills/video-mascot/scripts/chatimg && npm install    # playwright-
 node.exe "$(wslpath -w login.mjs)"                                  # 専用 Chrome が開く。chatgpt.com に手でログイン（2段階認証も）
 ```
 
-- プロファイルは `%LOCALAPPDATA%\video-studio\chatgpt-chat-profile`（`CHATGPT_CHAT_PROFILE` で変えられる）。CDP のポートは 9333（`CHATGPT_CHAT_PORT`）。
+- プロファイルは `%LOCALAPPDATA%\video-studio\chatgpt-chat-profile`（`CHATGPT_CHAT_PROFILE` で変えられる）。CDP のポートは固定せず Chrome に空きを選ばせ、プロファイルの `DevToolsActivePort` で専用の Chrome か確かめてからつなぐ（別の Chrome は操作も終了もしない）。
 - ログインは1回でよい。Chrome を閉じても、次に描くときに最小化で起動してログインしたまま描ける（新PCで確かめた）。ログインが切れると終了コード 3。`login.mjs` をやり直す。
 - 専用 Chrome だけを閉じるのは `node.exe "$(wslpath -w close.mjs)"`（普段使いの Chrome には触らない）。
 

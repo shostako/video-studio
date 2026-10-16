@@ -51,6 +51,9 @@ def test_backend_default_is_codex():
     assert poses.img_backend(["vm", "w", "poses", "--img", "chat"], {"img": "codex"}) == "chat"   # 引数が config より優先
     with pytest.raises(SystemExit):
         poses.img_backend(["vm", "w", "poses", "--img", "dalle"], {})
+    for argv in (["vm", "w", "poses", "--img"], ["vm", "w", "poses", "--img", "--dry-run"]):   # 値が無いのに codex に落ちない
+        with pytest.raises(SystemExit):
+            poses.img_backend(argv, {"img": "chat"})
 
 
 def test_tool_choice():

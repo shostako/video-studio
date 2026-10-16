@@ -1,7 +1,7 @@
 // 専用プロファイルの Chrome を起動し、CDP で Playwright を繋ぐ。
 // 人が一度手でログインしたプロファイルを、次からもそのまま使う。普段使いのプロファイルには触らない。
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 
@@ -21,35 +21,48 @@ export const PROFILE_DIR =
     'video-studio',
     'chatgpt-chat-profile',
   );
-export const PORT = Number(process.env.CHATGPT_CHAT_PORT || 9333);
-
-async function cdpAlive() {
+// ポートの先の CDP の ws の道（/devtools/browser/<id>）。繋がらなければ null
+async function cdpWsPath(port) {
   try {
-    const r = await fetch(`http://127.0.0.1:${PORT}/json/version`);
-    return r.ok;
+    const r = await fetch(`http://127.0.0.1:${port}/json/version`);
+    if (!r.ok) return null;
+    return new URL((await r.json()).webSocketDebuggerUrl).pathname;
   } catch {
-    return false;
+    return null;
   }
 }
 
+// 専用プロファイルの Chrome の CDP のポート。動いていなければ null。
+// ポートは固定にせず Chrome に空きを選ばせ（--remote-debugging-port=0）、Chrome がプロファイルに書く
+// DevToolsActivePort（1行目がポート、2行目が ws の道）と、そのポートの先の ws の道が一致する時だけ使う。
+// 別の Chrome がたまたま同じポートを開いていても、取り違えて操作したり閉じたりしない。
+export async function ownedPort() {
+  try {
+    const [port, path] = readFileSync(join(PROFILE_DIR, 'DevToolsActivePort'), 'utf8').split(/\r?\n/);
+    if (Number(port) > 0 && (await cdpWsPath(Number(port))) === path) return Number(port);
+  } catch {}
+  return null;
+}
+
 export async function openBrowser({ minimized = false } = {}) {
-  if (!(await cdpAlive())) {
+  let port = await ownedPort();
+  if (!port) {
     const exe = CHROME_CANDIDATES.find((p) => existsSync(p));
     if (!exe) throw new Error('Chrome が見つからない。CHATGPT_CHAT_CHROME で場所を指定しろ');
     mkdirSync(PROFILE_DIR, { recursive: true });
     const args = [
       `--user-data-dir=${PROFILE_DIR}`,
-      `--remote-debugging-port=${PORT}`,
+      '--remote-debugging-port=0',
       '--no-first-run',
       '--no-default-browser-check',
     ];
     if (minimized) args.push('--start-minimized');
     args.push('https://chatgpt.com/');
     spawn(exe, args, { detached: true, stdio: 'ignore' }).unref();
-    for (let i = 0; i < 60 && !(await cdpAlive()); i++) await new Promise((r) => setTimeout(r, 500));
-    if (!(await cdpAlive())) throw new Error(`Chrome の CDP (port ${PORT}) に繋がらない`);
+    for (let i = 0; i < 60 && !(port = await ownedPort()); i++) await new Promise((r) => setTimeout(r, 500));
+    if (!port) throw new Error('専用プロファイルの Chrome の CDP に繋がらない（同じプロファイルの Chrome が CDP なしで開いていたら閉じてから）');
   }
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
   let page = context.pages().find((p) => p.url().startsWith('https://chatgpt.com')) || context.pages()[0];
   if (!page) page = await context.newPage();
