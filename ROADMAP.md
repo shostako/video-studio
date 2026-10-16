@@ -23,6 +23,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - `vs accent` の点数が本物の声で耳の判定と合うか（`--thresh` 1.5 半音は仮の値。Gemini TTS の声で「薄い板」の良い版・崩れた版を測って比べる）
 - 二次運動（`--motion on`）と今までの動きの見比べ。首の傾き・うなずき・予備動作の大きさが実物の絵で自然か（`vm render <作業フォルダ> --motion on --mode white --from 0 --to 20` と既定を並べる）
 - 作った機能を既定にするかの判断
+- Chat の経路（`--img chat`）を新PCで準備（`references/chat-img.md`）して、実際の作業フォルダで回す。Chat 側の上限に当たった時の文言を記録から `LIMIT_RE` に固め、Codex への切り替えが実物で動くかを見る。Chat と Codex の絵の大きさ・画風が揃うか
 - マスコットの向き・顔・視線の絵（`docs/mascot-views-spec.md` の段階 A）を `/img` で描き、揃い（足元・背の高さ・向きの取り違え）を確かめる。別の作業フォルダ `<名前>-views` で
 - 新しいキャラ（別の絵）で `references/new-character.md` を通して試す。`vm init` の雛形・`vm face` の測った範囲・`anchor.mode: feet` が実物の絵で合うか
 - 足すポーズ（`docs/mascot-poses-spec.md` の段階 A: 考える・お辞儀・片手を挙げる・伸び）を `/img` で描き、足が動いていないか・顔が見えるか・中割りが少しずつ動くか・`scale` 固定で大きさが自然かを見る。良ければ段階 B（屈む・軽い屈伸）
@@ -45,4 +46,5 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 新PCで実物を回した結果を直した（2026-10-16）。`vm views` と `vm render`（boot）が、靴でない所（紺のズボンの裾）を軸足に拾った姿勢を知らせ `feet` を勧める（`vm views` の足元・背は色に依らずに測る）。`vm face` は目を頭の辺りの高さの揃った2つの塊から、口を目の下の目の幅の中から探し、怪しい範囲は書かない。中割りの言い方に `inbetween_prompt: "percent"`（opt-in、`vm init` は書く）。手順書に枚数・上限・再開。setup の /img を1行に
 - 足すポーズの仕様を書いた（`docs/mascot-poses-spec.md`、2026-10-16）。段階 A（`think`・`bow`・`raise_r`・`stretch`）、B（`crouch`・`knee_bend`）、ターンは向きの絵をつなぐ形で後回し。`vm init --extras a|ab` が雛形を書く。背が変わるポーズの大きさを固定する `poses.<名前>.scale`（opt-in）
 - 新しいキャラの基本の立ち姿を「両手を前で軽く組む」にした（手順書の元の絵の決まり、`vm init --redraw-home`、2026-10-16）
+- 絵を ChatGPT の通常の Chat 画面で描く経路（opt-in、`vm poses --img chat`、上限で `/img` に切り替え）。`chat_img.py`（Windows 側 Playwright）と `img_chat.sh`（WSL から呼ぶ）、手順書 `references/chat-img.md`。旧PC で参照画像の編集を Chat 経由で通し、Codex の枠 0% でも描けることを確かめた（2026-10-16）
 - 新PCで #18 を確かめた結果を直した: 中割りの各枚の様子 `ib_steps`（turn→present の腕の段階）、お辞儀の雛形を強め、背の比の想定 `expect_height` を `vm views` が見る（どれも opt-in、2026-10-16）

@@ -35,4 +35,7 @@ for t in codex node; do
   esac
 done
 if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where）"; else say "NG   /img が使えない: $why"; ok=0; fi
+# Chat で描く経路（opt-in、vm poses --img chat）。無くても既定の /img で描けるので ok は変えない（-- で知らせるだけ）
+if [ -n "${VM_CHAT_IMG_PY:-}" ] && [ -x "$VM_CHAT_IMG_PY" ]; then say "ok   Chat で描く（--img chat。$VM_CHAT_IMG_PY。ログインは references/chat-img.md）"
+else say "--   Chat で描く（--img chat）は未設定: VM_CHAT_IMG_PY（Windows 側の venv の python.exe）。使う時だけ references/chat-img.md"; fi
 [ $ok -eq 1 ] && say "全部そろっている" || say "足りないものがある"; [ $ok -eq 1 ]

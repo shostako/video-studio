@@ -11,7 +11,7 @@ description: 解説の台詞とマスコットの絵1枚から、口パク・身
 |---|---|
 | 主動画（別に用意）、台詞、マスコットの絵1枚 | 主動画の上でマスコットが喋る動画（`out/mascot.webm` は背景透明の素材、重ねた完成品は `--out` で指定） |
 
-費用: **追加の支払いなし**。声 = 手元の Irodori-TTS、絵 = `/img`（ChatGPT Plus の Codex の枠。Codex の作業・燕と共有）。生成した声には、聞こえない電子透かしが自動で入る（消さない）。
+費用: **追加の支払いなし**。声 = 手元の Irodori-TTS、絵 = `/img`（ChatGPT Plus の Codex の枠。Codex の作業・燕と共有）。Codex の枠を使わずに ChatGPT の通常の Chat 画面で描く経路もある（opt-in、`vm poses ... --img chat`。上限が出たら残りは `/img`。references/chat-img.md）。生成した声には、聞こえない電子透かしが自動で入る（消さない）。
 
 ## 準備（機体ごとに初回だけ）
 
@@ -64,5 +64,6 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 - references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md。足すポーズ（考える・お辞儀・伸びなど。`vm init --extras`）は docs/mascot-poses-spec.md
 - references/new-character.md — 新しいキャラの絵から、雛形・姿勢・向き・部品・足元までを通す手順と、描かせる文の書き方で分かったこと
 - references/pose-design.md — 姿勢と pairs の決め方、描かせる時の注意、口・目の範囲の測り方
+- references/chat-img.md — Codex の枠を使わず Chat 画面で描く経路（`--img chat`）の準備・ログイン・分かっていること
 - references/lessons.md — うまくいかなかった所と直し方（声・絵・切り抜き・足元・重ね）
 - assets/examples/icm_explainer/ — 実例（射出圧縮成形の解説、69秒、姿勢6・中割り30）
