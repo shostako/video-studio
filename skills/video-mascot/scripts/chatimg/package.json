@@ -1,0 +1,9 @@
+{
+  "name": "chatimg",
+  "private": true,
+  "type": "module",
+  "description": "ChatGPT の通常 Chat 画面で画像を描く（vm poses --img chat の中身）",
+  "dependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

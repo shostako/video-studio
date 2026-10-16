@@ -5,6 +5,9 @@
                                         （config の inbetween_prompt: "chain" なら、前の1枚だけを参照に少しずつ動かして順に描く）
   vm poses <作業フォルダ> all           上の3つを順に
   オプション: -j N（並列数、既定4）  --dry-run（描く予定だけ出す）  --only 語（出力名にその語を含むものだけ）
+            --img codex|chat|chat+codex（描く道具。既定 codex = /img。config の "img" でも指定できる。
+              chat は ChatGPT の通常 Chat 画面で1枚ずつ描く（references/chatgpt-chat.md）。
+              chat+codex は chat で描き、Chat の上限かログイン切れで止まったら残りを /img に切り替える）
 使用量の上限（img の終了コード 4）が出たら止める。止まったら時間をおいて同じコマンドをもう一度（描けた分は飛ばす）。"""
 import os, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +15,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, die, gaze_keys, pose_view
 
 IMG = os.path.expanduser("~/.claude/skills/img/scripts/img.sh")
+CHATIMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chatimg", "chatimg.sh")
+BACKENDS = ("codex", "chat", "chat+codex")
+
+
+def img_backend(argv, cfg):
+    """描く道具を決める。--img が config の "img" より優先。どちらも無ければ codex（今まで通りの /img）。"""
+    if "--img" in argv:
+        i = argv.index("--img") + 1
+        if i >= len(argv) or argv[i].startswith("-"): die(f"--img の後に {' | '.join(BACKENDS)} のどれかを書く")   # 黙って codex に落ちない
+        v = argv[i]
+    else:
+        v = cfg.get("img", "codex")
+    if v not in BACKENDS: die(f"--img / config.img は {' | '.join(BACKENDS)} のどれか: {v}")
+    return v
+
+
+def img_tool(backend, fell_back):
+    """この1枚を描く道具のパスと、並列にしてよいか。chat は画面が1つなので1枚ずつ。"""
+    if backend == "codex" or (backend == "chat+codex" and fell_back): return IMG, True
+    return CHATIMG, False
+
+
+def chat_should_fall_back(backend, rc):
+    """chat+codex で、chat が上限（4）かログイン切れ（3）を返したら /img に切り替える。"""
+    return backend == "chat+codex" and rc in (3, 4)
 KEEP = ("Edit this exact image. Keep EVERYTHING identical to the input image: the same character, same pose, same hands, same hair, same clothes, same lighting, "
         "same camera framing, same position and size, same plain white background. Change ONLY")
 STEP_KEEP = ("Edit this exact image. Keep everything else identical to the input image: the same character, same hair, same clothes, same lighting, "
@@ -132,9 +160,10 @@ def chain_stale(P):
 
 
 LIMIT = threading.Event()   # /img が使用量の上限（終了コード 4）を返した
+FELL_BACK = threading.Event()   # chat+codex で chat から /img に切り替えた
 
 
-def run_jobs(jobs, nworkers, dry, only=None):
+def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
     if only: jobs = [j for j in jobs if only in os.path.basename(j[0])]
     todo = [j for j in jobs if not os.path.exists(j[0])]
     print(f"描く {len(todo)} 枚（済み {len(jobs) - len(todo)}）")
@@ -146,11 +175,21 @@ def run_jobs(jobs, nworkers, dry, only=None):
         out, prompt, refs = job
         if stop.is_set() or os.path.exists(out): return
         os.makedirs(os.path.dirname(out), exist_ok=True)
-        for _ in range(2):
-            cmd = [IMG, "-p", prompt] + sum([["-r", r] for r in refs], []) + ["-o", out]
+        tries = 0
+        while tries < 2:
+            tool, _ = img_tool(backend, FELL_BACK.is_set())
+            cmd = [tool, "-p", prompt] + sum([["-r", r] for r in refs], []) + ["-o", out]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=700)
             if r.returncode == 0 and os.path.exists(out): break
+            if tool == CHATIMG and chat_should_fall_back(backend, r.returncode):
+                if not FELL_BACK.is_set():
+                    FELL_BACK.set()
+                    why = "上限" if r.returncode == 4 else "ログイン切れ"
+                    print(f"Chat の{why}（終了コード {r.returncode}）。残りは /img（Codex の枠）で描く", flush=True)
+                continue                    # 同じ枚を /img で描き直す（回数に数えない）
             if r.returncode == 4: stop.set(); LIMIT.set(); print("使用量の上限（終了コード 4）。時間をおいて、同じコマンドをもう一度", flush=True); return
+            if tool == CHATIMG and r.returncode == 3: stop.set(); print("Chat のログインが切れた。chatimg の login.mjs でログインし直す", flush=True); return
+            tries += 1
             time.sleep(5)
         with lock:
             done[0] += 1; print(f"[{done[0]}/{len(todo)}] {'ok' if os.path.exists(out) else 'FAIL'} {os.path.basename(out)}", flush=True)
@@ -159,7 +198,14 @@ def run_jobs(jobs, nworkers, dry, only=None):
         pending = {j[0] for j in todo if not os.path.exists(j[0])}       # 描けなかった絵もここに残り、それを参照する枚は次の実行まで待つ
         ready = [j for j in rest if not any(r in pending for r in j[2])]
         if not ready: break
-        with ThreadPoolExecutor(nworkers) as ex: list(ex.map(run, ready))
+        if img_tool(backend, FELL_BACK.is_set())[1]:
+            with ThreadPoolExecutor(nworkers) as ex: list(ex.map(run, ready))
+        else:                                   # chat は画面が1つなので1枚ずつ。/img に切り替えたら残りは並列に戻す
+            for i, j in enumerate(ready):
+                if FELL_BACK.is_set():
+                    with ThreadPoolExecutor(nworkers) as ex: list(ex.map(run, ready[i:]))
+                    break
+                run(j)
         rest = [j for j in rest if j not in ready]
     miss = [j for j in todo if not os.path.exists(j[0])]
     print("終わり", len(todo) - len(miss), "/", len(todo), "（足りない分は同じコマンドを再実行）" if miss else "")
@@ -171,6 +217,8 @@ if __name__ == "__main__":
     if len(a) < 2: die("使い方: vm poses <作業フォルダ> poses|parts|inbetweens|all [-j N] [--dry-run] [--only 語]")
     P = Proj(a[0]); what = a[1]; nw = int(sys.argv[sys.argv.index("-j") + 1]) if "-j" in sys.argv else 4
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None; dry = "--dry-run" in sys.argv
+    backend = img_backend(sys.argv, P.cfg)
+    if backend != "codex": print(f"描く道具: {backend}")
     if not os.path.exists(P.p("mascot.png")) and what in ("poses", "all"): die("mascot.png（元のマスコットの絵）が無い")
     steps = {"poses": [jobs_poses], "parts": [jobs_parts], "inbetweens": [jobs_ib], "all": [jobs_poses, jobs_parts, jobs_ib]}[what]
     if jobs_ib in steps:
@@ -182,6 +230,6 @@ if __name__ == "__main__":
             print("chain の中割りで、前の枚が無いか新しいので描き直す（元は ib/old/ に移した）:", ", ".join(os.path.basename(x) for x in old))
     ok = True
     for f in steps:
-        ok = run_jobs(f(P), nw, dry, only) and ok
+        ok = run_jobs(f(P), nw, dry, only, backend) and ok
         if not ok and not dry and f is jobs_poses: print("姿勢の絵が足りないので、続きは止める"); break
     sys.exit(0 if ok else (4 if LIMIT.is_set() else 1))   # 足りない絵があれば失敗で返す（4 は /img の使用量の上限）
