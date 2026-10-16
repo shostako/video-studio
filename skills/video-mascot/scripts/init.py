@@ -1,7 +1,8 @@
 """新しいマスコットの作業フォルダを、絵1枚と英語の説明から作る（キャラに依らない雛形。手順は references/new-character.md）。
-  vm init <作業フォルダ> <元の絵.png> --desc "英語の説明" [--pronoun she|he|it|they] [--views none|a|ab|abc] [--gestures] [--extras none|a|ab] [--pedestal] [--force]
+  vm init <作業フォルダ> <元の絵.png> --desc "英語の説明" [--pronoun she|he|it|they] [--views none|a|ab|abc] [--gestures] [--extras none|a|ab] [--redraw-home] [--pedestal] [--force]
   vm init <作業フォルダ> --print [--pronoun ...] [--views ...] [--gestures]    書き込まずに、できる config.json を出すだけ
-作るもの: mascot.png（元の絵の写し）、poses/pose_home.png（元の絵をそのまま home に使う）、config.json。
+作るもの: mascot.png（元の絵の写し）、poses/pose_home.png（元の絵をそのまま home に使う。--redraw-home なら作らず、vm poses が元の絵から
+基本の立ち姿（両手を体の前で軽く組む）を描く）、config.json。
 config.json には、キャラの説明・代名詞・足元の揃え方（黒い靴が見つかれば boot、無ければ色に依らない feet）・姿勢の雛形
 （--views で向き・視線の段階、--gestures で正面の基本の身振り）・pairs・transition・gaze を書く。
 口と目の範囲（face）は書かない（部品の差分を描いてから vm face で測る）。台詞（voice）と events は台本を決めてから書く。
@@ -12,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import boot_anchor, feet_anchor, die
 
 POSS = {"she": "her", "he": "his", "it": "its", "they": "their"}   # 描かせる文の所有格（mascot.pronoun。既定 she）
-HOME_DESC = "standing naturally and facing the camera almost straight on, hands lightly clasped in front of {p} waist, calm closed mouth"
+HOME_DESC = ("standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of {p} lower belly "
+             "(the arms do NOT hang down at {p} sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth")
 IRIS = "{p} irises sit near the corners of {p} eyes on the image-{s} side; do not copy the eye direction of the reference image"
 
 
@@ -40,12 +42,12 @@ def view_presets(tiers):
             pairs.append([f"turn_{k}", f"present_{k}"])
         if "b" in tiers:
             out[f"side_{k}"] = {"desc": (f"{{p}} whole body turned 90 degrees (full side profile) so that {{p}} nose and {{p}} toes point toward the {S} edge of the image, "
-                                         f"standing on exactly the same spot as the reference, arms relaxed at {{p}} sides, head facing the same direction as {{p}} body, "
+                                         f"standing on exactly the same spot as the reference, hands lightly clasped in front of {{p}} waist, head facing the same direction as {{p}} body, "
                                          "calm closed mouth, same height as the reference"),
                                 "refs": [f"turn_{k}"] if "a" in tiers else ["home"], "yaw": 90 * sign}
     if "c" in tiers:
         out["back"] = {"desc": ("seen from behind: {p} back faces the camera and only the back of {p} head is visible (the face is not visible), "
-                                "arms relaxed at {p} sides, standing on exactly the same spot and at the same height as the reference"),
+                                "hands lightly clasped in front of {p} waist, standing on exactly the same spot and at the same height as the reference"),
                        "yaw": 180, "face": False}
         out["lean_in"] = {"desc": ("facing the camera, leaning {p} upper body slightly forward toward the viewer, both hands lightly clenched in front of {p} chest, "
                                    "calm closed mouth, feet on exactly the same spot as the reference"),
@@ -117,6 +119,7 @@ if __name__ == "__main__":
     ap.add_argument("--views", choices=["none", "a", "ab", "abc"], default="a", help="向き・視線の姿勢の段階（既定 a）")
     ap.add_argument("--gestures", action="store_true", help="正面の基本の身振り open・point_l・point_r を足す")
     ap.add_argument("--extras", choices=["none", "a", "ab"], default="none", help="足すポーズの段階（a: 考える・お辞儀・片手を挙げる・伸び、b: 屈む・軽い屈伸。docs/mascot-poses-spec.md）")
+    ap.add_argument("--redraw-home", action="store_true", help="元の絵を home にせず、元の絵から基本の立ち姿（両手を前で軽く組む）を描かせる（vm poses ... poses --only home）")
     ap.add_argument("--pedestal", action="store_true", help="台座つきの絵（floor.clean: true。黒い靴と紺の服の前提の処理）")
     ap.add_argument("--print", action="store_true", help="書き込まずに config.json を出す")
     ap.add_argument("--force", action="store_true", help="既にある config.json を上書きする")
@@ -142,7 +145,10 @@ if __name__ == "__main__":
     for d in ("poses", "parts", "ib", "voice", "out"): os.makedirs(os.path.join(root, d), exist_ok=True)
     shutil.copyfile(a.image, os.path.join(root, "mascot.png"))
     hp = os.path.join(root, "poses", "pose_home.png")
-    if not os.path.exists(hp) or a.force: shutil.copyfile(a.image, hp)
+    if a.redraw_home and os.path.exists(hp):     # 前の home（元の絵の写し、前のキャラの絵）は使わず描き直す。消さずに脇へ
+        os.replace(hp, os.path.join(root, "poses", "pose_home.old.png")); print("前の home を poses/pose_home.old.png に移した", file=sys.stderr)
+    if a.redraw_home: print("home は描かせる: 次に vm poses <作業フォルダ> poses --only home。描けた home を確かめてから残りの姿勢を描く（どの姿勢も home を参照する）", file=sys.stderr)
+    elif not os.path.exists(hp) or a.force: shutil.copyfile(a.image, hp)
     cfg = build(name, a.desc, a.pronoun, a.views, a.gestures, mode, a.pedestal, a.extras)
     with open(cfgp, "w", encoding="utf-8") as f: json.dump(cfg, f, ensure_ascii=False, indent=1)
     print(f"作った: {root}（姿勢 {len(cfg['poses'])}: {', '.join(cfg['poses'])}、pairs {len(cfg['pairs'])}）")

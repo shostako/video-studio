@@ -20,6 +20,15 @@
 | 全身・縦長（9:16 くらい）・正面寄り・口を閉じた落ち着いた顔 | 口の差分と重ねが崩れにくい |
 | 背景はほぼ白の無地。影・床・グラデーションなし。透明にしない | 切り抜き（透明）は描画の側で白から作る |
 | 足が両方見える | 足元を揃える基準になる |
+| **両手を体の前で軽く組む**（腕をだらりと下げない） | 基本の立ち姿（`home`）になり、動画の大半はこの姿勢で映る。手を下げたままだとだらしなく見えた（2026-10-16 のユーザーの判定）。身振り・向きの絵も手を組んだ所から描く |
+
+元の絵から描かせるときの英語の指示の例（`<説明>` は 2 の `--desc` と同じもの）:
+
+```
+<説明> Full body, standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of the lower belly (the arms do NOT hang down at the sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth. Vertical 9:16 portrait, plain white background, no shadow, no floor, no text.
+```
+
+手を下げた絵しか無いときは、2 で `--redraw-home` を付けると、その絵から手を組んだ `home` を描かせる。
 
 台座つきのフィギュアは `--pedestal`（台座を消す処理は黒い靴と紺の服を前提にしている。違う色の服なら台座なしの絵を描かせ直す方が早い）。
 
@@ -36,13 +45,14 @@ vm init ~/.local/share/video-scene/work/<名前> <元の絵.png> \
 - `--gestures`: 正面の身振り（両手を開く・左右へ差し出す）。台本に合わせて config で足し引きする。
 - `--extras`: 解説で使う正面のポーズ（`a` = 考える・軽いお辞儀・片手を挙げる・軽い伸び、`ab` で屈む・軽い屈伸も）。一覧と使いどころは `docs/mascot-poses-spec.md`。背が変わるポーズには `"scale": 1.0` が入る（背の高さで大きさを揃えない）。前からある作業フォルダには、その仕様の config の例を写して足す。
 - 黒い靴が見つかれば足元の揃え方は `boot`、無ければ色に依らない `feet` を自動で選ぶ。
-- `home` は元の絵そのもの（描き直さない）。
+- `home` は元の絵そのもの（描き直さない）。元の絵の手が下がっているなら `--redraw-home`: `home` を写さず、3 の最初に `vm poses <作業フォルダ> poses --only home` で、元の絵から手を前で組んだ立ち姿を描かせる（どの姿勢も home を参照するので、home を確かめてから残りを描く。まとめて流しても、home が描けるまで他は待つ）。
 - `vm init <作業フォルダ> --print --views ab` なら、書き込まずに雛形だけ見られる。
 
 ## 3. 姿勢の絵を描く
 
 ```bash
 vm poses <作業フォルダ> poses --dry-run          # 描く予定
+vm poses <作業フォルダ> poses --only home         # --redraw-home のときだけ。描けたら Read して、手が前で組めているか・同じキャラかを見る
 vm poses <作業フォルダ> poses --only head         # 体は正面のまま顔だけ横
 vm poses <作業フォルダ> poses --only turn         # 体ごと斜め
 vm poses <作業フォルダ> poses --only present      # 斜めで手を差し出す（turn_* を参照するので後）
