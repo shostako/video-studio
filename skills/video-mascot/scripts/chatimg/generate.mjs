@@ -51,7 +51,8 @@ const listImages = () =>
 const pickGenerated = (imgs, before) => {
   const c = imgs.filter((i) => i.ok && !before.has(i.src) && !/添付|attach|upload/i.test(i.alt));
   const named = c.filter((i) => /生成|generated/i.test(i.alt));
-  return (named.length ? named : c).at(-1)?.src || null;
+  // 回収（--grab-only）は前後の比較ができないので、生成画像と名の付いた物だけ拾う
+  return (named.length || opt.grabOnly ? named : c).at(-1)?.src || null;
 };
 const STOP_SEL = '[data-testid="stop-button"], button[aria-label*="停止"], button[aria-label*="Stop"]';
 
