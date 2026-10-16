@@ -13,6 +13,7 @@ __pycache__/
 .env
 # テスト用の素材だけは入れる
 !tests/fixtures/**
-
 # chatimg（node の依存）
 node_modules/
+# fixtures の下でもバイトコードは入れない（上の ! で戻ってしまうため）
+tests/fixtures/**/__pycache__/

@@ -77,6 +77,41 @@ def gesture_presets():
     return out, [["home", n] for n in out]
 
 
+def gesture_steps():
+    """home → point_k の中割り各枚の腕の様子（chain でも1枚目で腕がほぼ伸び切ったため。1〜3枚目は「まだ伸ばさない」と言い切る）。"""
+    out = {}
+    for k, s, S in (("l", "left", "LEFT"), ("r", "right", "RIGHT")):
+        out[f"home>point_{k}"] = [
+            f"the movement has only just started: both hands are still clasped in front of {{p}} body exactly as in the start pose; only {{p}} hand on the image-{s} side has begun to loosen from the other hand",
+            f"{{p}} hand on the image-{s} side has just left the other hand and is beside {{p}} hip at waist height, elbow clearly bent, forearm pointing forward; the arm is NOT extended yet",
+            f"{{p}} hand on the image-{s} side is at lower-chest height in front of {{p}} body, elbow bent at about a right angle, palm starting to turn up; the arm is still bent, NOT extended",
+            f"{{p}} arm on the image-{s} side is reaching out toward the {S} edge of the image at chest height, elbow still slightly bent, palm open",
+            f"{{p}} arm on the image-{s} side is almost fully extended toward the {S} edge of the image with an open palm, just short of the end pose"]
+    return out
+
+
+def extra_steps(tiers):
+    """足すポーズの中割り各枚の様子。
+    お辞儀: 段階が無いと5枚目が終わりの絵より深くなった。終わりの絵の角度（45 度）に向けて 8〜40 度で刻むと、3枚目で終わりの絵の深さに
+    達し、5枚目は背の比 0.90 まで行き過ぎた（終わりの絵は 0.958）。chain の編集では角度の数字が深く効くので、4〜20 度の浅い数字で刻む
+    （実物で 0.999 → 0.987 → 0.985 → 0.976 → 0.954、2026-10-16）。
+    伸び: 4枚目まで胸の前のまま5枚目で頭の上へ跳んだ。手を離して体の横から上げ、顔の前を通さない。"""
+    if "a" not in tiers: return {}
+    return {
+        "home>bow": [
+            "the bow has only just started: {p} upper body is bent forward only about 4 degrees, {p} head is almost as high as in the start pose",
+            "{p} upper body is bent forward about 8 degrees, {p} head lowered very slightly",
+            "{p} upper body is bent forward about 12 degrees, {p} head lowered a little; still a shallow bow",
+            "{p} upper body is bent forward about 16 degrees; still a shallow bow, do NOT bend further than this",
+            "{p} upper body is bent forward about 20 degrees, a shallow bow just short of the end pose; do NOT bend further than this"],
+        "home>stretch": [
+            "the movement has only just started: both hands are still clasped together in front of {p} body, lifted only slightly",
+            "{p} hands have separated and each hand is rising at the sides of {p} body to chest height, elbows bent and pointing outward; the hands do NOT pass in front of {p} face",
+            "each hand is at shoulder height at the sides of {p} head, elbows bent and pointing outward, palms facing forward; {p} face stays fully visible",
+            "both hands are above {p} shoulders beside {p} head, rising toward the top of {p} head, elbows bent outward",
+            "both hands meet just above the top of {p} head, elbows bent outward, just short of the end pose"]}
+
+
 def extra_presets(tiers):
     """足すポーズ（docs/mascot-poses-spec.md）。どれも正面で、home と行き来する（中割りあり）。背の高さが変わるポーズは
     "scale": 1.0（背の高さで大きさを揃えない。揃えると伸びは縮み、お辞儀・屈むは大きくなる）。
@@ -127,7 +162,9 @@ def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot",
            "poses": fill(poses, pron), "pairs": pairs,
            "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode},
            "inbetween_prompt": "chain"}
-    if tiers and view_steps(tiers): cfg["ib_steps"] = fill_steps(view_steps(tiers), pron)
+    steps = {**(view_steps(tiers) if tiers else {}), **(gesture_steps() if gestures else {}),
+             **(extra_steps(extras) if extras != "none" else {})}
+    if steps: cfg["ib_steps"] = fill_steps(steps, pron)
     if tiers: cfg["transition"] = {"mode": "fade", "dur": 0.25}; cfg["gaze"] = {}
     cfg["events"] = []
     cfg["voice"] = {"candidates": [], "lines": []}

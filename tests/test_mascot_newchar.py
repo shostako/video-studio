@@ -413,6 +413,21 @@ def test_ib_steps_add_per_frame_hint_opt_in(tmp_path):
     assert "ib_steps" not in init.build("x", "d", tiers="none")
 
 
+def test_init_ib_steps_for_gestures_and_extras():
+    """vm init は身振り（home→point_l/r）と足すポーズ（home→bow・stretch）にも ib_steps を書く。組は pairs にあるものだけ、どれも5枚。"""
+    import init
+    c = init.build("x", "d", "he", tiers="none", gestures=True, extras="a")
+    assert set(c["ib_steps"]) == {"home>point_l", "home>point_r", "home>bow", "home>stretch"}
+    assert all(len(v) == 5 for v in c["ib_steps"].values())
+    assert all(k.replace(">", " ") in {" ".join(p) for p in c["pairs"]} for k in c["ib_steps"])
+    assert "LEFT edge" in c["ib_steps"]["home>point_l"][4] and "RIGHT edge" in c["ib_steps"]["home>point_r"][4]
+    assert "do NOT bend further" in c["ib_steps"]["home>bow"][4] and "his face" in c["ib_steps"]["home>stretch"][1]
+    assert not any("{p}" in h for v in c["ib_steps"].values() for h in v)
+    both = init.build("x", "d", tiers="a", gestures=True, extras="a")["ib_steps"]
+    assert {"turn_l>present_l", "home>point_l", "home>bow"} <= set(both)
+    assert "ib_steps" not in init.build("x", "d", tiers="none", gestures=False, extras="none")
+
+
 def test_views_expect_height_flags_shallow_bow():
     """expect_height（opt-in）の範囲の外を注意する。書かない姿勢は今まで通り（scale なら比べない、無ければ ±3%）。"""
     import views, init
