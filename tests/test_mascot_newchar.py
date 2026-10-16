@@ -215,6 +215,10 @@ def test_face_suspicious_flags():
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180]}) == []
     assert "口が目より上" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 60, 170, 90]})
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [0, 150, 400, 700]})       # 口が体じゅうに広がった
+    assert "目が片方しか取れていない" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180], "eye_single": True})
+    near, far = (600, 100, 100, 130, 125), (200, 160, 102, 175, 122)                 # 斜めの顔: 奥の目は手前の 1/3
+    assert face.eye_pair([near, far]) == ([100, 100, 175, 125], 2)
+    assert face.eye_pair([near])[1] == 1
 
 
 def _shoes_only_brown(im):
