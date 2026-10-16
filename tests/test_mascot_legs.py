@@ -105,7 +105,39 @@ def test_lock_legs_does_not_copy_hands_of_canon():
     assert sk < 0.05, sk
 
 
+def test_lock_legs_canon_scale_and_transform():
+    """canon_scale で基準の脚の大きさを変え、M は基準の足元を出来上がりの足元へ写す。"""
+    img, canon = wide(), bgr(sm.figure(0))
+    out, info = lib.lock_legs(img, canon, canon_scale=0.9)
+    M = info["M"]; a = lib.feet_anchor(canon); b = lib.feet_anchor(out)
+    assert M[0, 0] == pytest.approx(0.9) and M[1, 1] == pytest.approx(0.9)
+    assert (M[0, 0] * a[0] + M[0, 2]) == pytest.approx(b[0], abs=2)
+    assert (M[1, 1] * a[1] + M[1, 2]) == pytest.approx(b[1], abs=2)
+    w = lambda im: np.ptp(np.where(lib.fg_mask(im)[650])[0])
+    assert w(out) == pytest.approx(0.9 * w(canon), abs=3)                       # 足首の幅が 0.9 倍
+
+
+def test_lock_legs_band_stays_inside_the_image():
+    """帯が絵の上端より上に出る値でも、負の添字で絵の下の行を書き換えない。"""
+    img, canon = wide(), bgr(sm.figure(0))
+    out, info = lib.lock_legs(img, canon, cut=0.7, feather=0.69)
+    assert info["cut"] - info["feather"] == 0
+    assert np.array_equal(out[0], img[0])
+    assert np.abs(out[740:].astype(int) - canon[740:]).max() <= 1               # 足元より下（背景）は基準のまま。上の行の値が回り込まない
+
+
 # ---------- 書き出し ----------
+def read_frames(path, env):
+    import cv2
+    cap = cv2.VideoCapture(str(path)); out = []
+    while True:
+        ok, f = cap.read()
+        if not ok: break
+        out.append(f[:, :, ::-1])
+    assert out
+    return out
+
+
 @pytest.fixture(scope="module")
 def env(tmp_path_factory):
     e = dict(os.environ)
@@ -129,6 +161,17 @@ def test_render_with_legs_lock(tmp_path, env):
                        env=env, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
     assert "下半身の差し替え: home → ['point']" in r.stderr
+    frames_ = read_frames(out, env)
+    cfg["poses"]["point"]["scale"] = 0.9; cfg["poses"]["point"]["anchor"] = [235.0, 700.0]   # 大きさを変え、足元を手で書いても
+    (root / "config.json").write_text(json.dumps(cfg, ensure_ascii=False))
+    r = subprocess.run([sys.executable, "-B", str(RENDER), str(root), "--out", str(out), "--mode", "white"],
+                       env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr
+    for f_ in (frames_, read_frames(out, env)):                                  # どのコマでも、足首の左右の端は動かない
+        edges = []
+        for fr in f_:
+            m = lib.fg_mask(fr[:, :, ::-1].copy()); y = int(fr.shape[0] * 0.86); xs = np.where(m[y])[0]; edges.append((xs.min(), xs.max()))
+        e = np.array(edges); assert np.ptp(e[:, 0]) <= 4 and np.ptp(e[:, 1]) <= 4, (np.ptp(e[:, 0]), np.ptp(e[:, 1]))   # 呼吸の伸び縮みと縮小の丸めで 2〜3px。直す前は 8〜30px
     cfg["legs_lock"] = {"cut": 2}
     (root / "config.json").write_text(json.dumps(cfg, ensure_ascii=False))
     r = subprocess.run([sys.executable, "-B", str(RENDER), str(root), "--out", str(out), "--mode", "white"],

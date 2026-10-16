@@ -87,12 +87,17 @@ try: LEGS = legs_config(C.get("legs_lock"), PCFG, P.home)   # 下半身の差し
 except ValueError as e_: die(str(e_))
 LEGS_SRC = P.read_pose(LEGS["from"]) if LEGS else None
 LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
-def legs(img, *poses_):
-    if not LEGS or not all(q in LEGS_ON for q in poses_) or all(q == LEGS["from"] for q in poses_): return img
-    return lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"])[0]
+def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
+def legs(img, sc):
+    """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。"""
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc)
+    if info is None: return img, None
+    a_ = ANCH[LEGS["from"]]; M = info["M"]
+    return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
 if LEGS: print("下半身の差し替え:", LEGS["from"], "→", LEGS["poses"], file=sys.stderr)
+RAW = {}
 for p in P.poses:
-    img = legs(P.read_pose(p), p)
+    img = RAW[p] = P.read_pose(p)
     if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor", "scale")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
         die(f"姿勢 {p} の絵の大きさ {img.shape[1]}x{img.shape[0]} が home の {W0}x{H0} と違う（同じ大きさにしてから。docs/mascot-views-spec.md）")
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
@@ -116,6 +121,15 @@ elif AMODE == "manual":
     SCALE = {p: float(AN.get("scales", {}).get(p, PCFG[p].get("scale", 1.0))) for p in P.poses}
 else:
     ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: float(PCFG[p].get("scale", 1.0)) for p in P.poses}
+if LEGS and LEGS["from"] not in ANCH: die(f"legs_lock.from の姿勢 {LEGS['from']} の足元が無い（anchor.points に書く）")
+if LEGS:                                          # 足元と大きさを元の絵で決めてから差し替え、足元の点は元の姿勢の足元を写した点にする（手で書いた anchor も）
+    for p in P.poses:
+        if not legs_on(p): continue
+        img, a_ = legs(RAW[p], SCALE[p])
+        if a_ is None: continue
+        ANCH[p] = a_
+        if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
+        else: PB[p] = img
 REF = ANCH[P.home]
 print("軸足:", {p: tuple(round(float(v), 1) for v in a_) for p, a_ in ANCH.items()}, "大きさ:", {p: round(float(v), 3) for p, v in SCALE.items()}, file=sys.stderr)
 PARTS = {}
@@ -155,11 +169,12 @@ def ib_item(item, src_pose):
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
-    img = legs(img, a_, b_)                       # 両端とも差し替える姿勢なら、中割りも同じ下半身に
+    sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
+    lanc = None
+    if legs_on(a_, b_): img, lanc = legs(img, sc)  # 両端とも差し替える姿勢なら、中割りも同じ下半身に（足元の点も差し替えた脚から）
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
-    anc = DETECT(clean) if DETECT and not own else None
-    sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
+    anc = lanc if lanc is not None else (DETECT(clean) if DETECT and not own else None)
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
     allp = list(PARTS[src_pose].values())
     if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
