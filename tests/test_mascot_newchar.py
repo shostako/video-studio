@@ -194,6 +194,22 @@ def test_face_ignores_hair_and_hand_changes_in_variants(tmp_path):
     assert 195 <= mx0 and mx1 <= 275 and 226 <= my0 and my1 <= 285                    # 口だけ（手・服を含まない）
 
 
+def test_face_eyes_not_taken_from_symmetric_hair_or_brows(tmp_path):
+    """目の差分が、目より大きい左右対称の塊（前髪の房・眉）まで描き変えても、目の範囲は目に付く（Codex の指摘）。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    for k, part in (("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24))): _variant(base, part, sm.MOUTH_ROI).save(proj / f"parts/home_{k}.png")
+    for k, h in (("e1", 6), ("e2", 1)):
+        im = _variant(base, sm.eye_part(h), sm.EYE_ROI); d = ImageDraw.Draw(im)
+        d.rectangle([160, 150, 220, 172], fill=(70, 50, 40)); d.rectangle([250, 150, 310, 172], fill=(70, 50, 40))   # 眉・前髪（目より大きい）
+        im.save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    ex0, ey0, ex1, ey1 = r["eye_roi"]
+    assert ey0 >= 175 and ey1 <= 232 and 170 <= ex0 <= 196 and 274 <= ex1 <= 300
+    assert face.pick_eyes([(2000, 10, 10, 60, 30)]) == [10, 10, 60, 30]                 # 組が無ければ一番大きい塊
+
+
 def test_face_suspicious_flags():
     import face
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180]}) == []

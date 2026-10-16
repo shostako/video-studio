@@ -40,17 +40,24 @@ def head_box(img, frac=0.45):
     return [int(xs.min()), top, int(xs.max()) + 1, y1]
 
 
-def pick_eyes(boxes):
-    """両目: 高さが揃っていて、大きさが近い（2倍以内）2つの塊のうち、合わせて一番大きい組。組が無ければ一番大きい塊。
-    髪・服の変化は1つだけの塊になりやすく、目の組より選ばれにくい。"""
+def pick_eyes(boxes, head=None):
+    """両目: 目らしい組（高さが揃い、大きさが近く（2倍以内）、左右に離れていて、間が広すぎず、頭の左右の真ん中寄りにある2つの塊）のうち、
+    一番下の組（大きさが一番大きい組の 1/4 未満の組は外す）。目らしい組が無ければ一番大きい塊。
+    髪・眉は目より上にあるので、差分が左右対称に髪や眉まで描き変えていても、目より大きくても選ばれない。"""
     if not boxes: return None
-    best = None
+    cands = []
     for i, a in enumerate(boxes[:12]):
         for b in boxes[i + 1:12]:
-            h = max(a[4] - a[2], b[4] - b[2], 4)
-            if b[0] * 2 >= a[0] and abs((a[2] + a[4]) / 2 - (b[2] + b[4]) / 2) <= h * 0.6 and (best is None or a[0] + b[0] > best[0][0] + best[1][0]):
-                best = (a, b)
-    pair = best or (boxes[0],)
+            l, r = sorted((a, b), key=lambda c: c[1]); w = max(a[3] - a[1], b[3] - b[1], 4); h = max(a[4] - a[2], b[4] - b[2], 4)
+            if b[0] * 2 < a[0] or abs((a[2] + a[4]) / 2 - (b[2] + b[4]) / 2) > h * 0.6: continue    # 高さ・大きさが揃わない
+            if r[1] < l[3] or (r[1] + r[3]) / 2 - (l[1] + l[3]) / 2 > 6 * w: continue               # 重なる・離れすぎ
+            if head is not None:
+                hx0, hx1 = head[0], head[2]; mx = (l[1] + r[3]) / 2
+                if not hx0 + 0.2 * (hx1 - hx0) <= mx <= hx1 - 0.2 * (hx1 - hx0): continue           # 頭の端に寄った組（髪の房など）
+            cands.append((a[0] + b[0], (a[2] + a[4] + b[2] + b[4]) / 4, (a, b)))
+    if cands:
+        top = max(c[0] for c in cands); pair = max((c for c in cands if c[0] * 4 >= top), key=lambda c: (c[1], c[0]))[2]
+    else: pair = (boxes[0],)
     return [min(b[1] for b in pair), min(b[2] for b in pair), max(b[3] for b in pair), max(b[4] for b in pair)]
 
 
@@ -82,7 +89,7 @@ def _variants(P, pose, names):
 def measure(P, pose, head=None):
     """目を先に（頭の辺りの中で、高さの揃った2つの塊）、口はその下で目の幅の中から探す。差分が髪・手・服まで変えていても、そこは拾わない。"""
     base = P.read_pose(pose); H, W = base.shape[:2]; res = {}; hb = head or head_box(base)
-    eyes = [e for e in (pick_eyes(diff_boxes(base, v, region=hb)) for v in _variants(P, pose, EYES)) if e]
+    eyes = [e for e in (pick_eyes(diff_boxes(base, v, region=hb), hb) for v in _variants(P, pose, EYES)) if e]
     m = merge(eyes)
     if not m: return res
     (ex0, ey0, ex1, ey1), used, total = m; res["eye_roi"] = [max(0, ex0), max(0, ey0), min(W, ex1), min(H, ey1)]; res["eye_roi_n"] = f"{used}/{total}"
