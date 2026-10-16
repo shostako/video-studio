@@ -19,6 +19,7 @@ from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_heig
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
+from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from parts import map_rois
 
@@ -82,8 +83,16 @@ SEED = int(C.get("seed", 5)); NOD = onset_env(sm, FPS) if MOT and MOT["head"] el
 # ---------- 姿勢・部品・軸足 ----------
 FL = C.get("floor", {"clean": True}); H0, W0 = P.read_pose(P.home).shape[:2]; Y0 = int(FL.get("y0", round(H0 * 0.705)))
 PB, SH = {}, {}
+try: LEGS = legs_config(C.get("legs_lock"), PCFG, P.home)   # 下半身の差し替え（opt-in）。正面の姿勢と中割りの腰から下を、1つの姿勢の下半身に揃える
+except ValueError as e_: die(str(e_))
+LEGS_SRC = P.read_pose(LEGS["from"]) if LEGS else None
+LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
+def legs(img, *poses_):
+    if not LEGS or not all(q in LEGS_ON for q in poses_) or all(q == LEGS["from"] for q in poses_): return img
+    return lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"])[0]
+if LEGS: print("下半身の差し替え:", LEGS["from"], "→", LEGS["poses"], file=sys.stderr)
 for p in P.poses:
-    img = P.read_pose(p)
+    img = legs(P.read_pose(p), p)
     if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor", "scale")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
         die(f"姿勢 {p} の絵の大きさ {img.shape[1]}x{img.shape[0]} が home の {W0}x{H0} と違う（同じ大きさにしてから。docs/mascot-views-spec.md）")
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
@@ -146,6 +155,7 @@ def ib_item(item, src_pose):
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
+    img = legs(img, a_, b_)                       # 両端とも差し替える姿勢なら、中割りも同じ下半身に
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
     anc = DETECT(clean) if DETECT and not own else None

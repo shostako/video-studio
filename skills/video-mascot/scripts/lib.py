@@ -666,3 +666,86 @@ def gaze_track(nall, fps, spans, switches=(), yaw_of=None, lead=0.15):
     for s, e, lk in spans:
         for f in range(max(0, int(math.floor(s * fps))), min(nall, int(math.ceil(e * fps)))): out[f] = lk
     return out
+
+
+# ---------- 下半身の差し替え（config.legs_lock。opt-in）----------
+LEGS_DEFAULTS = {"from": None, "cut": 0.38, "feather": 0.03, "hand_zone": 0.45, "poses": None}
+
+
+def legs_config(value, poses_cfg, home):
+    """config.legs_lock を辞書か None（今までどおり）に。from は下半身を写す元の姿勢（既定 home）、
+    poses は差し替える姿勢（既定は正面の姿勢＝ yaw が無いか 0。元の姿勢は除く）。cut は切れ目の高さ（背の割合、足元から）、
+    feather は切れ目の上で溶かす帯（背の割合）、hand_zone は切れ目から足元までのうち、元の絵の手を残す上の割合。"""
+    if value is None or value is False: return None
+    if value is True: value = {}
+    if not isinstance(value, dict): raise ValueError(f"legs_lock は true/false か辞書: {value!r}")
+    bad = set(value) - set(LEGS_DEFAULTS)
+    if bad: raise ValueError(f"legs_lock に知らない項目: {sorted(bad)}")
+    out = {**LEGS_DEFAULTS, **value}
+    if out["from"] is None: out["from"] = home
+    if out["from"] not in poses_cfg: raise ValueError(f"legs_lock.from の姿勢が無い: {out['from']}")
+    if not 0.1 <= out["cut"] <= 0.7: raise ValueError(f"legs_lock.cut は 0.1〜0.7: {out['cut']}")
+    if not 0 < out["feather"] < out["cut"]: raise ValueError(f"legs_lock.feather は 0 より大きく cut より小さく: {out['feather']}")
+    if not 0 <= out["hand_zone"] <= 1: raise ValueError(f"legs_lock.hand_zone は 0〜1: {out['hand_zone']}")
+    if out["poses"] is None:
+        out["poses"] = [p for p, c in poses_cfg.items() if not c.get("yaw")]
+    else:
+        miss = [p for p in out["poses"] if p not in poses_cfg]
+        if miss: raise ValueError(f"legs_lock.poses の姿勢が無い: {miss}")
+    out["poses"] = [p for p in out["poses"] if p != out["from"]]
+    return out
+
+
+def _skin_mask(img):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV); h, s, v = cv2.split(hsv)
+    return ((h < 25) & (s > 30) & (s < 170) & (v > 120)).astype(np.uint8)
+
+
+def _body_edges(m, y, cx, W):
+    """行 y の前景のうち、真ん中 cx の近くにある塊（腰・脚）の左右の端。体の横に下ろした手は入れない。"""
+    xs = np.where(m[y])[0]
+    if not len(xs): return None
+    near = xs[np.abs(xs - cx) < 0.18 * W]
+    if not len(near): return None
+    runs = np.split(xs, np.where(np.diff(xs) > 3)[0] + 1)
+    sel = [r for r in runs if r.min() <= near.max() and r.max() >= near.min() and abs((r.min() + r.max()) / 2 - cx) < 0.15 * W]
+    return (int(min(r.min() for r in sel)), int(max(r.max() for r in sel))) if sel else None
+
+
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45):
+    """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
+    canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
+    切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
+    元の絵の手（肌の色）と、腰・脚の外にある腕・手は、切れ目から足元までの上 hand_zone までは元のまま残す（足首の肌は canon）。"""
+    H, W = img.shape[:2]
+    if canon.shape != img.shape: canon = cv2.resize(canon, (W, H))
+    mi0 = fg_mask(img); rows = np.where(mi0.sum(1) > 3)[0]
+    crow = np.where(fg_mask(canon).sum(1) > 3)[0]
+    if not len(rows) or not len(crow): return img.copy(), None
+    fy, top = int(rows.max()) + 1, int(rows.min()); h = fy - top
+    cy = int(round(fy - cut * h)); fb = max(2, int(round(feather * h))); dy = fy - (int(crow.max()) + 1)
+    a = mi0[cy - fb:cy].sum(0).astype(np.float32)
+    cs = np.roll(canon, dy, axis=0); b = fg_mask(cs)[cy - fb:cy].sum(0).astype(np.float32)
+    dx = max(range(-40, 41), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
+    c = cv2.warpAffine(canon, np.float32([[1, 0, dx], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
+    wr = np.clip((np.arange(H) - (cy - fb)) / fb, 0, 1).astype(np.float32)
+    imgW, cW, mc = img.copy(), c.copy(), fg_mask(c); cx = W / 2.0; X = np.arange(W, dtype=np.float32)
+    for y in range(cy - fb, cy):
+        t = wr[y]; ef, ec = _body_edges(mi0, y, cx, W), _body_edges(mc, y, cx, W)
+        if ef is None or ec is None or ef[1] - ef[0] < 10 or ec[1] - ec[0] < 10: continue
+        L = (1 - t) * ef[0] + t * ec[0]; R = (1 - t) * ef[1] + t * ec[1]
+        for src, dst, e in ((img, imgW, ef), (c, cW, ec)):
+            mx = (e[0] + (X - L) * (e[1] - e[0]) / (R - L)).astype(np.float32)
+            dst[y] = cv2.remap(src[y:y + 1], mx[None, :], np.zeros((1, W), np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)[0]
+    hz = int(round(cy + hand_zone * (fy - cy)))
+    sk = _skin_mask(img); sk[hz:] = 0; sk[:cy - fb] = 0
+    keep = np.zeros((H, W), np.uint8)
+    for y in range(cy - fb, hz):
+        e = _body_edges(mi0, y, cx, W)
+        if e is None: continue
+        row = mi0[y].copy(); row[max(0, e[0] - 2):e[1] + 3] = 0; keep[y] = row
+    sk = np.clip(cv2.GaussianBlur(cv2.dilate(sk, np.ones((9, 9), np.uint8)).astype(np.float32), (0, 0), 3), 0, 1)
+    keep = np.clip(cv2.GaussianBlur(cv2.dilate(keep, np.ones((7, 7), np.uint8)).astype(np.float32), (0, 0), 2), 0, 1)
+    k = np.maximum(sk, keep)[..., None]; w = wr[:, None, None]
+    out = (imgW.astype(np.float32) * (1 - w) + cW.astype(np.float32) * w) * (1 - k) + img.astype(np.float32) * k
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8), {"cut": cy, "feather": fb, "dx": int(dx), "dy": int(dy)}
