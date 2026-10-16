@@ -153,3 +153,14 @@ def test_init_presets_match_views_spec_doc():
     doc = json.loads("{" + re.sub(r'\s*"home": \{"desc": "[^"]*"\},', "", blk) + "}")
     built = init.build("x", "d", "she", "a")
     assert {k: built["poses"][k] for k in doc["poses"]} == doc["poses"] and built["pairs"] == doc["pairs"]
+
+
+def test_init_prefers_feet_when_dark_area_is_not_shoes(tmp_path):
+    """靴は茶色で、黒いスカート（裾が足元より上）がある絵は、黒い塊を靴と取り違えず feet にする。"""
+    from PIL import ImageDraw
+    im = _brown_shoes(sm.figure(0)); ImageDraw.Draw(im).rectangle([170, 500, 300, 640], fill=(10, 10, 10))
+    assert lib.boot_anchor(_bgr(im)) is not None                                   # 黒い塊としては見つかる
+    img = tmp_path / "m.png"; im.save(img)
+    r = _run("init.py", tmp_path / "w", img, "--desc", "d")
+    assert r.returncode == 0, r.stderr
+    assert json.loads((tmp_path / "w/config.json").read_text(encoding="utf-8"))["anchor"]["mode"] == "feet"

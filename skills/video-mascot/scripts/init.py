@@ -103,6 +103,7 @@ if __name__ == "__main__":
     corner = img[:8, :8].reshape(-1, 3).mean(0)
     if corner.min() < 235: print(f"注意: 左上の背景が白くない（{corner.round().tolist()}）。背景はほぼ白の無地が前提（透明にするのは描画の側）", file=sys.stderr)
     boot = boot_anchor(img); feet = feet_anchor(img)
+    if boot and feet and abs(boot[1] - feet[1]) > 0.01 * H: boot = None   # 黒い塊が足元まで届かない（黒いスカート・裾など）は靴ではない
     mode = "boot" if boot else ("feet" if feet else "none")
     print(f"足元の揃え方: {mode}（黒い靴 {'あり' if boot else 'なし'}、足元 {tuple(round(v, 1) for v in feet) if feet else 'なし'}）", file=sys.stderr)
     for d in ("poses", "parts", "ib", "voice", "out"): os.makedirs(os.path.join(root, d), exist_ok=True)
