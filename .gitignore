@@ -13,3 +13,6 @@ __pycache__/
 .env
 # テスト用の素材だけは入れる
 !tests/fixtures/**
+
+# chatimg（node の依存）
+node_modules/

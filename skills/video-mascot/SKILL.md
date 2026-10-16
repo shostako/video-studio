@@ -13,6 +13,8 @@ description: 解説の台詞とマスコットの絵1枚から、口パク・身
 
 費用: **追加の支払いなし**。声 = 手元の Irodori-TTS、絵 = `/img`（ChatGPT Plus の Codex の枠。Codex の作業・燕と共有）。生成した声には、聞こえない電子透かしが自動で入る（消さない）。
 
+Codex の枠を使いたくないときは、絵を ChatGPT の通常 Chat 画面で描ける（opt-in、`vm poses ... --img chat` か `--img chat+codex`。準備と注意は `references/chatgpt-chat.md`）。
+
 ## 準備（機体ごとに初回だけ）
 
 ```bash

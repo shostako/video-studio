@@ -46,3 +46,5 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 足すポーズの仕様を書いた（`docs/mascot-poses-spec.md`、2026-10-16）。段階 A（`think`・`bow`・`raise_r`・`stretch`）、B（`crouch`・`knee_bend`）、ターンは向きの絵をつなぐ形で後回し。`vm init --extras a|ab` が雛形を書く。背が変わるポーズの大きさを固定する `poses.<名前>.scale`（opt-in）
 - 新しいキャラの基本の立ち姿を「両手を前で軽く組む」にした（手順書の元の絵の決まり、`vm init --redraw-home`、2026-10-16）
 - 新PCで #18 を確かめた結果を直した: 中割りの各枚の様子 `ib_steps`（turn→present の腕の段階）、お辞儀の雛形を強め、背の比の想定 `expect_height` を `vm views` が見る（どれも opt-in、2026-10-16）
+- 絵を ChatGPT の通常 Chat 画面（専用プロファイルの Chrome を Playwright で操作）で描く道具を足した（opt-in、`vm poses --img chat|chat+codex` か `config.img`）。`chat+codex` は Chat の上限かログイン切れで残りを `/img` に切り替える。中身は `skills/video-mascot/scripts/chatimg/`（`chatimg.sh` は img.sh と同じ引数・終了コード）、手順は `references/chatgpt-chat.md`。新PCで、参照画像つきの1枚通し・Chrome を閉じた後の最小化での再実行・WSL からの呼び出しを確かめた。既定は `/img` のまま（2026-10-16）
+- Chat と Codex を Monday マスコットで見比べた（向き6枚・turn→present の中割り5枚・home→raise_r の12等分の途中まで）。Chat は斜めの姿勢と中割りで頭身が伸びて体格が崩れ、既存のキャラを保つのに向かない。ユーザーの判定で、キャラを保つ描き足しは Codex、Chat は一発出し・キャラ選びに使う（2026-10-16）
