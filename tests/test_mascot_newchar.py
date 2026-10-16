@@ -115,7 +115,7 @@ def test_face_measures_rois_from_drawn_variants(tmp_path):
     cfg = json.loads((proj / "config.json").read_text(encoding="utf-8"))
     assert cfg["face"]["mouth_roi"] == r["mouth_roi"] and "face" in cfg["poses"]["turn_l"]   # 正面でない姿勢は poses.<姿勢>.face
     assert cfg["poses"]["turn_l"]["face"]["mouth_roi"][0] < r["mouth_roi"][0] - 20             # 斜めの口は左へ寄る
-    assert "face" not in cfg["poses"]["point"] and "差分が足りない" in w.stdout
+    assert "face" not in cfg["poses"]["point"] and "測れない" in w.stdout
     assert (proj / "config.json.bak").exists()
 
 
@@ -173,3 +173,63 @@ def test_init_force_refuses_folder_with_drawn_assets(tmp_path):
     r = _run("init.py", w, img, "--desc", "new", "--force")
     assert r.returncode != 0 and "pose_turn_l" in r.stderr
     assert json.loads((w / "config.json").read_text(encoding="utf-8"))["mascot"]["description"] == "d"   # 何も書き換えない
+
+
+def test_face_ignores_hair_and_hand_changes_in_variants(tmp_path):
+    """差分の絵が髪や手まで少し描き変えても（新PCの実物で起きた）、口と目の範囲は顔の中に収まる。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    def noisy(im):
+        d = ImageDraw.Draw(im); d.ellipse([150, 100, 230, 140], fill=(110, 80, 70))       # 髪の一部の色が変わる
+        d.ellipse([130, 460, 175, 505], fill=(240, 190, 170))                              # 手の形が変わる
+        d.rectangle([200, 380, 270, 420], fill=(60, 100, 190)); return im                  # 服のしわ
+    for k, part in (("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24))):
+        noisy(_variant(base, part, sm.MOUTH_ROI)).save(proj / f"parts/home_{k}.png")
+    for k, h in (("e1", 6), ("e2", 1)): noisy(_variant(base, sm.eye_part(h), sm.EYE_ROI)).save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    assert not face.suspicious(r)
+    ex0, ey0, ex1, ey1 = r["eye_roi"]; mx0, my0, mx1, my1 = r["mouth_roi"]
+    assert 170 <= ex0 <= 196 and 274 <= ex1 <= 300 and 175 <= ey0 and ey1 <= 232      # 両目だけ（髪の 100〜140 を含まない）
+    assert 195 <= mx0 and mx1 <= 275 and 226 <= my0 and my1 <= 285                    # 口だけ（手・服を含まない）
+
+
+def test_face_suspicious_flags():
+    import face
+    assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180]}) == []
+    assert "口が目より上" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 60, 170, 90]})
+    assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [0, 150, 400, 700]})       # 口が体じゅうに広がった
+
+
+def _shoes_only_brown(im):
+    a = np.array(im); a[(a == np.array(sm.SHOE)).all(axis=2)] = (150, 95, 60); return Image.fromarray(a)   # 紺のズボンは暗いまま
+
+
+def test_views_flags_boot_on_trouser_hem(tmp_path, env):
+    """靴が黒くなく紺のズボンが暗いと、boot はズボンの裾を軸足に拾う（新PCの実物で起きた）。vm views は外れを知らせて feet を勧め、
+    背の比は色に依らずに測る。render は知らせるだけで、書き出しは変えない。"""
+    proj = Path(sm.make(str(tmp_path / "p")))
+    for f in list((proj / "poses").glob("*.png")) + list((proj / "ib").glob("*.png")): _shoes_only_brown(Image.open(f).convert("RGB")).save(f)
+    cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg["floor"] = {"clean": False}
+    (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    import views
+    rows = {r["pose"]: r for r in views.table(lib.Proj(str(proj)), ["home", "point"])}
+    assert rows["home"]["boot_ok"] is False and "anchor" not in rows["home"] and abs(rows["point"]["height"] - 1) < 0.01
+    out = _run("views.py", proj)
+    assert out.returncode == 0 and "feet" in out.stdout and "靴で拾った軸足が足元に無い" in out.stdout
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "render.py"), str(proj), "--out", str(tmp_path / "o.mp4"), "--mode", "white", "--to", "0.5"],
+                       env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0 and "軸足が足元に無い姿勢" in r.stderr
+
+
+def test_inbetween_percent_prompt_is_opt_in(tmp_path):
+    import poses, init
+    proj = Path(sm.make(str(tmp_path / "p"))); cfg = json.loads((proj / "config.json").read_text(encoding="utf-8"))
+    cfg["mascot"] = {"description": "x"}; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    plain = poses.jobs_ib(lib.Proj(str(proj)))
+    assert all("%" not in j[1] and "one sixth" in plain[0][1] for j in plain)      # 既定は今までの言い方
+    cfg["inbetween_prompt"] = "percent"; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    pc = poses.jobs_ib(lib.Proj(str(proj)))
+    assert "17% of the way" in pc[0][1] and "only 17% extended" in pc[0][1] and "closer to the first" in pc[0][1]
+    assert "halfway" in pc[2][1] and "closer to the second" in pc[4][1] and [j[2] for j in pc] == [j[2] for j in plain]
+    assert init.build("x", "d")["inbetween_prompt"] == "percent"                   # 新しいキャラは割合の言い方で始める
