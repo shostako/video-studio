@@ -65,6 +65,16 @@ def test_plan_at_mix_fade_turn_and_cut():
     assert lib.plan_at(4.0, ev, "home", _ib, 15, 5, None, tr) == ("pose", "point")  # cut は中割りがあっても一瞬
 
 
+def test_plan_at_later_event_overrides_running_fade():
+    trans = lib.transition_config({"mode": "fade", "dur": 0.4})
+    def tr(a, b, via): return lib.switch_kind(False, via, trans, 0.33)
+    ev = [(1.0, "home", "turn_l", None), (1.2, "turn_l", "home", None)]
+    m = lib.plan_at(1.3, ev, "home", lambda a, b: None, 15, 5, None, tr)
+    assert m[:3] == ("mix", "turn_l", "home") and 0.1 < m[3] < 0.4                # 1.2 秒からは後の溶かし（前の溶かしの残りではない）
+    assert lib.plan_at(1.1, ev, "home", lambda a, b: None, 15, 5, None, tr)[:3] == ("mix", "home", "turn_l")
+    assert lib.plan_at(1.65, ev, "home", lambda a, b: None, 15, 5, None, tr) == ("pose", "home")
+
+
 def test_resolve_events_via_and_dur_of():
     words = [("そこで", 2.0, 2.4)]; stream = [("そ", 2.0), ("こ", 2.1), ("で", 2.2)]
     events = [{"line": 1, "kw": "そこで", "pose": "turn_l", "via": "fade"}, {"at": 5.0, "pose": "home"}]

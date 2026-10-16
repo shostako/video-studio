@@ -217,16 +217,16 @@ def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None):
     ib_seq(a, b) は中割りの列（無ければ None。その時は中割りなしで切り替える）。中割りの前の 4 割は元の姿勢の部品を使う。
     ease_name（二次運動の時だけ）: 切り替えの長さ nib/ibfps は同じまま、何枚目を出すかをイージングで決める（None は等速）。
     trans_of(前, 次, via)（向きの切り替えを使う時だけ）: None なら今までどおり、("cut", 0, 0) は一瞬、("fade"|"turn", 秒, 縮み) なら
-    その長さのあいだ ("mix", 前の姿勢, 次の姿勢, 溶かす割合 0..1, 横の縮み 0..) を返す。ev は3つ組か4つ組（4つ目が via）。"""
+    その長さのあいだ ("mix", 前の姿勢, 次の姿勢, 溶かす割合 0..1, 横の縮み 0..) を返す（途中で次の切り替えが始まれば次へ移る）。ev は3つ組か4つ組（4つ目が via）。"""
     cur = home
-    for e_ in ev:
+    for i, e_ in enumerate(ev):
         s, a_, b_ = e_[:3]
         if t < s: break
         tr = trans_of(a_, b_, e_[3] if len(e_) > 3 else None) if trans_of else None
         if tr is not None:
             _, d_, sq_ = tr
             if tr[0] == "cut": cur = b_; continue
-            if t < s + d_:
+            if t < s + d_ and not (i + 1 < len(ev) and ev[i + 1][0] <= t):   # 溶かしの途中で次の切り替えが始まったら、次を優先
                 u = (t - s) / d_; return ("mix", a_, b_, smooth01(u), sq_ * math.sin(math.pi * u) if tr[0] == "turn" else 0.0)
             cur = b_; continue
         seq = ib_seq(a_, b_)
