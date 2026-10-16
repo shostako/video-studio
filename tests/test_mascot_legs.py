@@ -86,6 +86,25 @@ def test_lock_legs_keeps_hands_of_the_original():
     assert np.abs(out[545:565, 228:242].astype(int) - np.array(sm.SKIN[::-1])).max() <= 2
 
 
+def test_lock_legs_ignores_a_faint_floor_shadow():
+    """床に描かれた薄い影（人物と離れた塊）を足元と取り違えない。"""
+    img = wide(); img[745:760, 60:420] = (215, 215, 215)                       # 足元より下の薄い影
+    canon = bgr(sm.figure(0))
+    out, info = lib.lock_legs(img, canon)
+    assert info["dy"] == 0
+    assert np.abs(out[600:735].astype(int) - canon[600:735]).max() <= 1
+
+
+def test_lock_legs_does_not_copy_hands_of_canon():
+    """基準の絵の腰の前の手（肌の色）は、帯の中でも写さない。"""
+    canon = bgr(sm.figure(0)); canon[476:492, 215:255] = sm.SKIN[::-1]          # 基準は切れ目のすぐ上で手を組んでいる
+    img = wide()
+    out, info = lib.lock_legs(img, canon)
+    assert info["cut"] - info["feather"] < 476
+    sk = lib._skin_mask(out[476:492, 215:255]).mean()
+    assert sk < 0.05, sk
+
+
 # ---------- 書き出し ----------
 @pytest.fixture(scope="module")
 def env(tmp_path_factory):
