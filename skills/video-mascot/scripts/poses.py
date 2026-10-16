@@ -23,8 +23,10 @@ M = {"m1": "the mouth: lips slightly parted with a small gap, as when speaking s
             "clearly LESS open than a half-open mouth. The eyes stay exactly as they are."),
      "e1": "the eyes: three-quarters closed, in the middle of a blink. The mouth stays exactly as it is.",
      "e2": "the eyes: fully closed, blinking. The mouth stays exactly as it is."}
-G = {"g_l": "the eyes: the irises and pupils moved toward the viewer's left side, glancing left. The head, face direction and mouth stay exactly as they are.",
-     "g_r": "the eyes: the irises and pupils moved toward the viewer's right side, glancing right. The head, face direction and mouth stay exactly as they are.",
+G = {"g_l": ("the eyes: the irises and pupils moved toward the LEFT edge of the image (they sit near the corners of the eyes on the image-left side), glancing left; "
+            "do not copy the eye direction of the input image. The head, face direction and mouth stay exactly as they are."),
+     "g_r": ("the eyes: the irises and pupils moved toward the RIGHT edge of the image (they sit near the corners of the eyes on the image-right side), glancing right; "
+            "do not copy the eye direction of the input image. The head, face direction and mouth stay exactly as they are."),
      "g_u": "the eyes: the irises and pupils moved slightly upward, as when thinking. The head, face direction and mouth stay exactly as they are.",
      "g_c": ("the eyes: the irises and pupils turned to look straight at the camera (at the viewer), while the head keeps facing the same direction as now. "
              "The mouth stays exactly as it is.")}
