@@ -164,3 +164,12 @@ def test_init_prefers_feet_when_dark_area_is_not_shoes(tmp_path):
     r = _run("init.py", tmp_path / "w", img, "--desc", "d")
     assert r.returncode == 0, r.stderr
     assert json.loads((tmp_path / "w/config.json").read_text(encoding="utf-8"))["anchor"]["mode"] == "feet"
+
+
+def test_init_force_refuses_folder_with_drawn_assets(tmp_path):
+    img = tmp_path / "m.png"; sm.figure(0).save(img); w = tmp_path / "w"
+    assert _run("init.py", w, img, "--desc", "d").returncode == 0
+    sm.figure(1).save(w / "poses/pose_turn_l.png")                                 # 前のキャラで描いた絵
+    r = _run("init.py", w, img, "--desc", "new", "--force")
+    assert r.returncode != 0 and "pose_turn_l" in r.stderr
+    assert json.loads((w / "config.json").read_text(encoding="utf-8"))["mascot"]["description"] == "d"   # 何も書き換えない

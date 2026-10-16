@@ -5,7 +5,7 @@
 config.json には、キャラの説明・代名詞・足元の揃え方（黒い靴が見つかれば boot、無ければ色に依らない feet）・姿勢の雛形
 （--views で向き・視線の段階、--gestures で正面の基本の身振り）・pairs・transition・gaze を書く。
 口と目の範囲（face）は書かない（部品の差分を描いてから vm face で測る）。台詞（voice）と events は台本を決めてから書く。
-既にある config.json は --force が無ければ上書きしない。"""
+既にある config.json は --force が無ければ上書きしない。描いた絵（poses/ の home 以外・parts/・parts_*/・ib/）が残っている作業フォルダには、--force でも作らない（新旧のキャラの絵が混ざるため）。"""
 import argparse, json, os, shutil, sys
 import cv2
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -99,6 +99,10 @@ if __name__ == "__main__":
     if img is None: die(f"絵が読めない: {a.image}")
     H, W = img.shape[:2]; cfgp = os.path.join(root, "config.json")
     if os.path.exists(cfgp) and not a.force: die(f"config.json が既にある（上書きするなら --force）: {cfgp}")
+    made = [os.path.relpath(os.path.join(d, f), root) for d, _, fs in os.walk(root) for f in fs
+            if os.path.relpath(d, root).split(os.sep)[0] in ("poses", "parts", "ib") or os.path.relpath(d, root).startswith("parts_")]
+    made = [m for m in made if m != os.path.join("poses", "pose_home.png")]
+    if made: die(f"描いた絵が残っている（{len(made)} 枚。例 {made[0]}）。--force でも、前のキャラの絵と混ざるので作り直さない。新しい作業フォルダで")
     if H <= W: print(f"注意: 絵が縦長でない（{W}x{H}）。全身・縦長・白い無地の背景の絵にすると、口の差分も重ねも崩れにくい", file=sys.stderr)
     corner = img[:8, :8].reshape(-1, 3).mean(0)
     if corner.min() < 235: print(f"注意: 左上の背景が白くない（{corner.round().tolist()}）。背景はほぼ白の無地が前提（透明にするのは描画の側）", file=sys.stderr)
