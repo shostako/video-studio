@@ -7,6 +7,8 @@
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
                  姿勢の切り替えの予備動作・オーバーシュート・イージング。off は今までどおりの息づかいとまばたき
+  --interp rife|off  中割りのコマ補間（既定は config.interp、無ければ off）。描いた中割りの間を RIFE で細かくし、
+                 切り替えを interp.dur 秒（組ごとは interp.durs）とイージングで出す。作った列は ib_interp/ にためる
 config.transition（中割りの無い切り替えを溶かす・回って見せる）、events の via、config.gaze（視線の部品と、向きの切り替えの前に目が先に動く）、
 poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、書いた時だけ使う（references/config-spec.md の「向きと視線」）。
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
@@ -21,6 +23,7 @@ from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
+from lib import interp_config, interp_on, interp_dur, dense_ks
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -32,6 +35,8 @@ if LIPSYNC not in ("amp", "mora"): die(f"lipsync は amp か mora: {LIPSYNC}")
 try: MOT = motion_config(C.get("motion"), opt("--motion"))     # 二次運動（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
 try: TRANS = transition_config(C.get("transition")); GZ = gaze_config(C.get("gaze"))   # 向きの切り替えのつなぎ・視線（None は使わない）
+except ValueError as e_: die(str(e_))
+try: INTERP = interp_config(C.get("interp"), opt("--interp"))   # 中割りのコマ補間（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
@@ -193,23 +198,34 @@ def ib_item(item, src_pose):
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
+IBSEQ = {}
 def ib_seq(a_, b_):
+    if (a_, b_) in IBSEQ: return IBSEQ[(a_, b_)]
     d = P.pair_dir(a_, b_)
-    if d is None: return None
-    pa, pb, rev = d; seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
-    return seq[::-1] if rev else seq
+    if d is None: IBSEQ[(a_, b_)] = None; return None
+    pa, pb, rev = d
+    if INTERP and interp_on(INTERP, pa, pb):      # コマ補間: 描いた絵の間を RIFE で細かくした列（k は小数）
+        from interp import dense_paths
+        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr))
+        seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
+    else: seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
+    IBSEQ[(a_, b_)] = seq[::-1] if rev else seq; return IBSEQ[(a_, b_)]
+def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組だけ）
+    d = P.pair_dir(a_, b_); return bool(INTERP) and d is not None and interp_on(INTERP, d[0], d[1])
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
 EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
-def trans_of(a_, b_, via): return switch_kind(ib_seq(a_, b_) is not None, via, TRANS, IBDUR)
+def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
+def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None, via, TRANS, ib_d(a_, b_))
 def sw_dur(a_, b_, via):
-    k_ = trans_of(a_, b_, via); return IBDUR if k_ is None else k_[1]
+    k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
 ev = resolve_events(EVS, P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr),
-                    dur_of=sw_dur if USE_VIA else None, with_via=USE_VIA)
+                    dur_of=sw_dur if (USE_VIA or INTERP) else None, with_via=USE_VIA)
 EASE = MOT["switch"]["ease"] if MOT and MOT["switch"] else None
-def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB, EASE, trans_of if USE_VIA else None)
-SW = [(e_[0], sw_dur(*e_[1:3], e_[3]) if USE_VIA else IBDUR, e_[1], e_[2]) for e_ in ev]   # 切り替え（開始, 長さ, 前, 次）
+IB_DUR = (lambda a_, b_: (interp_dur(INTERP, a_, b_), INTERP["ease"]) if interp_pair(a_, b_) else None) if INTERP else None
+def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB, EASE, trans_of if USE_VIA else None, IB_DUR)
+SW = [(e_[0], sw_dur(e_[1], e_[2], e_[3] if USE_VIA else None) if (USE_VIA or INTERP) else IBDUR, e_[1], e_[2]) for e_ in ev]   # 切り替え（開始, 長さ, 前, 次）
 
 # ---------- 視線 ----------
 GAZE = [None] * NALL
