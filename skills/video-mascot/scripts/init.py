@@ -145,7 +145,8 @@ if __name__ == "__main__":
     for d in ("poses", "parts", "ib", "voice", "out"): os.makedirs(os.path.join(root, d), exist_ok=True)
     shutil.copyfile(a.image, os.path.join(root, "mascot.png"))
     hp = os.path.join(root, "poses", "pose_home.png")
-    if a.redraw_home and os.path.exists(hp) and open(hp, "rb").read() == open(a.image, "rb").read(): os.remove(hp)   # 前に元の絵を写した home は描き直す
+    if a.redraw_home and os.path.exists(hp):     # 前の home（元の絵の写し、前のキャラの絵）は使わず描き直す。消さずに脇へ
+        os.replace(hp, os.path.join(root, "poses", "pose_home.old.png")); print("前の home を poses/pose_home.old.png に移した", file=sys.stderr)
     if a.redraw_home: print("home は描かせる: 次に vm poses <作業フォルダ> poses --only home。描けた home を確かめてから残りの姿勢を描く（どの姿勢も home を参照する）", file=sys.stderr)
     elif not os.path.exists(hp) or a.force: shutil.copyfile(a.image, hp)
     cfg = build(name, a.desc, a.pronoun, a.views, a.gestures, mode, a.pedestal, a.extras)
