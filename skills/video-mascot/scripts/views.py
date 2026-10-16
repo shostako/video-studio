@@ -23,6 +23,17 @@ def measure(P, pose, y0=None):
     return r
 
 
+def height_warn(pc, height):
+    """背の比の注意書き。姿勢に expect_height [下限, 上限]（opt-in）があれば、背の比がその範囲の外のとき注意する（お辞儀が浅い・屈みが足りないなど）。
+    scale 固定の姿勢は home と背で比べない。どちらも無ければ ±3% を超えると注意する。"""
+    lo_hi = pc.get("expect_height")
+    if lo_hi:
+        lo, hi = lo_hi
+        return "" if lo <= height <= hi else f"  ※背の比が想定 {lo}〜{hi} の外（描き直す）"
+    if "scale" in pc: return "  （scale 固定。背は比べない）"
+    return "  ※背が±3%を超える" if abs(height - 1) > 0.03 else ""
+
+
 def table(P, poses):
     h = measure(P, P.home); rows = []; mode = P.cfg.get("anchor", {}).get("mode", "boot")
     for p in poses:
@@ -48,8 +59,7 @@ if __name__ == "__main__":
     off = []
     for r in rows:
         if "feet" not in r: print(f"{r['pose']:<10}  {r['size']:<10}  （足元が見つからない。vm grid で読んで anchor を書く）"); continue
-        fixed = "scale" in P.cfg["poses"].get(r["pose"], {})         # 背が変わるポーズ（伸び・お辞儀など）は背で揃えない
-        warn = ("" if r["same_size"] else "  ※大きさが home と違う") + ("  （scale 固定。背は比べない）" if fixed else ("  ※背が±3%を超える" if abs(r["height"] - 1) > 0.03 else ""))
+        warn = ("" if r["same_size"] else "  ※大きさが home と違う") + height_warn(P.cfg["poses"].get(r["pose"], {}), r["height"])
         if mode == "boot" and not r["boot_ok"]: warn += "  ※靴で拾った軸足が足元に無い（服の裾など）"; off.append(r["pose"])
         print(f"{r['pose']:<10}  {r['size']:<10}  {r['dy']:+7.1f}     {r['dx']:+8.1f}      {r['height']:.3f}  {r.get('anchor', '') if mode == 'boot' else ''}{warn}")
     print("足元・背は服の色に依らずに測った値（背景の白と違う所の一番下・一番上）")
