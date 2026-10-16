@@ -7,6 +7,8 @@
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
                  姿勢の切り替えの予備動作・オーバーシュート・イージング。off は今までどおりの息づかいとまばたき
+config.transition（中割りの無い切り替えを溶かす・回って見せる）、events の via、config.gaze（視線の部品と、向きの切り替えの前に目が先に動く）、
+poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、書いた時だけ使う（references/config-spec.md の「向きと視線」）。
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
 config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
@@ -17,6 +19,7 @@ from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_heig
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
+from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -27,6 +30,9 @@ MODE = opt("--mode", "alpha"); LIPSYNC = opt("--lipsync", C.get("lipsync", "amp"
 if LIPSYNC not in ("amp", "mora"): die(f"lipsync は amp か mora: {LIPSYNC}")
 try: MOT = motion_config(C.get("motion"), opt("--motion"))     # 二次運動（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
+try: TRANS = transition_config(C.get("transition")); GZ = gaze_config(C.get("gaze"))   # 向きの切り替えのつなぎ・視線（None は使わない）
+except ValueError as e_: die(str(e_))
+PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
 FPS = P.fps; PAD = P.pad; OH = int(C.get("out_height", 1280)); random.seed(int(C.get("seed", 5)))
 timing = json.load(open(P.p("voice", "timing.json"))); L = {x["n"]: x["start"] for x in timing["lines"]}; LDUR = {x["n"]: x["dur"] for x in timing["lines"]}; END = timing["end"]
@@ -78,16 +84,21 @@ FL = C.get("floor", {"clean": True}); H0, W0 = P.read_pose(P.home).shape[:2]; Y0
 PB, SH = {}, {}
 for p in P.poses:
     img = P.read_pose(p)
+    if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
+        die(f"姿勢 {p} の絵の大きさ {img.shape[1]}x{img.shape[0]} が home の {W0}x{H0} と違う（同じ大きさにしてから。docs/mascot-views-spec.md）")
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
     else: PB[p], SH[p] = img, np.zeros(img.shape[:2], np.float32)
 AN = C.get("anchor", {"mode": "boot"}); AMODE = AN.get("mode", "boot")
 if AMODE == "boot":
-    ANCH = {p: boot_anchor(PB[p]) for p in P.poses}
+    ANCH = {p: tuple(map(float, PCFG[p]["anchor"])) if "anchor" in PCFG[p] else boot_anchor(PB[p]) for p in P.poses}
     miss = [p for p, v in ANCH.items() if v is None]
     if miss: die(f"軸足の靴が見つからない姿勢: {miss}（config.anchor を manual にするか none に）")
     HT = {p: body_height(PB[p], ANCH[p]) for p in P.poses}; SCALE = {p: HT[P.home] / HT[p] for p in P.poses}
 elif AMODE == "manual":
-    ANCH = {p: tuple(v) for p, v in AN["points"].items()}; SCALE = {p: float(AN.get("scales", {}).get(p, 1.0)) for p in P.poses}
+    ANCH = {p: tuple(v) for p, v in AN["points"].items()}
+    for p in P.poses:
+        if p not in ANCH and "anchor" in PCFG[p]: ANCH[p] = tuple(map(float, PCFG[p]["anchor"]))
+    SCALE = {p: float(AN.get("scales", {}).get(p, 1.0)) for p in P.poses}
 else:
     ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: 1.0 for p in P.poses}
 REF = ANCH[P.home]
@@ -95,6 +106,7 @@ print("軸足:", {p: tuple(round(float(v), 1) for v in a_) for p, a_ in ANCH.ite
 PARTS = {}
 for p in P.poses:
     PARTS[p] = {}; mp = P.p(f"parts_{p}", "parts.json")
+    if not FACE_ON[p]: continue                   # 顔の見えない姿勢（後ろ向き）は口・目の部品なし
     if not os.path.exists(mp): die(f"部品が無い: parts_{p}（先に vm parts）")
     for k, (px, py) in json.load(open(mp)).items(): PARTS[p][k] = (cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED), px, py)
 FB = {"m7": "m1", "m3": "m2", "m6": "m1"}      # 無い形は近い形で代用
@@ -108,6 +120,7 @@ def shift(img, a_, sc, interp=cv2.INTER_LINEAR, val=(253, 253, 253)):
     return cv2.warpAffine(img, shift_m(a_, sc), (img.shape[1] + 2 * PAD, img.shape[0]), flags=interp, borderMode=cv2.BORDER_CONSTANT, borderValue=val)
 KEEP = {}; HEAD = {}
 for p_ in P.poses:                       # 顔（目と口）の矩形。この中の白（白目・歯）は背景にしない
+    if not FACE_ON[p_]: KEEP[p_] = []; HEAD[p_] = None; continue
     mr, er, _ = map_rois(P, p_); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
     KEEP[p_] = [(er[0] - 10, er[1] - 10, er[2] + 10, er[3] + 10), (mr[0] - 10, mr[1] - 10, mr[2] + 10, mr[3] - 24)]   # 目と口を別々の箱に（口はあごの下へ広げない）
 
@@ -128,10 +141,13 @@ def ib_item(item, src_pose):
     ref = PB[src_pose]
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
     clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
-    anc = boot_anchor(clean) if AMODE == "boot" else None
+    own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
+    anc = boot_anchor(clean) if AMODE == "boot" and not own else None
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
-    allp = list(PARTS[src_pose].values()); xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
+    allp = list(PARTS[src_pose].values())
+    if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
+    xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
     roi = (max(0, min(xs) - 80), max(0, min(ys) - 100), min(img.shape[1], max(xs) + 80), min(img.shape[0], max(ys) + 60))
     A, cc = face_affine(PB[src_pose], clean, roi); parts = {}; rig = HEAD[src_pose]
     if cc >= 0.80:
@@ -151,16 +167,32 @@ def ib_seq(a_, b_):
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
-ev = resolve_events(C.get("events", []), P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr))
+EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
+def trans_of(a_, b_, via): return switch_kind(ib_seq(a_, b_) is not None, via, TRANS, IBDUR)
+def sw_dur(a_, b_, via):
+    k_ = trans_of(a_, b_, via); return IBDUR if k_ is None else k_[1]
+ev = resolve_events(EVS, P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr),
+                    dur_of=sw_dur if USE_VIA else None, with_via=USE_VIA)
 EASE = MOT["switch"]["ease"] if MOT and MOT["switch"] else None
-def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB, EASE)
+def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB, EASE, trans_of if USE_VIA else None)
+SW = [(e_[0], sw_dur(*e_[1:3], e_[3]) if USE_VIA else IBDUR, e_[1], e_[2]) for e_ in ev]   # 切り替え（開始, 長さ, 前, 次）
+
+# ---------- 視線 ----------
+GAZE = [None] * NALL
+if GZ:                                            # 台本の指定（gaze.events）と、顔の向きが変わる切り替えの前に目が先に動く分
+    spans = resolve_gaze(GZ["events"], L, LDUR, hira_stream, WH, GZ["hold"], log=lambda m: print(m, file=sys.stderr))
+    def instant(e_):                              # 中割りもつなぎも無い切り替えは一瞬（目の先回りは切り替えの時刻で終える）
+        k_ = trans_of(e_[1], e_[2], e_[3]) if USE_VIA else None
+        return (k_ is None and ib_seq(e_[1], e_[2]) is None) or (k_ is not None and k_[0] == "cut")
+    GSW = [(sw[0], 0.0 if instant(e_) else sw[1], sw[2], sw[3]) for sw, e_ in zip(SW, ev)]
+    GAZE = gaze_track(NALL, FPS, spans, GSW, lambda p_: VIEW[p_][1], GZ["lead"])
 
 # ---------- まばたき ----------
 BLINK_AT = []
 if MOT and MOT["blink"]:                          # 二次運動: 間隔をゆらがせ、ときどき2回続け、姿勢の切り替えでもまばたく
     B_ = MOT["blink"]
     BLINK_AT = blink_times(END, random.Random(SEED + 101), B_["mean"], B_["spread"], B_["min"], B_["max"], B_["double"],
-                           extra=[s_ for s_, _, _ in ev] if B_["on_switch"] else ())
+                           extra=[e_[0] for e_ in ev] if B_["on_switch"] else ())
 elif MOT is None:                                 # 今までどおり（motion.blink: false はまばたきしない）
     t = 1.2
     while t < END: BLINK_AT.append(t); t += random.uniform(2.6, 4.6)
@@ -184,19 +216,45 @@ def paste(img, part):
     im, px, py = part; h, w = im.shape[:2]
     if py < 0 or px < 0 or py + h > img.shape[0] or px + w > img.shape[1]: return
     al = im[:, :, 3:4].astype(np.float32) / 255; roi = img[py:py + h, px:px + w].astype(np.float32); img[py:py + h, px:px + w] = (roi * (1 - al) + im[:, :, :3] * al).astype(np.uint8)
-def compose(pl, mth, blk):
+def compose(pl, mth, blk, look=None):
     if pl[0] == "ib":
         clean, shadow, parts, anc, sc, rig = ib_item(pl[1], pl[2]); img = clean.copy()
     else:
         img = PB[pl[1]].copy(); shadow = SH[pl[1]]; parts = PARTS[pl[1]]; anc = ANCH[pl[1]]; sc = SCALE[pl[1]]; rig = HEAD[pl[1]]
     paste(img, part_of(parts, mth))
+    if blk is None and look is not None:          # 視線: まばたきの間は貼らない。その姿勢に無い部品は元の目のまま
+        g_ = gaze_part(look, VIEW[pl[2] if pl[0] == "ib" else pl[1]][1], parts)
+        if g_: paste(img, parts[g_])
     if isinstance(blk, tuple):                    # 細かいまばたき: 2つの段を割合で溶かす
         lo_, hi_, al_ = blk; i_lo = img.copy(); paste(i_lo, part_of(parts, lo_)); paste(img, part_of(parts, hi_)); img = cv2.addWeighted(img, al_, i_lo, 1 - al_, 0)
     else: paste(img, part_of(parts, blk))
     k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
     return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k], rig)
 
-SWITCHES = [(s_, IBDUR) for s_, _, _ in ev]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
+SWITCHES = [(s_, d_) for s_, d_, _, _ in SW]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
+
+def body(pl, f):
+    """1つの絵（姿勢か中割り）に口・目・視線を貼り、二次運動の首を傾ける。戻り値 (絵, 影, 顔の箱（首の傾き込み、息づかいの前の座標）)。"""
+    img, sh, kinfo = compose(pl, mouth[f], blink[f], GAZE[f])
+    if f > 0 and mouth[f] != mouth[f - 1]:         # 口の形が変わるコマは前後を半々に溶かす
+        i2, s2, _ = compose(pl, mouth[f - 1], blink[f], GAZE[f]); img = cv2.addWeighted(img, 0.5, i2, 0.5, 0); sh = (sh + s2) / 2
+    H, W = img.shape[:2]; tt = f / FPS; hb = None
+    if MOT is not None:
+        rig = kinfo[2]                            # 首（絵の座標。中割りは顔の動きに合わせて写したもの）
+        if rig:                                   # 首: 首から上だけを傾け、声の出だしで少し下げる（首より下は動かさない）
+            m1_ = kinfo[0]; sc_ = float(m1_[0, 0]); pv = (m1_[0, 0] * rig[0][0] + m1_[0, 2], m1_[1, 1] * rig[0][1] + m1_[1, 2])
+            hb = (pv, MOT["head"]["roll"] * wobble(tt, MOT["head"]["period"], SEED + 2), MOT["head"]["nod"] * NOD[f], rig[1] * sc_, rig[2] * sc_)
+            x0_, x1_ = max(0, int(pv[0] - 1.6 * hb[3]) - 2), min(W, int(pv[0] + 1.6 * hb[3]) + 3); y1_ = min(H, int(pv[1]) + 3)
+            if x1_ > x0_ and y1_ > 0:
+                mx, my = head_maps(x0_, 0, x1_, y1_, *hb)
+                img[:y1_, x0_:x1_] = cv2.remap(img, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    m1, kbs = kinfo[0], kinfo[1]; boxes = []
+    for kb in kbs:                                # 顔の箱を、移動と首の傾きで写す（息づかい・縮小はあとで）
+        pts = np.array([[kb[0], kb[1]], [kb[2], kb[3]]], np.float32); p1 = pts @ m1[:, :2].T + m1[:, 2]
+        if hb:                                    # 首の傾きで顔の箱も動かす（箱の中心の動きだけずらす）
+            c_ = p1.mean(0); mx_, my_ = head_move(c_[0], c_[1], *hb); p1 = p1 + np.array([float(mx_) - c_[0], float(my_) - c_[1]], np.float32)
+        boxes.append(p1)
+    return img, sh, boxes
 W1 = W0 + 2 * PAD; OW = 2 * round(OH * W1 / H0 / 2)
 f0, f1 = int(T0 * FPS), int(math.ceil(T1 * FPS))
 if min(f1, NALL) <= f0: die(f"書き出すコマが無い（{T0}〜{T1} 秒、声は {NALL / FPS:.2f} 秒まで。--from / --to を見直す）")
@@ -207,11 +265,29 @@ else:
     tmp = OUTF + ".noaudio.mp4"
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
                             "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", tmp], stdin=subprocess.PIPE)
+def squash(img, sh, boxes, sq_):
+    """turn の途中: 体の真ん中（home の軸足の x）を軸に横へ (1 - sq_) 倍に縮める。"""
+    cx_ = REF[0] + PAD; S_ = np.array([[1 - sq_, 0, sq_ * cx_], [0, 1, 0]], np.float32); H, W = img.shape[:2]
+    img = cv2.warpAffine(img, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
+    sh = cv2.warpAffine(sh, S_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return img, sh, [b_ @ S_[:, :2].T + S_[:, 2] for b_ in boxes]
+
+def finish(img, sh, boxes, sdd):
+    """息づかい sdd=(伸び縮み, 横, 縦) の変換と縮小をかけ、alpha なら背景を透明にした BGRA、white なら影を焼き込んだ BGR にする。"""
+    H, W = img.shape[:2]; s, dx, dy = sdd
+    M = np.array([[s, 0, (1 - s) * W / 2 + dx], [0, s, (1 - s) * H + dy]], np.float32)     # 息づかい: 足元を中心にわずかに伸び縮み
+    img = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
+    sh = cv2.warpAffine(sh, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    img = cv2.resize(img, (OW, OH), interpolation=cv2.INTER_AREA); sh = cv2.resize(sh, (OW, OH), interpolation=cv2.INTER_AREA)
+    if MODE != "alpha": return bake_shadow(img, sh)
+    fxs, fys = OW / W, OH / H; keep = []
+    for p1 in boxes:                                                                      # 顔の箱を、息づかい・縮小の変換で最終の画素に写す
+        p2 = p1 @ M[:, :2].T + M[:, 2]
+        keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
+    return matte(img, sh, keep)
+
 for f in range(f0, min(f1, NALL)):
-    pl = plan(f); img, sh, kinfo = compose(pl, mouth[f], blink[f])
-    if f > 0 and mouth[f] != mouth[f - 1]:         # 口の形が変わるコマは前後を半々に溶かす
-        i2, s2, _ = compose(pl, mouth[f - 1], blink[f]); img = cv2.addWeighted(img, 0.5, i2, 0.5, 0); sh = (sh + s2) / 2
-    H, W = img.shape[:2]; tt = f / FPS; hb = None
+    pl = plan(f); tt = f / FPS
     if MOT is None:
         s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * math.sin(2 * math.pi * tt / 5.3); dy = -2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]
     else:
@@ -220,29 +296,20 @@ for f in range(f0, min(f1, NALL)):
             b_ = MOT["breath"]; v_ = 2 * breath_wave(tt, b_["period"], b_["jitter"], b_["inhale"], SEED) - 1; s += b_["scale"] * v_; dy -= b_["lift"] * v_
         if MOT["body"]: dx = MOT["body"]["sway"] * wobble(tt, MOT["body"]["period"], SEED + 1)
         if MOT["switch"]: dy += switch_offset(tt, SWITCHES, MOT["switch"]["anticipate"], MOT["switch"]["anticipate_px"], MOT["switch"]["overshoot_px"], MOT["switch"]["settle"])
-        rig = kinfo[2]                            # 首（絵の座標。中割りは顔の動きに合わせて写したもの）
-        if rig:                                   # 首: 首から上だけを傾け、声の出だしで少し下げる（首より下は動かさない）
-            m1_ = kinfo[0]; sc_ = float(m1_[0, 0]); pv = (m1_[0, 0] * rig[0][0] + m1_[0, 2], m1_[1, 1] * rig[0][1] + m1_[1, 2])
-            hb = (pv, MOT["head"]["roll"] * wobble(tt, MOT["head"]["period"], SEED + 2), MOT["head"]["nod"] * NOD[f], rig[1] * sc_, rig[2] * sc_)
-            x0_, x1_ = max(0, int(pv[0] - 1.6 * hb[3]) - 2), min(W, int(pv[0] + 1.6 * hb[3]) + 3); y1_ = min(H, int(pv[1]) + 3)
-            if x1_ > x0_ and y1_ > 0:
-                mx, my = head_maps(x0_, 0, x1_, y1_, *hb)
-                img[:y1_, x0_:x1_] = cv2.remap(img, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    M = np.array([[s, 0, (1 - s) * W / 2 + dx], [0, s, (1 - s) * H + dy]], np.float32)     # 息づかい: 足元を中心にわずかに伸び縮み
-    img = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(253, 253, 253))
-    sh = cv2.warpAffine(sh, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-    img = cv2.resize(img, (OW, OH), interpolation=cv2.INTER_AREA); sh = cv2.resize(sh, (OW, OH), interpolation=cv2.INTER_AREA)
-    if MODE == "alpha":
-        m1, kbs = kinfo[0], kinfo[1]; fxs, fys = OW / W, OH / H; keep = []
-        for kb in kbs:                                                                    # 顔の箱を、移動・息づかい・縮小の変換で最終の画素に写す
-            pts = np.array([[kb[0], kb[1]], [kb[2], kb[3]]], np.float32); p1 = pts @ m1[:, :2].T + m1[:, 2]
-            if hb:                                                                        # 首の傾きで顔の箱も動かす（箱の中心の動きだけずらす）
-                c_ = p1.mean(0); mx_, my_ = head_move(c_[0], c_[1], *hb); p1 = p1 + np.array([float(mx_) - c_[0], float(my_) - c_[1]], np.float32)
-            p2 = p1 @ M[:, :2].T + M[:, 2]
-            keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
-        rgba = matte(img, sh, keep); enc.stdin.write(rgba.tobytes())
+    M = (s, dx, dy)
+    if pl[0] == "mix":                             # 向きの切り替え: 前と次の姿勢を溶かす（turn は横に少し縮めて回って見せる）
+        A_ = body(("pose", pl[1]), f); B_ = body(("pose", pl[2]), f); u_, sq_ = pl[3], pl[4]
+        if sq_ > 0: A_ = squash(*A_, sq_); B_ = squash(*B_, sq_)
+        if MODE == "alpha":                        # 透明は姿勢ごとに切り抜いてから、色と透明度を重みで混ぜる（白い背景ごと混ぜると灰色の縁が残る）
+            ra = finish(*A_, M).astype(np.float32); rb = finish(*B_, M).astype(np.float32)
+            aa, ab = ra[:, :, 3:4] / 255 * (1 - u_), rb[:, :, 3:4] / 255 * u_; at = aa + ab
+            col = (ra[:, :, :3] * aa + rb[:, :, :3] * ab) / np.maximum(at, 1e-6)
+            out = np.dstack([np.clip(col, 0, 255), np.clip(at * 255, 0, 255)]).round().astype(np.uint8)
+        else:
+            out = finish(cv2.addWeighted(B_[0], u_, A_[0], 1 - u_, 0), B_[1] * u_ + A_[1] * (1 - u_), A_[2] + B_[2], M)
     else:
-        enc.stdin.write(bake_shadow(img, sh).tobytes())
+        out = finish(*body(pl, f), M)
+    enc.stdin.write(out.tobytes())
     if f % 300 == 0: print(f"  {f}/{NALL}", file=sys.stderr, flush=True)
 enc.stdin.close(); rc_enc = enc.wait()
 if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")

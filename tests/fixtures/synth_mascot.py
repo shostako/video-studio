@@ -86,5 +86,61 @@ def make(root):
     return root
 
 
+TURN_DX = -40                          # 斜め左の顔: 目と口を画面の左へ寄せる
+TURN_MOUTH_ROI = [MOUTH_ROI[0] + TURN_DX, MOUTH_ROI[1], MOUTH_ROI[2] + TURN_DX, MOUTH_ROI[3]]
+TURN_EYE_ROI = [EYE_ROI[0] + TURN_DX, EYE_ROI[1], EYE_ROI[2] + TURN_DX, EYE_ROI[3]]
+
+
+def figure_turn():
+    """斜め左を向いた人型（胴を細く、目と口を左へ寄せる）。足元・背の高さは home と同じ。"""
+    im = figure(0); d = ImageDraw.Draw(im)
+    d.rectangle([150, 120, 330, 290], fill=(253, 253, 253))                                                 # 顔を描き直す
+    d.ellipse([140, 95, 330, 285], fill=HAIR); d.ellipse([157 + TURN_DX // 2, 128, 313 + TURN_DX // 2, 286], fill=SKIN)
+    for cx in (204 + TURN_DX, 266 + TURN_DX): d.ellipse([cx - 9, 192, cx + 9, 214], fill=(30, 30, 40))
+    d.line([(222 + TURN_DX, 254), (248 + TURN_DX, 254)], fill=LIP, width=4)
+    return im
+
+
+def figure_back():
+    """後ろ向き（顔の所が髪だけ）。"""
+    im = figure(0); d = ImageDraw.Draw(im); d.ellipse([140, 95, 330, 290], fill=HAIR); return im
+
+
+def gaze_part(roi, dx, dy, cxs=(204, 266)):
+    """黒目を (dx, dy) 寄せた目の部品。"""
+    x0, y0, x1, y1 = roi; im = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    for cx in cxs:
+        d.ellipse([cx - x0 - 11, 190 - y0, cx - x0 + 11, 216 - y0], fill=(255, 255, 255, 255))
+        d.ellipse([cx - x0 - 6 + dx, 197 - y0 + dy, cx - x0 + 6 + dx, 209 - y0 + dy], fill=(30, 30, 40, 255))
+    return im
+
+
+def make_views(root):
+    """make() に、向きの違う姿勢（turn_l: 斜め左、back: 後ろ向き）と視線の部品、transition・gaze・via を足す。"""
+    make(root); p = lambda *a: os.path.join(root, *a)
+    cfg = json.load(open(p("config.json"), encoding="utf-8"))
+    cfg["poses"]["turn_l"] = {"desc": "turned left", "yaw": -40, "face": {"mouth_roi": TURN_MOUTH_ROI, "eye_roi": TURN_EYE_ROI}}
+    cfg["poses"]["back"] = {"desc": "back", "yaw": 180, "face": False}
+    cfg["transition"] = {"mode": "fade", "dur": 0.3}
+    cfg["gaze"] = {"lead": 0.15, "events": [{"at": 0.1, "look": "r", "until": 0.5}]}
+    cfg["events"] = [{"at": 0.6, "pose": "point"}, {"line_end": 1, "pose": "home"}, {"at": 2.0, "pose": "turn_l", "via": "turn"},
+                     {"at": 2.7, "pose": "back"}, {"at": 3.1, "pose": "home", "via": "cut"}]
+    json.dump(cfg, open(p("config.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    figure_turn().save(p("poses", "pose_turn_l.png")); figure_back().save(p("poses", "pose_back.png"))
+    od = p("parts_turn_l"); os.makedirs(od, exist_ok=True); meta = {}
+    tcx = (204 + TURN_DX, 266 + TURN_DX)
+    parts = {"m1": mouth_part(26, 6), "m2": mouth_part(30, 16), "e1": eye_part(6), "e2": eye_part(1),
+             "g_c": gaze_part(TURN_EYE_ROI, 6, 0, tcx), "g_u": gaze_part(TURN_EYE_ROI, 0, -5, tcx)}
+    for k, im in parts.items():
+        im.save(os.path.join(od, f"{k}.png")); meta[k] = (TURN_MOUTH_ROI[:2] if k.startswith("m") else TURN_EYE_ROI[:2])
+    json.dump(meta, open(os.path.join(od, "parts.json"), "w"))
+    for pose in ("home", "point"):                  # 正面の視線
+        od = p(f"parts_{pose}"); meta = json.load(open(os.path.join(od, "parts.json")))
+        for k, (dx, dy) in {"g_l": (-6, 0), "g_r": (6, 0), "g_u": (0, -5)}.items():
+            gaze_part(EYE_ROI, dx, dy).save(os.path.join(od, f"{k}.png")); meta[k] = EYE_ROI[:2]
+        json.dump(meta, open(os.path.join(od, "parts.json"), "w"))
+    return root
+
+
 if __name__ == "__main__":
-    print(make(sys.argv[1]))
+    print(make_views(sys.argv[2]) if sys.argv[1:2] == ["--views"] else make(sys.argv[1]))
