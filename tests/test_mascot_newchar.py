@@ -312,6 +312,20 @@ def test_inbetween_chain_draws_from_previous_frame_in_order(tmp_path, monkeypatc
     fake.chmod(0o755); monkeypatch.setattr(poses, "IMG", str(fake))
     assert poses.run_jobs(jobs, 4, False)
     assert log.read_text().split() == [f"ib_home_point_{k}.png" for k in range(1, 6)]
+    import time
+    time.sleep(0.05); (proj / "ib/ib_home_point_2.png").unlink()               # 2枚目だけ消して描き直すと、3〜5枚目は古い2枚目から描いたもの
+    assert poses.chain_stale(lib.Proj(str(proj))) == [str(proj / f"ib/ib_home_point_{k}.png") for k in (3, 4, 5)]
+    log.write_text("")
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "poses.py"), str(proj), "inbetweens"], capture_output=True, text=True, timeout=60,
+                       env={**os.environ, "HOME": str(tmp_path / "home")})
+    assert "ib/old/" in r.stdout and (proj / "ib/old/ib_home_point_3.png").exists()
+    log2 = tmp_path / "log2.txt"; log.write_text("")
+    for f in (proj / "ib").glob("ib_home_point_[345].png"): f.unlink(missing_ok=True)
+    fake.write_text(fake.read_text().replace('[ -f "$r" ] || exit 1; cp', '[ -f "$r" ] || exit 1; case "$o" in *_2.png) exit 1;; esac; cp'))
+    (proj / "ib/ib_home_point_2.png").unlink(missing_ok=True)
+    jobs = poses.jobs_ib(lib.Proj(str(proj)))
+    assert not poses.run_jobs(jobs, 4, False)                                     # 2枚目が描けなければ、3枚目からは呼ばない
+    assert log.read_text().split() == []
 
 
 def _spec_blocks():

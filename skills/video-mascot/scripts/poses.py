@@ -107,6 +107,19 @@ def jobs_ib(P):
     return out
 
 
+def chain_stale(P):
+    """chain の中割りで、前の枚（1枚目は始めの姿勢）が無いか、自分より新しい枚と、その後ろの枚。前の枚を描き直したら、後ろは古い前の枚から描いたもの。"""
+    if P.cfg.get("inbetween_prompt") != "chain": return []
+    out = []
+    for a, b in P.pairs:
+        stale = False
+        for k in range(1, P.ib_div):
+            cur = P.ib_path(a, b, k); prev = P.pose_path(a) if k == 1 else P.ib_path(a, b, k - 1)
+            if not os.path.exists(cur): stale = True; continue
+            if stale or not os.path.exists(prev) or os.path.getmtime(prev) > os.path.getmtime(cur): stale = True; out.append(cur)
+    return out
+
+
 LIMIT = threading.Event()   # /img が使用量の上限（終了コード 4）を返した
 
 
@@ -132,10 +145,11 @@ def run_jobs(jobs, nworkers, dry, only=None):
             done[0] += 1; print(f"[{done[0]}/{len(todo)}] {'ok' if os.path.exists(out) else 'FAIL'} {os.path.basename(out)}", flush=True)
     rest = list(todo)
     while rest and not stop.is_set():          # 参照が他の描く予定の絵なら（中割りの chain）、その絵が描けてから次の回で描く
-        outs = {j[0] for j in rest}; ready = [j for j in rest if not any(r in outs for r in j[2])]
+        pending = {j[0] for j in todo if not os.path.exists(j[0])}       # 描けなかった絵もここに残り、それを参照する枚は次の実行まで待つ
+        ready = [j for j in rest if not any(r in pending for r in j[2])]
         if not ready: break
         with ThreadPoolExecutor(nworkers) as ex: list(ex.map(run, ready))
-        rest = [j for j in rest if j not in ready and not os.path.exists(j[0])]   # 描けなかった絵を参照する枚は、次の実行まで待つ
+        rest = [j for j in rest if j not in ready]
     miss = [j for j in todo if not os.path.exists(j[0])]
     print("終わり", len(todo) - len(miss), "/", len(todo), "（足りない分は同じコマンドを再実行）" if miss else "")
     return not miss
@@ -148,6 +162,13 @@ if __name__ == "__main__":
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None; dry = "--dry-run" in sys.argv
     if not os.path.exists(P.p("mascot.png")) and what in ("poses", "all"): die("mascot.png（元のマスコットの絵）が無い")
     steps = {"poses": [jobs_poses], "parts": [jobs_parts], "inbetweens": [jobs_ib], "all": [jobs_poses, jobs_parts, jobs_ib]}[what]
+    if jobs_ib in steps:
+        old = [x for x in chain_stale(P) if not only or only in os.path.basename(x)]
+        if old and dry: print("chain の中割りで、前の枚が無いか新しいので描き直す:", ", ".join(os.path.basename(x) for x in old))
+        elif old:
+            od = P.p("ib", "old"); os.makedirs(od, exist_ok=True)
+            for x in old: os.replace(x, os.path.join(od, os.path.basename(x)))
+            print("chain の中割りで、前の枚が無いか新しいので描き直す（元は ib/old/ に移した）:", ", ".join(os.path.basename(x) for x in old))
     ok = True
     for f in steps:
         ok = run_jobs(f(P), nw, dry, only) and ok
