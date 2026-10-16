@@ -300,5 +300,8 @@ def test_scale_fixes_size_of_height_changing_pose(tmp_path, env):
     cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg["poses"]["point"]["scale"] = 1.0
     (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
     assert scales() == {"home": 1.0, "point": 1.0}
+    cfg["anchor"] = {"mode": "none"}; cfg["poses"]["point"]["scale"] = 0.9; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert scales() == {"home": 1.0, "point": 0.9}                                  # 揃えない（none）でも scale は効く
+    cfg["anchor"] = {"mode": "boot"}; cfg["poses"]["point"]["scale"] = 1.0; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
     out = _run("views.py", proj)
     assert "scale 固定" in out.stdout and "背が±3%を超える" not in out.stdout

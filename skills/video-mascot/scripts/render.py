@@ -106,7 +106,7 @@ elif AMODE == "manual":
         if p not in ANCH and "anchor" in PCFG[p]: ANCH[p] = tuple(map(float, PCFG[p]["anchor"]))
     SCALE = {p: float(AN.get("scales", {}).get(p, PCFG[p].get("scale", 1.0))) for p in P.poses}
 else:
-    ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: 1.0 for p in P.poses}
+    ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: float(PCFG[p].get("scale", 1.0)) for p in P.poses}
 REF = ANCH[P.home]
 print("軸足:", {p: tuple(round(float(v), 1) for v in a_) for p, a_ in ANCH.items()}, "大きさ:", {p: round(float(v), 3) for p, v in SCALE.items()}, file=sys.stderr)
 PARTS = {}
