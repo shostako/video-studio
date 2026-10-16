@@ -62,7 +62,8 @@ if (opt.grabOnly) {
 } else {
 if (opt.ref.length) {
   // 画像を受け付ける file input を優先。無ければ ＋ ボタンを開いてから探す
-  let input = page.locator('input[type="file"][accept*="image"]');
+  // 参照が2枚以上なら multiple の付いた input でないと受け付けない（先頭の input は1枚用だった）
+  let input = page.locator(opt.ref.length > 1 ? 'input[type="file"][multiple][accept*="image"]' : 'input[type="file"][accept*="image"]');
   if (!(await input.count())) input = page.locator('input[type="file"]');
   if (!(await input.count())) {
     await page.locator('[data-testid="composer-plus-btn"], form button[aria-label="ファイルなどを追加"]').first().click().catch(() => {});
