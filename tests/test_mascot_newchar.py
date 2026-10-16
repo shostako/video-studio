@@ -210,11 +210,47 @@ def test_face_eyes_not_taken_from_symmetric_hair_or_brows(tmp_path):
     assert face.pick_eyes([(2000, 10, 10, 60, 30)]) == [10, 10, 60, 30]                 # 組が無ければ一番大きい塊
 
 
+def test_face_eyes_not_taken_from_shoulders_or_hands(tmp_path):
+    """目の差分が、肩や手の左右の組まで（目より大きく、目より下で）描き変えても、目は頭の辺りの上の方から取る。
+    新PCの実物で、目の範囲が胴に広がり、口の範囲が胴（y 700〜1090）に出た。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    for k, part in (("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24))): _variant(base, part, sm.MOUTH_ROI).save(proj / f"parts/home_{k}.png")
+    for k, h in (("e1", 6), ("e2", 1)):
+        im = _variant(base, sm.eye_part(h), sm.EYE_ROI); d = ImageDraw.Draw(im)
+        d.rectangle([150, 335, 200, 370], fill=(200, 60, 60)); d.rectangle([270, 335, 320, 370], fill=(200, 60, 60))   # 肩・手の組（目より下）
+        im.save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    ex0, ey0, ex1, ey1 = r["eye_roi"]
+    assert ey0 >= 175 and ey1 <= 232 and 170 <= ex0 <= 196 and 274 <= ex1 <= 300 and not face.suspicious(r)
+
+
+def test_face_votes_across_variants(tmp_path):
+    """各差分が別々の所（髪・手）も描き変えていても、何枚にも共通する口と目の所だけを拾う。"""
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); base = Image.open(proj / "poses/pose_home.png").convert("RGB")
+    junk = [[150, 230, 172, 250], [300, 236, 322, 262], [205, 300, 265, 310], [140, 470, 170, 500], [290, 420, 330, 450], [160, 110, 190, 130], [260, 280, 300, 290]]
+    for i, (k, part) in enumerate((("m1", sm.mouth_part(26, 6)), ("m2", sm.mouth_part(30, 16)), ("m3", sm.mouth_part(34, 24)), ("m6", sm.mouth_part(36, 8)))):
+        im = _variant(base, part, sm.MOUTH_ROI); ImageDraw.Draw(im).rectangle(junk[i], fill=(90, 160, 90)); im.save(proj / f"parts/home_{k}.png")
+    for i, (k, h) in enumerate((("e1", 6), ("e2", 1))):
+        im = _variant(base, sm.eye_part(h), sm.EYE_ROI); ImageDraw.Draw(im).rectangle(junk[5 - i], fill=(90, 160, 90)); im.save(proj / f"parts/home_{k}.png")
+    import face
+    r = face.measure(lib.Proj(str(proj)), "home")
+    mx0, my0, mx1, my1 = r["mouth_roi"]
+    assert 195 <= mx0 and mx1 <= 275 and 226 <= my0 and my1 <= 280 and not face.suspicious(r)
+
+
 def test_face_suspicious_flags():
     import face
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180]}) == []
     assert "口が目より上" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 60, 170, 90]})
     assert face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [0, 150, 400, 700]})       # 口が体じゅうに広がった
+    assert "口が目から離れすぎ" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 300, 170, 330]})
+    assert "口が両目の間に無い" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [210, 150, 250, 180]})
+    wide = {"eye_roi": [40, 300, 560, 380], "mouth_roi": [200, 700, 400, 1090], "head": [30, 50, 570, 600], "eye_zone_y": 400}
+    assert {"目の範囲が頭の幅に近い（顔より広い）", "口が頭の辺りの外"} <= set(face.suspicious(wide))   # 新PCの実物の外れ方
+    assert "目が頭の辺りより下" in face.suspicious({**wide, "eye_zone_y": 250})
     assert "目が片方しか取れていない" in face.suspicious({"eye_roi": [100, 100, 200, 130], "mouth_roi": [130, 150, 170, 180], "eye_single": True})
     near, far = (600, 100, 100, 130, 125), (200, 160, 102, 175, 122)                 # 斜めの顔: 奥の目は手前の 1/3
     assert face.eye_pair([near, far]) == ([100, 100, 175, 125], 2)
@@ -257,7 +293,25 @@ def test_inbetween_percent_prompt_is_opt_in(tmp_path):
     pc = poses.jobs_ib(lib.Proj(str(proj)))
     assert "17% of the way" in pc[0][1] and "only 17% extended" in pc[0][1] and "closer to the first" in pc[0][1]
     assert "halfway" in pc[2][1] and "closer to the second" in pc[4][1] and [j[2] for j in pc] == [j[2] for j in plain]
-    assert init.build("x", "d")["inbetween_prompt"] == "percent"                   # 新しいキャラは割合の言い方で始める
+    assert init.build("x", "d")["inbetween_prompt"] == "chain"                     # 新しいキャラは前の1枚から少しずつ描く
+
+
+def test_inbetween_chain_draws_from_previous_frame_in_order(tmp_path, monkeypatch):
+    """chain: 1枚目は始めの姿勢だけ、k 枚目は k-1 枚目だけを参照に描き、vm poses は前の枚が描けてから次を描く（参照に終わりの絵を渡さない）。"""
+    import poses
+    proj = Path(sm.make(str(tmp_path / "p"))); cfg = json.loads((proj / "config.json").read_text(encoding="utf-8"))
+    cfg["mascot"] = {"description": "x"}; cfg["inbetween_prompt"] = "chain"; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    for f in (proj / "ib").glob("*.png"): f.unlink()
+    jobs = poses.jobs_ib(lib.Proj(str(proj)))
+    assert [j[2] for j in jobs] == [[str(proj / "poses/pose_home.png")]] + [[str(proj / f"ib/ib_home_point_{k}.png")] for k in range(1, 5)]
+    assert "17% of the way" in jobs[0][1] and "exactly 33% of the way" in jobs[1][1] and "only about 17% of the total distance" in jobs[4][1]
+    assert all("pose_point" not in r for j in jobs for r in j[2])
+    log = tmp_path / "log.txt"; fake = tmp_path / "img.sh"
+    fake.write_text('#!/bin/bash\nwhile [ $# -gt 0 ]; do case "$1" in -r) r="$2"; shift 2;; -o) o="$2"; shift 2;; *) shift;; esac; done\n'
+                    '[ -f "$r" ] || exit 1; cp "$r" "$o"; echo "$(basename "$o")" >> ' + str(log) + '\n')
+    fake.chmod(0o755); monkeypatch.setattr(poses, "IMG", str(fake))
+    assert poses.run_jobs(jobs, 4, False)
+    assert log.read_text().split() == [f"ib_home_point_{k}.png" for k in range(1, 6)]
 
 
 def _spec_blocks():

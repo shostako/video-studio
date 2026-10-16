@@ -102,7 +102,7 @@ def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot",
            "mascot": {"description": desc, "pronoun": pron},
            "poses": fill(poses, pron), "pairs": pairs,
            "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode},
-           "inbetween_prompt": "percent"}
+           "inbetween_prompt": "chain"}
     if tiers: cfg["transition"] = {"mode": "fade", "dur": 0.25}; cfg["gaze"] = {}
     cfg["events"] = []
     cfg["voice"] = {"candidates": [], "lines": []}
