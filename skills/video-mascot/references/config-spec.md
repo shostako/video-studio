@@ -27,6 +27,7 @@
 | `mascot.pronoun` | 描かせる文の代名詞 `she`（既定）・`he`・`it`・`they`。中割りの指示の "Her face" がこれの所有格になる。`vm init --pronoun` が姿勢の desc もこれで書く |
 | `poses.<名前>.desc` | その姿勢の英語の説明（`vm poses` が絵と中割りの指示に使う） |
 | `poses.<名前>.refs` | 絵を描く時に一緒に参照させる別の姿勢（顔・服をそろえるため） |
+| `poses.<名前>.scale` | その姿勢の大きさの倍率を固定する（opt-in）。書かない姿勢は今まで通り背の高さで `home` に揃える。伸び・お辞儀・屈むなど背が変わるのが正しい姿勢に `1.0` を書く（揃えると伸びが縮み、お辞儀が大きくなる）。`anchor.mode: manual` では `anchor.scales` が先。書いた姿勢は `vm views` で背を比べず、`vm face --write` は範囲を `poses.<名前>.face` に書く（顔が home から動くため）。足すポーズの一覧は `docs/mascot-poses-spec.md` |
 | `pairs` | 中割りを作る姿勢の組。`[a, b]` で `ib/ib_a_b_1..5.png`。行き来のどちらの向きにも使う |
 | `face.mouth_roi` / `face.eye_roi` | home の絵で測った口・目の範囲 `[x0, y0, x1, y1]`（口は差分の外側、目は両目を含む）。`vm grid` で読む |
 | `floor.clean` | 足元の台座・靴の反射を消し、接地の影を足す（台座つきの絵向け）。`y0` は足元の処理を始める高さ（既定は絵の高さの70.5%） |

@@ -84,7 +84,7 @@ FL = C.get("floor", {"clean": True}); H0, W0 = P.read_pose(P.home).shape[:2]; Y0
 PB, SH = {}, {}
 for p in P.poses:
     img = P.read_pose(p)
-    if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
+    if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor", "scale")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
         die(f"姿勢 {p} の絵の大きさ {img.shape[1]}x{img.shape[0]} が home の {W0}x{H0} と違う（同じ大きさにしてから。docs/mascot-views-spec.md）")
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
     else: PB[p], SH[p] = img, np.zeros(img.shape[:2], np.float32)
@@ -95,6 +95,8 @@ if DETECT:
     miss = [p for p, v in ANCH.items() if v is None]
     if miss: die(f"軸足{'の靴' if AMODE == 'boot' else '（足元）'}が見つからない姿勢: {miss}（config.anchor を {'feet か ' if AMODE == 'boot' else ''}manual にするか none に）")
     HT = {p: HEIGHT(PB[p], ANCH[p]) for p in P.poses}; SCALE = {p: HT[P.home] / HT[p] for p in P.poses}
+    for p in P.poses:                             # poses.<名前>.scale: 背の高さで揃えず、この倍率に固定（伸び・お辞儀・屈むなど背が変わるポーズ。opt-in）
+        if "scale" in PCFG[p]: SCALE[p] = float(PCFG[p]["scale"])
     if AMODE == "boot":                           # 靴で拾った軸足が足元の線に乗っているか（紺のズボンの裾などを拾うと、大きさの補正も狂う）。知らせるだけ
         off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p]))]
         if off: print(f"注意: 靴で拾った軸足が足元に無い姿勢: {off}（服の裾などを拾っている。config の anchor を {{\"mode\": \"feet\"}} に。vm views で確かめる）", file=sys.stderr)
@@ -102,7 +104,7 @@ elif AMODE == "manual":
     ANCH = {p: tuple(v) for p, v in AN["points"].items()}
     for p in P.poses:
         if p not in ANCH and "anchor" in PCFG[p]: ANCH[p] = tuple(map(float, PCFG[p]["anchor"]))
-    SCALE = {p: float(AN.get("scales", {}).get(p, 1.0)) for p in P.poses}
+    SCALE = {p: float(AN.get("scales", {}).get(p, PCFG[p].get("scale", 1.0))) for p in P.poses}
 else:
     ANCH = {p: (W0 / 2, H0 * 0.9) for p in P.poses}; SCALE = {p: 1.0 for p in P.poses}
 REF = ANCH[P.home]

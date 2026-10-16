@@ -1,7 +1,7 @@
 """口と目の範囲（face の mouth_roi / eye_roi）を、描いた口・目の差分から測る。vm grid で目で読む代わり（キャラに依らない）。
   vm face <作業フォルダ> [姿勢 ...] [--write]
 姿勢の絵と parts/<姿勢>_m1..m7（口）・_e1 _e2（目）を重ねて、変わった所を囲む。差分が無い姿勢は飛ばす。
---write: home の範囲を config.face に、顔が正面でない姿勢（head_yaw が 15 度以上）の範囲を poses.<姿勢>.face に書く
+--write: home の範囲を config.face に、顔が正面でない姿勢（head_yaw が 15 度以上）と背の変わる姿勢（scale を書いた姿勢。お辞儀・屈むなど）の範囲を poses.<姿勢>.face に書く
 （正面の姿勢は vm parts が home から自動で写すので書かない）。書く前の config.json は config.json.bak に残す。
 目は「頭の辺り（前景の上から背の 45%。--head で指定もできる）の中で、高さの揃った2つの塊」、口は「目の下で、目の幅の中に真ん中がある塊」
 を探すので、差分が髪・手・服まで描き変えていても、そこは拾わない。おかしそうな範囲（口が目より上、口が目の幅より大きい等）は書かずに知らせる。
@@ -132,7 +132,7 @@ if __name__ == "__main__":
         if why: bad.append(p); continue
         face = {"mouth_roi": r["mouth_roi"], "eye_roi": r["eye_roi"]}
         if p == P.home: cfg["face"] = face; wrote.append(p)
-        elif abs(pose_view(cfg["poses"][p])[1]) >= 15: cfg["poses"][p]["face"] = face; wrote.append(p)
+        elif abs(pose_view(cfg["poses"][p])[1]) >= 15 or "scale" in cfg["poses"][p]: cfg["poses"][p]["face"] = face; wrote.append(p)   # scale: 背が変わるポーズは顔も動く
     if "--write" in sys.argv and wrote:
         cp = P.p("config.json"); shutil.copyfile(cp, cp + ".bak")
         with open(cp, "w", encoding="utf-8") as f: json.dump(cfg, f, ensure_ascii=False, indent=1)

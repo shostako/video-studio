@@ -258,3 +258,47 @@ def test_inbetween_percent_prompt_is_opt_in(tmp_path):
     assert "17% of the way" in pc[0][1] and "only 17% extended" in pc[0][1] and "closer to the first" in pc[0][1]
     assert "halfway" in pc[2][1] and "closer to the second" in pc[4][1] and [j[2] for j in pc] == [j[2] for j in plain]
     assert init.build("x", "d")["inbetween_prompt"] == "percent"                   # 新しいキャラは割合の言い方で始める
+
+
+def _spec_blocks():
+    import re
+    blks = re.findall(r"```json\n(.*?)```", (ROOT / "docs/mascot-poses-spec.md").read_text(encoding="utf-8"), re.S)
+    return [json.loads("{" + b + "}") for b in blks]
+
+
+def test_extra_presets_match_poses_spec_doc():
+    """docs/mascot-poses-spec.md の段階 A・B の config の例と、vm init --extras が書く雛形（she）が同じ（片方だけ直してずれないように）。"""
+    import init
+    a, b = _spec_blocks()
+    for tier, doc in (("a", a), ("b", b)):
+        x, xp = init.extra_presets(tier)
+        assert init.fill(x, "she") == doc["poses"] and xp == doc["pairs"]
+
+
+def test_init_extras_are_opt_in():
+    import init
+    plain = init.build("x", "d", "he", "a"); ex = init.build("x", "d", "he", "a", extras="ab")
+    assert not set(plain["poses"]) & {"think", "bow", "raise_r", "stretch", "crouch", "knee_bend"}
+    assert set(ex["poses"]) - set(plain["poses"]) == {"think", "bow", "raise_r", "stretch", "crouch", "knee_bend"}
+    assert ex["poses"]["bow"]["scale"] == 1.0 and "scale" not in ex["poses"]["think"] and "his" in ex["poses"]["bow"]["desc"]
+    assert ["home", "crouch"] in ex["pairs"] and all("{" not in c["desc"] for c in ex["poses"].values())
+    assert set(init.build("x", "d", extras="a")["poses"]) - set(plain["poses"]) == {"think", "bow", "raise_r", "stretch"}
+
+
+def test_scale_fixes_size_of_height_changing_pose(tmp_path, env):
+    """伸び（背が高くなる）を背の高さで揃えると縮む。poses.<名前>.scale を書くと、その倍率に固定する（書かない姿勢は今まで通り）。"""
+    import re
+    from PIL import ImageDraw
+    proj = Path(sm.make(str(tmp_path / "p"))); pp = proj / "poses/pose_point.png"
+    im = Image.open(pp).convert("RGB"); d = ImageDraw.Draw(im); d.rectangle([225, 30, 245, 100], fill=(40, 40, 60)); im.save(pp)   # 頭の上に挙げた腕（暗い袖）
+    def scales():
+        r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "render.py"), str(proj), "--out", str(tmp_path / "o.mp4"), "--mode", "white", "--to", "0.3"],
+                           env=env, capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, r.stderr
+        return eval(re.search(r"大きさ: (\{.*?\})", r.stderr).group(1))
+    assert scales()["point"] < 0.95                                                 # 既定: 背で揃えて縮む
+    cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg["poses"]["point"]["scale"] = 1.0
+    (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert scales() == {"home": 1.0, "point": 1.0}
+    out = _run("views.py", proj)
+    assert "scale 固定" in out.stdout and "背が±3%を超える" not in out.stdout

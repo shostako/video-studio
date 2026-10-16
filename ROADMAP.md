@@ -25,6 +25,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 作った機能を既定にするかの判断
 - マスコットの向き・顔・視線の絵（`docs/mascot-views-spec.md` の段階 A）を `/img` で描き、揃い（足元・背の高さ・向きの取り違え）を確かめる。別の作業フォルダ `<名前>-views` で
 - 新しいキャラ（別の絵）で `references/new-character.md` を通して試す。`vm init` の雛形・`vm face` の測った範囲・`anchor.mode: feet` が実物の絵で合うか
+- 足すポーズ（`docs/mascot-poses-spec.md` の段階 A: 考える・お辞儀・片手を挙げる・伸び）を `/img` で描き、足が動いていないか・顔が見えるか・中割りが少しずつ動くか・`scale` 固定で大きさが自然かを見る。良ければ段階 B（屈む・軽い屈伸）
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
 ## 済んだこと
@@ -41,3 +42,4 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 新PCで描いた段階 A の6枚の結果（左右の取り違え・黒目・present の回りの浅さ・足元と立ち位置のずれ）を仕様の desc と実測の表に入れた。立ち位置を揃える `anchor` の候補を出す `vm views` と、/img の codex・node が Windows 側を指すのを見つける `setup.sh` の検査を足した（2026-10-15）
 - キャラが替わっても同じ手順で立ち上がるようにした。`vm init`（絵1枚と英語の説明から作業フォルダと config の雛形。向き・視線の姿勢の desc は代名詞を差し替えて書く。黒い靴が無ければ足元を `feet` で揃える）、`vm face`（描いた口・目の差分から範囲を測る）、`anchor.mode: feet`（色に依らない足元）、`mascot.pronoun`、手順書 `skills/video-mascot/references/new-character.md`（新PCで分かった描かせ方の注意を含む）（2026-10-16）
 - 新PCで実物を回した結果を直した（2026-10-16）。`vm views` と `vm render`（boot）が、靴でない所（紺のズボンの裾）を軸足に拾った姿勢を知らせ `feet` を勧める（`vm views` の足元・背は色に依らずに測る）。`vm face` は目を頭の辺りの高さの揃った2つの塊から、口を目の下の目の幅の中から探し、怪しい範囲は書かない。中割りの言い方に `inbetween_prompt: "percent"`（opt-in、`vm init` は書く）。手順書に枚数・上限・再開。setup の /img を1行に
+- 足すポーズの仕様を書いた（`docs/mascot-poses-spec.md`、2026-10-16）。段階 A（`think`・`bow`・`raise_r`・`stretch`）、B（`crouch`・`knee_bend`）、ターンは向きの絵をつなぐ形で後回し。`vm init --extras a|ab` が雛形を書く。背が変わるポーズの大きさを固定する `poses.<名前>.scale`（opt-in）
