@@ -23,14 +23,16 @@ else
   [ -d "$IRO" ] || git clone --depth 1 https://github.com/Aratako/Irodori-TTS.git "$IRO" || { say "NG   clone に失敗"; exit 1; }
   (cd "$IRO" && uv sync --extra cu128) && say "ok   Irodori-TTS" || { say "NG   uv sync に失敗（GPU が無ければ --extra cpu）"; ok=0; }
 fi
-[ -x "$HOME/.claude/skills/img/scripts/img.sh" ] && say "ok   img スキル（ChatGPT の枠で絵を描く）" || { say "NG   img スキルが無い"; ok=0; }
-# /img は codex（node）で動く。WSL で Windows 側の codex・node（/mnt/c/...）を拾うと、絵を出さずに落ちる（bash -lc で PATH の順が変わる時など）
+# /img（img スキル）は codex（node）で動く。WSL で Windows 側の codex・node（/mnt/c/...）を拾うと、絵を出さずに落ちる（bash -lc で PATH の順が変わる時など）
+# 結果は1行にまとめる（「ok img スキル」と NG が並んで紛らわしかった）
+why=""; [ -x "$HOME/.claude/skills/img/scripts/img.sh" ] || why="img スキルが無い"
+where=""
 for t in codex node; do
-  p_="$(command -v "$t" 2>/dev/null || true)"
+  p_="$(command -v "$t" 2>/dev/null || true)"; where="$where $t: ${p_:-無し}"
   case "$p_" in
-    "") say "NG   $t が無い（/img が動かない）"; ok=0 ;;
-    /mnt/*) say "NG   $t が Windows 側を指している（$p_）。WSL の node（nvm など）の bin を PATH の先頭に足す"; ok=0 ;;
-    *) say "ok   $t ($p_)" ;;
+    "") why="${why:+$why、}$t が無い" ;;
+    /mnt/*) why="${why:+$why、}$t が Windows 側を指している（$p_）。WSL の node（nvm など）の bin を PATH の先頭に足す" ;;
   esac
 done
+if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where）"; else say "NG   /img が使えない: $why"; ok=0; fi
 [ $ok -eq 1 ] && say "全部そろっている" || say "足りないものがある"; [ $ok -eq 1 ]

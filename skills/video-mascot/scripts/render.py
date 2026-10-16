@@ -95,6 +95,9 @@ if DETECT:
     miss = [p for p, v in ANCH.items() if v is None]
     if miss: die(f"軸足{'の靴' if AMODE == 'boot' else '（足元）'}が見つからない姿勢: {miss}（config.anchor を {'feet か ' if AMODE == 'boot' else ''}manual にするか none に）")
     HT = {p: HEIGHT(PB[p], ANCH[p]) for p in P.poses}; SCALE = {p: HT[P.home] / HT[p] for p in P.poses}
+    if AMODE == "boot":                           # 靴で拾った軸足が足元の線に乗っているか（紺のズボンの裾などを拾うと、大きさの補正も狂う）。知らせるだけ
+        off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p]))]
+        if off: print(f"注意: 靴で拾った軸足が足元に無い姿勢: {off}（服の裾などを拾っている。config の anchor を {{\"mode\": \"feet\"}} に。vm views で確かめる）", file=sys.stderr)
 elif AMODE == "manual":
     ANCH = {p: tuple(v) for p, v in AN["points"].items()}
     for p in P.poses:

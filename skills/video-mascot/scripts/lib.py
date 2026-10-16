@@ -100,9 +100,9 @@ def fg_mask(img, bg=BG, thr=24):
     return (np.abs(img.astype(np.int16) - bg).max(axis=2) > thr).astype(np.uint8)
 
 
-def feet_anchor(img, band=0.02, min_area=400):
+def feet_anchor(img, band=0.04, min_area=400):
     """足元の基準点（色に依らない）: 前景の一番下の y と、そこから絵の高さの band の帯の中の前景の左右の端の真ん中。
-    靴が黒くないキャラ用（anchor.mode: feet）。両足の真ん中なので、斜めの姿勢でも立ち位置が揃う。見つからなければ None。"""
+    靴が黒くないキャラ用（anchor.mode: feet）。両足の真ん中なので、斜めの姿勢でも立ち位置が揃う（斜めで片足が少し上がっても入るよう、帯は背の 4%）。見つからなければ None。"""
     m = fg_mask(img); n, lab, st, _ = cv2.connectedComponentsWithStats(m)
     big = np.isin(lab, [i for i in range(1, n) if st[i, cv2.CC_STAT_AREA] > min_area])
     rows = np.where(big.any(axis=1))[0]

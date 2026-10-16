@@ -74,7 +74,8 @@ def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot",
     cfg = {"name": name, "fps": 30, "pad": 100, "home": "home", "seed": 5,
            "mascot": {"description": desc, "pronoun": pron},
            "poses": fill(poses, pron), "pairs": pairs,
-           "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode}}
+           "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode},
+           "inbetween_prompt": "percent"}
     if tiers: cfg["transition"] = {"mode": "fade", "dur": 0.25}; cfg["gaze"] = {}
     cfg["events"] = []
     cfg["voice"] = {"candidates": [], "lines": []}
