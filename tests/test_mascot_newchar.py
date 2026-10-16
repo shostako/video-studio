@@ -236,6 +236,11 @@ def test_views_flags_boot_on_trouser_hem(tmp_path, env):
     r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "render.py"), str(proj), "--out", str(tmp_path / "o.mp4"), "--mode", "white", "--to", "0.5"],
                        env=env, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0 and "軸足が足元に無い姿勢" in r.stderr
+    f = views.measure(lib.Proj(str(proj)), "point")["feet"]                        # anchor を書いた姿勢は、render と同じく外れと言わない
+    cfg["poses"]["point"]["anchor"] = [round(float(v), 1) for v in f]; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    rows = {r["pose"]: r for r in views.table(lib.Proj(str(proj)), ["home", "point"])}
+    assert rows["point"]["boot_ok"] is True and rows["home"]["boot_ok"] is False
+    assert "point" not in _run("views.py", proj).stdout.split("靴の軸足が外れた姿勢:")[1].splitlines()[0]
 
 
 def test_inbetween_percent_prompt_is_opt_in(tmp_path):

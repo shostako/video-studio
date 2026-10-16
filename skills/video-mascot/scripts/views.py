@@ -2,6 +2,7 @@
   vm views <作業フォルダ> [姿勢 ...]
 列: 絵の大きさ、足元の高さのずれ、立ち位置（両足の真ん中）の横のずれ、背の高さの比（home=1）。どれも服の色に依らずに測る。
 anchor.mode が boot（黒い靴）なら、靴で拾った軸足が足元の線に乗っているかを見て、外れた姿勢を知らせる（feet にするよう勧める）。
+poses.<名前>.anchor を書いた姿勢は、vm render と同じくそれを軸足として扱う（外れとは言わない）。
 乗っていれば、立ち位置を home に揃える anchor の候補（config の poses.<名前>.anchor にそのまま書ける）も出す。
 config の floor.clean が true なら、台座を消してから測る（vm render と同じ）。絵は読むだけで、何も書き換えない。"""
 import json, os, sys
@@ -16,7 +17,9 @@ def measure(P, pose, y0=None):
     if fl.get("clean", False): img, _ = defloor(img, int(fl.get("y0", round(H * 0.705))) if y0 is None else y0)
     f = feet_anchor(img); r = {"size": (img.shape[1], img.shape[0]), "feet": f, "height": fg_height(img, f) if f else None, "boot": None, "boot_ok": None}
     if P.cfg.get("anchor", {}).get("mode", "boot") == "boot":
-        b = boot_anchor(img); r["boot"] = b; r["boot_ok"] = bool(b and f and abs(b[1] - f[1]) <= 0.01 * H)
+        own = P.cfg["poses"].get(pose, {}).get("anchor")
+        if own is not None: r["boot"] = tuple(map(float, own)); r["boot_ok"] = True       # anchor を書いた姿勢は vm render もそれを使う（靴は測らない）
+        else: b = boot_anchor(img); r["boot"] = b; r["boot_ok"] = bool(b and f and abs(b[1] - f[1]) <= 0.01 * H)
     return r
 
 
