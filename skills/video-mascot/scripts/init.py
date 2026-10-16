@@ -55,6 +55,20 @@ def view_presets(tiers):
     return out, pairs
 
 
+def view_steps(tiers):
+    """turn_k → present_k の中割り各枚の腕の様子（config の ib_steps。chain で1枚目から腕が伸び切ったのを、段階を言わせて抑える）。"""
+    if "a" not in tiers: return {}
+    out = {}
+    for k, s, S in (("l", "left", "LEFT"), ("r", "right", "RIGHT")):
+        out[f"turn_{k}>present_{k}"] = [
+            "the movement has only just started: both hands are still almost clasped in front of {p} waist and both arms are still lowered",
+            f"{{p}} hand on the image-{s} side has just left the other hand and is lifting at waist height, elbow still clearly bent, the other hand stays in front of {{p}} waist",
+            f"{{p}} hand on the image-{s} side is at chest height, elbow bent at about a right angle, palm starting to turn outward",
+            f"{{p}} arm on the image-{s} side is reaching toward the {S} edge of the image, elbow only slightly bent, palm open",
+            f"{{p}} arm on the image-{s} side is almost fully extended toward the {S} edge of the image with an open palm, just short of the end pose"]
+    return out
+
+
 def gesture_presets():
     """正面の基本の身振り（home と行き来する）。台本に合わせて足し引きする前提の最小限。"""
     out = {"open": {"desc": "facing the camera, both hands open at chest height with palms up, explaining something, calm closed mouth", "refs": ["home"]},
@@ -65,33 +79,41 @@ def gesture_presets():
 
 def extra_presets(tiers):
     """足すポーズ（docs/mascot-poses-spec.md）。どれも正面で、home と行き来する（中割りあり）。背の高さが変わるポーズは
-    "scale": 1.0（背の高さで大きさを揃えない。揃えると伸びは縮み、お辞儀・屈むは大きくなる）。"""
+    "scale": 1.0（背の高さで大きさを揃えない。揃えると伸びは縮み、お辞儀・屈むは大きくなる）。
+    expect_height は home を 1 とした背の比の想定範囲（vm views が外れを注意する。お辞儀が浅いまま描かれたのを拾う）。"""
     out = {}
     if "a" in tiers:
         out["think"] = {"desc": ("facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised so that "
                                  "{p} index finger and thumb lightly touch {p} chin, the other arm folded across {p} waist supporting that elbow, "
                                  "thinking calmly, calm closed mouth"), "refs": ["home"]}
-        out["bow"] = {"desc": ("a light polite bow: {p} upper body bent forward about 15 degrees from the hips, head lowered a little with the face still "
-                               "clearly visible, hands lightly clasped in front of {p} waist, feet on exactly the same spot as the reference, calm closed mouth"),
-                      "refs": ["home"], "scale": 1.0}
+        out["bow"] = {"desc": ("a clear polite bow: {p} upper body bent forward about 30 degrees from the hips, so that the top of {p} head is clearly lower "
+                               "than in the reference (about 10 percent of {p} height lower), head lowered with the face still visible, hands lightly clasped "
+                               "in front of {p} waist, feet on exactly the same spot as the reference, calm closed mouth"),
+                      "refs": ["home"], "scale": 1.0, "expect_height": [0.85, 0.96]}
         out["raise_r"] = {"desc": ("facing the camera, {p} hand on the image-right side raised to the height of {p} face with the index finger pointing straight up, "
                                    "as when saying 'here is one point', the other arm relaxed at {p} side, standing on exactly the same spot as the reference, "
                                    "calm closed mouth"), "refs": ["home"]}
         out["stretch"] = {"desc": ("a light, relaxed stretch: both arms raised above {p} head with the hands lightly clasped, back straight, facing the camera, "
-                                   "standing on exactly the same spot as the reference, eyes open, calm closed mouth"), "refs": ["home"], "scale": 1.0}
+                                   "standing on exactly the same spot as the reference, eyes open, calm closed mouth"), "refs": ["home"], "scale": 1.0,
+                          "expect_height": [1.03, 1.6]}
     if "b" in tiers:
         out["crouch"] = {"desc": ("crouching down on exactly the same spot as the reference with both knees bent and {p} body lowered, facing the camera, "
                                   "{p} hand on the image-right side pointing down toward the lower right of the image, face still clearly visible, calm closed mouth"),
-                         "refs": ["home"], "scale": 1.0}
+                         "refs": ["home"], "scale": 1.0, "expect_height": [0.5, 0.88]}
         out["knee_bend"] = {"desc": ("a slight knee bend: both knees bent a little so that {p} whole body is about 5 percent lower, back straight, "
                                      "hands lightly clasped in front of {p} waist, facing the camera, feet on exactly the same spot as the reference, calm closed mouth"),
-                            "refs": ["home"], "scale": 1.0}
+                            "refs": ["home"], "scale": 1.0, "expect_height": [0.9, 0.985]}
     return out, [["home", n] for n in out]
 
 
 def fill(poses, pron):
     p = POSS[pron]
     return {n: {**c, "desc": c["desc"].replace("{p}", p).replace("{P}", p.capitalize())} for n, c in poses.items()}
+
+
+def fill_steps(steps, pron):
+    p = POSS[pron]
+    return {k: [h.replace("{p}", p).replace("{P}", p.capitalize()) for h in v] for k, v in steps.items()}
 
 
 def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot", pedestal=False, extras="none"):
@@ -105,6 +127,7 @@ def build(name, desc, pron="she", tiers="a", gestures=False, anchor_mode="boot",
            "poses": fill(poses, pron), "pairs": pairs,
            "floor": {"clean": bool(pedestal)}, "anchor": {"mode": anchor_mode},
            "inbetween_prompt": "chain"}
+    if tiers and view_steps(tiers): cfg["ib_steps"] = fill_steps(view_steps(tiers), pron)
     if tiers: cfg["transition"] = {"mode": "fade", "dur": 0.25}; cfg["gaze"] = {}
     cfg["events"] = []
     cfg["voice"] = {"candidates": [], "lines": []}

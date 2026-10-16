@@ -26,6 +26,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - マスコットの向き・顔・視線の絵（`docs/mascot-views-spec.md` の段階 A）を `/img` で描き、揃い（足元・背の高さ・向きの取り違え）を確かめる。別の作業フォルダ `<名前>-views` で
 - 新しいキャラ（別の絵）で `references/new-character.md` を通して試す。`vm init` の雛形・`vm face` の測った範囲・`anchor.mode: feet` が実物の絵で合うか
 - 足すポーズ（`docs/mascot-poses-spec.md` の段階 A: 考える・お辞儀・片手を挙げる・伸び）を `/img` で描き、足が動いていないか・顔が見えるか・中割りが少しずつ動くか・`scale` 固定で大きさが自然かを見る。良ければ段階 B（屈む・軽い屈伸）
+- 新PCの作業フォルダに `vm init --print` の `ib_steps` と、お辞儀の新しい desc・`expect_height` を写し、turn→present の中割りとお辞儀を描き直して、腕が段階を追うか・`vm views` の背の比が範囲に入るかを見る
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
 ## 済んだこと
@@ -44,3 +45,4 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 新PCで実物を回した結果を直した（2026-10-16）。`vm views` と `vm render`（boot）が、靴でない所（紺のズボンの裾）を軸足に拾った姿勢を知らせ `feet` を勧める（`vm views` の足元・背は色に依らずに測る）。`vm face` は目を頭の辺りの高さの揃った2つの塊から、口を目の下の目の幅の中から探し、怪しい範囲は書かない。中割りの言い方に `inbetween_prompt: "percent"`（opt-in、`vm init` は書く）。手順書に枚数・上限・再開。setup の /img を1行に
 - 足すポーズの仕様を書いた（`docs/mascot-poses-spec.md`、2026-10-16）。段階 A（`think`・`bow`・`raise_r`・`stretch`）、B（`crouch`・`knee_bend`）、ターンは向きの絵をつなぐ形で後回し。`vm init --extras a|ab` が雛形を書く。背が変わるポーズの大きさを固定する `poses.<名前>.scale`（opt-in）
 - 新しいキャラの基本の立ち姿を「両手を前で軽く組む」にした（手順書の元の絵の決まり、`vm init --redraw-home`、2026-10-16）
+- 新PCで #18 を確かめた結果を直した: 中割りの各枚の様子 `ib_steps`（turn→present の腕の段階）、お辞儀の雛形を強め、背の比の想定 `expect_height` を `vm views` が見る（どれも opt-in、2026-10-16）

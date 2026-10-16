@@ -67,6 +67,15 @@ IB_HEAD = ("Same character, same face, same clothes, same lighting, same camera 
            "vertical 9:16, full body. ")
 
 
+def step_hint(P, a, b, k):
+    """config の ib_steps（opt-in）{"a>b": [1枚目の様子, 2枚目の様子, ...]} から、k 枚目の中割りの様子。
+    並びの数が div-1 と違えば、割合の近いものを使う。無ければ None。"""
+    hs = P.cfg.get("ib_steps", {}).get(f"{a}>{b}")
+    if not hs: return None
+    n, div = len(hs), P.ib_div
+    return hs[k - 1] if n == div - 1 else hs[min(n - 1, max(0, round(k * (n + 1) / div) - 1))]
+
+
 def jobs_ib(P):
     """中割り。div=6（既定）は両端の姿勢から k/6 の位置を描く。div を増やした細かい中割り（例 12）は、
     両隣の絵（姿勢か、描けている中割り）が揃っている枚を「両隣のちょうど中間」として描く。揃っていない枚は両端の姿勢から割合で描く。"""
@@ -103,6 +112,8 @@ def jobs_ib(P):
                 prompt = (IB_HEAD + f"The pose is {frac} of the way from the first reference image ({D[a]}) to the second reference image ({D[b]}), "
                           f"a natural in-between frame of the movement. {Poss} face and expression stay the same, mouth closed.")
                 refs = [P.pose_path(a), P.pose_path(b)]
+            hint = step_hint(P, a, b, k)
+            if hint: prompt += f" In this frame: {hint}."
             out.append((P.ib_path(a, b, k), prompt, refs))
     return out
 

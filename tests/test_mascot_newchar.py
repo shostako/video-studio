@@ -390,3 +390,34 @@ def test_init_redraw_home_draws_clasped_hands_from_source(tmp_path):
     src2 = tmp_path / "src2.png"; sm.figure(1).save(src2)                       # 別の絵で作り直しても、前の home は使わない（脇へ移す）
     r = _run("init.py", tmp_path / "a", src2, "--desc", "a test figure", "--redraw-home", "--force")
     assert r.returncode == 0 and not (tmp_path / "a/poses/pose_home.png").exists() and (tmp_path / "a/poses/pose_home.old.png").exists()
+
+
+def test_ib_steps_add_per_frame_hint_opt_in(tmp_path):
+    """ib_steps（opt-in）は組の中割り k 枚目の文の終わりに「In this frame: …」を足す。書かない組・書かない config は今まで通り。"""
+    import poses, init
+    proj = Path(sm.make(str(tmp_path / "p"))); cfg = json.loads((proj / "config.json").read_text(encoding="utf-8"))
+    cfg["mascot"] = {"description": "x"}; cfg["inbetween_prompt"] = "chain"; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    plain = poses.jobs_ib(lib.Proj(str(proj))); a, b = cfg["pairs"][0]
+    assert all("In this frame" not in j[1] for j in plain)
+    cfg["ib_steps"] = {f"{a}>{b}": [f"step {i}" for i in range(1, 6)]}; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    st = poses.jobs_ib(lib.Proj(str(proj)))
+    mine = [j for j in st if os.path.basename(j[0]).startswith(f"ib_{a}_{b}_")]
+    assert [j[1] for j in mine] == [p[1] + f" In this frame: step {k}." for k, p in enumerate([j for j in plain if j[0] in {m[0] for m in mine}], 1)]
+    assert [j[1] for j in st if j not in mine] == [j[1] for j in plain if j[0] not in {m[0] for m in mine}]
+    cfg["ib_steps"] = {f"{a}>{b}": ["early", "late"]}; (proj / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    two = [j[1] for j in poses.jobs_ib(lib.Proj(str(proj))) if os.path.basename(j[0]).startswith(f"ib_{a}_{b}_")]
+    assert [t.rsplit("In this frame: ", 1)[1] for t in two] == ["early.", "early.", "late.", "late.", "late."]   # 数が違えば割合の近いもの
+    c = init.build("x", "d", "he", "a")
+    assert set(c["ib_steps"]) == {"turn_l>present_l", "turn_r>present_r"} and all(len(v) == 5 for v in c["ib_steps"].values())
+    assert "his waist" in c["ib_steps"]["turn_l>present_l"][0] and "LEFT edge" in c["ib_steps"]["turn_l>present_l"][4]
+    assert "ib_steps" not in init.build("x", "d", tiers="none")
+
+
+def test_views_expect_height_flags_shallow_bow():
+    """expect_height（opt-in）の範囲の外を注意する。書かない姿勢は今まで通り（scale なら比べない、無ければ ±3%）。"""
+    import views, init
+    bow = init.build("x", "d", extras="a")["poses"]["bow"]
+    assert "外" in views.height_warn(bow, 0.998) and views.height_warn(bow, 0.9) == ""
+    assert "scale 固定" in views.height_warn({"scale": 1.0}, 0.998) and views.height_warn({}, 1.01) == "" and "±3%" in views.height_warn({}, 1.05)
+    ex = init.build("x", "d", extras="ab")["poses"]
+    assert all("expect_height" in ex[n] for n in ("bow", "stretch", "crouch", "knee_bend")) and "expect_height" not in ex["think"]
