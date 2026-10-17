@@ -143,3 +143,14 @@ def test_run_jobs_skips_the_whole_chain_after_a_missing_reference(tmp_path, monk
     jobs = [(ib[0], "p", [start]), (ib[1], "p", [ib[0]]), (ib[2], "p", [ib[1]])]                 # chain: 前の1枚を参照に順に
     assert not poses.run_jobs(jobs, 1, False)
     assert called == []
+
+
+def test_self_referential_base_is_rejected_before_any_change(tmp_path):
+    p = proj(tmp_path); drawn_hand(p)
+    cfg = json.loads((p / "config.json").read_text(encoding="utf-8")); cfg["hands"]["count_3"]["base"] = "count_3"
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    old = cv2.imread(str(p / "poses/pose_point.png")); cv2.imwrite(str(p / "poses/pose_count_3.png"), old)
+    before = (p / "poses/pose_count_3.png").read_bytes()
+    r = run(p, "place", "--force")
+    assert r.returncode != 0 and "自分自身" in r.stderr + r.stdout
+    assert (p / "poses/pose_count_3.png").read_bytes() == before and not (p / "reject").exists()

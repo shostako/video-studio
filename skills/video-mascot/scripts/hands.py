@@ -28,6 +28,7 @@ def spec(P, name):
     if not h: die(f"config.hands に無い: {name}")
     for k in ("base", "box", "desc"):
         if k not in h: die(f"config.hands.{name} に {k} が無い")
+    if h["base"] == name: die(f"config.hands.{name}.base が自分自身。手を描き換える元は別の姿勢にする（例: raise_r）")
     x0, y0, x1, y1 = h["box"]
     if not (x0 < x1 and y0 < y1): die(f"config.hands.{name}.box がおかしい: {h['box']}")
     return h
@@ -76,6 +77,8 @@ def place(P, name, force=False):
     h = spec(P, name); out = P.pose_path(name); mark = P.p("hands", f"{name}.placed.json")
     hp = P.p("hands", f"{name}.png")
     if not os.path.exists(hp): die(f"手の絵が無い: hands/{name}.png（先に vm hands ... draw）")
+    base = P.read_pose(h["base"]); x0, y0, x1, y1 = h["box"]; ref = base[y0:y1, x0:x1]   # 読めるものを全部読んでから退避する
+    hand = cv2.resize(cv2.imread(hp), (x1 - x0, y1 - y0), interpolation=cv2.INTER_AREA)
     if os.path.exists(out) and not os.path.exists(mark):    # 前に place で作った絵ではない（全身で描いた絵など）
         if not force:
             print(f"{name}: poses/pose_{name}.png は place で作った絵ではない（全身で描いた絵など）。置き換えるなら --force（古い絵と、それから作った差分・部品・中割りは reject/hands_replaced/ へ移す）")
@@ -84,8 +87,6 @@ def place(P, name, force=False):
     elif os.path.exists(out):                               # 前に place で作った絵を、描き直した手で置き換える。古い手で描いた中割り・差分は使えない
         b = os.path.exists(P.p(f"parts_{name}", "borrowed.json"))    # home から写した口・目は顔が同じなので残す
         archive_old(P, name, pose=True, parts_dir=not b)
-    base = P.read_pose(h["base"]); x0, y0, x1, y1 = h["box"]; ref = base[y0:y1, x0:x1]
-    hand = cv2.resize(cv2.imread(hp), (x1 - x0, y1 - y0), interpolation=cv2.INTER_AREA)
     g0 = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(hand, cv2.COLOR_BGR2GRAY).astype(np.float32)
     M = np.eye(2, 3, dtype=np.float32); cc = -1.0
     try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), None, 5)
