@@ -52,7 +52,7 @@ def jobs_draw(P, ns):
 
 def archive_old(P, name, pose=True, parts_dir=True):
     """置き換える前に、古い姿勢の絵（pose）と、それから作った口・目の差分（parts/<名前>_<m1..m7|e1|e2|g_*>.png）・部品（parts_<名前>/、parts_dir）・
-    その姿勢を端に持つ中割り（ib/ib_<前>_<次>_<番号>.png）と補間の控え（ib_interp/<前>_<次>_x*）を reject/hands_replaced/<名前>_<時刻>/ へ移す。
+    その姿勢を端に持つ中割り（ib/ib_<前>_<次>_<番号>[_<分割数>].png）と補間の控え（ib_interp/<前>_<次>_x*）を reject/hands_replaced/<名前>_<時刻>/ へ移す。
     名前はぴったり一致で選ぶ（count を置き換えても count_2 の絵は動かさない）。"""
     import re, time
     from lib import MOUTHS, EYES, GAZES
@@ -60,7 +60,7 @@ def archive_old(P, name, pose=True, parts_dir=True):
     src = ([P.pose_path(name)] if pose else []) + [P.p("parts", f"{name}_{k}.png") for k in MOUTHS + EYES + GAZES] + ([P.p(f"parts_{name}")] if parts_dir else [])
     for a, b in P.cfg.get("pairs", []):
         if name not in (a, b): continue
-        ibr = re.compile(rf"^ib_{re.escape(a)}_{re.escape(b)}_\d+\.png$"); itr = re.compile(rf"^{re.escape(a)}_{re.escape(b)}_(direct_)?x\d+_")
+        ibr = re.compile(rf"^ib_{re.escape(a)}_{re.escape(b)}_\d+(_\d+)?\.png$"); itr = re.compile(rf"^{re.escape(a)}_{re.escape(b)}_(direct_)?x\d+_")
         if os.path.isdir(P.p("ib")): src += [P.p("ib", f) for f in os.listdir(P.p("ib")) if ibr.match(f)]
         if os.path.isdir(P.p("ib_interp")): src += [P.p("ib_interp", f) for f in os.listdir(P.p("ib_interp")) if itr.match(f)]
     for f in src:

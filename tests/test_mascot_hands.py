@@ -81,6 +81,7 @@ def test_pose_made_by_place_is_replaced_after_redrawing_the_hand(tmp_path):
     cfg = json.loads((p / "config.json").read_text(encoding="utf-8")); cfg["pairs"].append(["home", "count_3"])
     (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     for k in (1, 2): cv2.imwrite(str(p / f"ib/ib_home_count_3_{k}.png"), h)              # 古い手で描いた中割り
+    cv2.imwrite(str(p / "ib/ib_home_count_3_3_12.png"), h)                                 # 分割数が既定でない中割り
     cv2.imwrite(str(p / "parts/count_2_m1.png"), h)                                        # 名前が似た別の姿勢の差分
     r = run(p, "place")
     assert r.returncode == 0, r.stdout + r.stderr
