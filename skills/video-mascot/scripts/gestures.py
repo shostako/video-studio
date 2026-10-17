@@ -111,16 +111,20 @@ def needs(d, names):
     return order
 
 
-def add(cfg, d, names, force=False):
-    """config に身振りを足した新しい config と、足した姿勢の名前の並び。from・refs の姿勢が config に無ければ、辞書から一緒に足す。"""
+def add(cfg, d, names, force=False, drawn=()):
+    """config に身振りを足した新しい config と、足した姿勢の名前の並び。from・refs の姿勢が config に無ければ、辞書から一緒に足す。
+    drawn は絵が描けている姿勢の名前。--force でも、描けている姿勢と home は書き換えない（vm poses は描けた絵を飛ばすので、文だけ変わって絵が古いままになる）。"""
     cfg = json.loads(json.dumps(cfg)); home = cfg.get("home", "home")
+    if home in names: raise GestureError(f"{home} は基本の姿勢（config の home）なので、辞書から足さない・書き換えない")
     pron = cfg.get("mascot", {}).get("pronoun", "she")
     if pron not in init.POSS: raise GestureError(f"mascot.pronoun が知らない値: {pron}")
     poses = cfg.setdefault("poses", {}); pairs = cfg.setdefault("pairs", []); added = []
     for n in needs(d, names):
         if n in poses and not (force and n in names):
             if n in names: raise GestureError(f"{n} は config に既にある（書き換えるなら --force）")
-            continue                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
+            continue
+        if n in poses and n in drawn:
+            raise GestureError(f"{n} は絵が描けている。書き換えるなら、先に poses/pose_{n}.png と {n} の部品・中割りを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
         e = d[n]; ren = lambda r: home if r == "home" else r
         pose = {"desc": e["desc"], "refs": [ren(r) for r in e["refs"]]}
         for k in ("scale", "expect_height"):
@@ -163,7 +167,8 @@ if __name__ == "__main__":
         cp = os.path.join(os.path.abspath(a.dir), "config.json")
         if not os.path.exists(cp): sys.exit(f"config.json が無い: {cp}（先に vm init）")
         with open(cp, encoding="utf-8") as f: cfg = json.load(f)
-        new, added = add(cfg, d, a.add, a.force)
+        drawn = {n for n in cfg.get("poses", {}) if os.path.exists(os.path.join(os.path.dirname(cp), "poses", f"pose_{n}.png"))}
+        new, added = add(cfg, d, a.add, a.force, drawn)
     except (GestureError, yaml.YAMLError) as ex:
         print(f"ERROR: {ex}", file=sys.stderr); sys.exit(1)
     if a.print: print(json.dumps(new, ensure_ascii=False, indent=1)); sys.exit(0)

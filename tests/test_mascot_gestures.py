@@ -109,3 +109,17 @@ def test_force_with_reverse_pair_keeps_its_direction():
     assert "home>pinch" not in cfg["ib_steps"]
     fwd, _ = G.add(init.build("x", "a test", "she", "none"), d, ["pinch"])
     assert cfg["ib_steps"]["pinch>home"] == fwd["ib_steps"]["home>pinch"][::-1]       # 組の向きで引かれ、段階は逆の順
+
+
+def test_force_refuses_home_and_drawn_poses():
+    d = G.load(); base = init.build("x", "a test", "she", "none", gestures=True)
+    with pytest.raises(G.GestureError, match="drawn|描けている"): G.add(base, d, ["open"], force=True, drawn={"open"})
+    base["home"] = "span"; base["poses"]["span"] = base["poses"].pop("home")
+    with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["span"], force=True)
+
+
+def test_cli_force_refuses_drawn_pose(tmp_path):
+    cfg = init.build("w", "a test", "she", "none", gestures=True); (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    (tmp_path / "poses").mkdir(); (tmp_path / "poses" / "pose_open.png").write_bytes(b"x")
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "gestures.py"), str(tmp_path), "--add", "open", "--force"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "描けている" in r.stderr
