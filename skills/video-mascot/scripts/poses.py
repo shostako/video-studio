@@ -80,6 +80,7 @@ def jobs_parts(P):
     for n in P.poses:
         pc = P.cfg["poses"][n]; face = pc.get("face", True) is not False
         if not face: continue
+        if os.path.exists(P.p(f"parts_{n}", "borrowed.json")): continue   # vm parts --borrow で写した姿勢は描かない
         out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {txt}", [P.pose_path(n)]) for k, txt in M.items()]
         if "gaze" in P.cfg and P.cfg["gaze"] is not False:
             out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {G[k]}", [P.pose_path(n)]) for k in gaze_keys(pose_view(pc)[1], face)]
