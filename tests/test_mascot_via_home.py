@@ -91,6 +91,13 @@ def test_overlapping_routes_drop_the_later_one_only():
     assert [e[1:] for e in ev] == [("home", "open"), ("open", "home"), ("home", "span"), ("span", "open")]
     assert ev[-1][0] == pytest.approx(3.6 - 1 / 3 - 0.04)
 
+
+def test_dropped_route_comes_back_when_the_other_fallback_is_short():
+    # 1.0 秒と 1.5 秒の経由（0.8 秒）は重なる。後ろをやめても前は収まらず前もやめるが、前が溶かし（0.1 秒）に戻ると後ろは収まる
+    events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span"}, {"at": 1.5, "pose": "open"}]
+    ev = res(events, route=route(), dur_of=lambda a, b, v: 0.1)
+    assert [e[1:] for e in ev] == [("home", "open"), ("open", "span"), ("span", "home"), ("home", "open")]
+
 def test_route_skips_via_and_keeps_via_slot():
     events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span", "via": "fade"}, {"at": 3.0, "pose": "open"}]
     ev = res(events, route=route(), with_via=True)
