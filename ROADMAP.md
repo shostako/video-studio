@@ -11,11 +11,13 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 
 方針（2026-10-17 ユーザーと決めた。根拠は DECISIONS.md の同じ日）: 身振りの**種類**を増やすのが先。絵は丸ごとのキーポーズを主に持ち、部品にするのは小さくて形の崩れない所（顔・頭の傾き・脚、次に手の形）だけ。
 
-1. home 経由の切り替え（opt-in）: 中割りの無い組 A→B を、A→home と home→B の中割りでつなぐ。身振りを home との組だけで描けば、組の数が身振りの数で済む
+（今は無い。次は手元待ちの結果を見て決める）
 
 ## 手元待ち（クラウドでは動かない。スレッドは手を出さず、必要なら `DECISIONS.md` の「未決」に書く）
 
 - 身振りの辞書（`vm gestures`）の候補（数える・つまむ・幅を示す・隙間・合掌・腕組み・注意）から、2本目の解説動画の台本で使うものを選び、新PCで Codex に描かせる（`vm gestures <作業フォルダ> --add ...` → `vm poses`）。描いたら辞書の `checked` を true にし、崩れた文は直す。指の数の切り替えが多ければ、手の形の部品にするかを決める
+
+- home 経由の切り替え（`config.via_home`）の見た目。身振りどうしの切り替えで home を通るのが、溶かし（`transition`）や直の補間（`interp.direct`）より自然か、`hold` が要るか。2本目の台本の身振りを描いたあとに、同じ作業フォルダで並べて見る
 
 - ベンチ（専門語を詰めた60秒の台本と、決めたマスコット1体）の確定と、本物の素材の用意
 - TTS エンジンの比較（Gemini TTS、Irodori、アクセントを指定できるローカル系、新しいオープン重み）
@@ -56,3 +58,4 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 中割りのコマ補間を `vm render` に組み込んだ（opt-in、`config.interp` か `--interp rife`）。描いた絵の間を RIFE（rife-ncnn-vulkan）で 8 倍に細かくし、中割りのある切り替えを `dur`（既定 0.6 秒、組ごとは `durs`）と ease-in-out で出す。列は `ib_interp/` にためる。純関数（`interp_config`・`interp_dur`・`dense_ks`、`plan_at` の `ib_dur`）を `tests/test_mascot_interp.py` でテスト。付けない時の書き出しは前とコマ単位で一致（2026-10-17）
 - `interp.direct`（opt-in）: 中割りの無い組も端の姿勢2枚の間で直に補間する（向きの同じ組だけ）。手が大きく動く組ではにじむので、中割りを描くまでのつなぎ（2026-10-17）
 - 身振りの辞書 `skills/video-mascot/data/gestures.yaml` と `vm gestures` を足した（opt-in）。名前・意味・使う台詞の例・描かせる文・中割りの段階を1か所に持ち、`--add` で作業フォルダの config に足す。`vm init` の雛形にある9つは文を雛形から取り（同じ文になることをテストで確かめる）、候補8つ（`count_2`・`count_3`・`pinch`・`span`・`gap`・`gassho`・`arms_crossed`・`palm_stop`）は実物で未確認。書き方は `references/gestures.md`、テストは `tests/test_mascot_gestures.py`（2026-10-17）
+- home 経由の切り替えを足した（opt-in、`config.via_home`）。中割りの無い組 A→B を、A→home と home→B の中割りでつなぐ（`hold` で home にとどまる秒）。両方の端に home との組がある時だけで、`transition`・`interp.direct` より先、`events[].via` より後に効く。`kw`・`word` は語の直前に B に着くように早く始める。純関数（`via_home_config`・`home_route`・`split_via_home`）と合成のマスコットの書き出しを `tests/test_mascot_via_home.py` でテスト。付けない時の書き出しは前とコマ単位で一致（2026-10-17）

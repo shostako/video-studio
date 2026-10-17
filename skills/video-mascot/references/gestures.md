@@ -23,7 +23,7 @@ gestures:
     meaning: とても薄い・わずか   # 意味（台本で身振りを選ぶ時に読む）
     lines: ["厚みは0.3ミリ"]     # 使う台詞の例
     checked: false              # この文で実物を描いて確かめたか
-    from: home                  # どの姿勢から動き出すか（既定 home）。中割りの組は [from, name]
+    from: home                  # どの姿勢から動き出すか（既定 home）。中割りの組は [from, name]。身振りどうしの切り替えは config の via_home で home を経由できる
     refs: [home]                # 描く時に渡す参照の姿勢（既定 [home]）
     desc: >-                    # 描かせる英語の文。{p} は所有格、{P} はその頭を大文字に
       facing the camera, ... {p} hand on the image-right side ...

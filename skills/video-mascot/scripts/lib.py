@@ -851,3 +851,42 @@ def interp_dur(cfg, a, b):
 def dense_ks(div, mult):
     """端の姿勢（k=0 と k=div）の間の、補間した列の位置（div 等分の単位。k が整数の所は描いた中割り）。"""
     return [j / mult for j in range(1, div * mult)]
+
+
+# ---------- home 経由の切り替え（config.via_home、opt-in。純関数）----------
+VIA_HOME_DEFAULTS = {"hold": 0.0}       # hold: home に着いてから次へ動き出すまでの秒
+
+
+def via_home_config(value):
+    """config.via_home を {"hold": 秒} か None（使わない＝今までどおり）に。true と {} は既定。"""
+    if value is None or value is False: return None
+    v = {} if value is True else value
+    if not isinstance(v, dict): raise ValueError(f"via_home は true/false か辞書: {value!r}")
+    bad = sorted(set(v) - set(VIA_HOME_DEFAULTS))
+    if bad: raise ValueError(f"via_home に知らない項目: {bad}")
+    out = {**VIA_HOME_DEFAULTS, **v}
+    h = out["hold"]
+    if isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(h) or h < 0: raise ValueError(f"via_home.hold は 0 以上の秒: {h!r}")
+    out["hold"] = float(h); return out
+
+
+def home_route(a, b, home, has_pair):
+    """a→b を home 経由でつなげるか。has_pair(x, y) は中割りの描いてある組か（向きは問わない）。
+    a→b に中割りが無く、a→home と home→b の両方にある時だけ。home を含む組と、同じ姿勢どうしは経由しない。"""
+    return a != b and home not in (a, b) and not has_pair(a, b) and has_pair(a, home) and has_pair(home, b)
+
+
+def split_via_home(ev, home, routed, dur_of, hold):
+    """resolve_events の時間割 ev のうち routed(前, 次, via) が真の切り替え a→b を、(s, a, home) と
+    (s + dur_of(a, home) + hold, home, b) の2つに分ける（4つ組なら via は None）。後半が次の切り替えの開始に
+    間に合わない時は分けない（元のまま）。ev は開始の早い順。新しいリストを返す。"""
+    out = []
+    for i, e_ in enumerate(ev):
+        s, a_, b_ = e_[:3]; via = e_[3] if len(e_) > 3 else None
+        if routed(a_, b_, via):
+            s2 = s + dur_of(a_, home) + hold
+            if not (i + 1 < len(ev) and ev[i + 1][0] <= s2):
+                tail = (None,) if len(e_) > 3 else ()
+                out += [(s, a_, home, *tail), (s2, home, b_, *tail)]; continue
+        out.append(e_)
+    return out
