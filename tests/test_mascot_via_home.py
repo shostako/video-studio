@@ -67,6 +67,14 @@ def test_too_close_next_event_keeps_old_timing():
     assert res(events, route=route()) == res(events)
 
 
+
+def test_route_starting_before_previous_switch_ends_keeps_old_timing():
+    # 経由すると語の 0.84 秒前（2.12 秒）に動き出すが、前の home→open（2.0 秒から 1/3 秒）がまだ終わっていない
+    events = [{"at": 2.0, "pose": "open"}, {"line": 1, "word": ["ほんばん"], "pose": "span"}]
+    assert res(events, route=route()) == res(events)
+    events[0]["at"] = 1.5                                                   # 前が終わってからなら経由する
+    assert [e[2] for e in res(events, route=route())] == ["open", "home", "span"]
+
 def test_route_skips_via_and_keeps_via_slot():
     events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span", "via": "fade"}, {"at": 3.0, "pose": "open"}]
     ev = res(events, route=route(), with_via=True)
