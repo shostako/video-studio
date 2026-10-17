@@ -199,22 +199,31 @@ def ib_item(item, src_pose):
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
+class LazySeq:
+    """補間した列。長さは先に分かり、絵（RIFE）は最初に中身を引いた時に作る（--from/--to の範囲外の切り替えでは作らない）。"""
+    def __init__(self, n, make, rev): self.n, self.make, self.rev, self.items = n, make, rev, None
+    def __len__(self): return self.n
+    def __bool__(self): return self.n > 0
+    def __getitem__(self, i):
+        if self.items is None: self.items = self.make()
+        return self.items[self.n - 1 - i] if self.rev else self.items[i]
+def dense_seq(pa, pb, rev, direct):
+    def make():
+        from interp import dense_paths
+        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
+        return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
+    return LazySeq(DIV * INTERP["mult"] - 1, make, rev)
 IBSEQ = {}
 def ib_seq(a_, b_):
     if (a_, b_) in IBSEQ: return IBSEQ[(a_, b_)]
     d = P.pair_dir(a_, b_)
     if d is None and direct_ok(a_, b_):           # 中割りの無い組を、端の姿勢2枚の間で直に補間する（interp.direct）
-        from interp import dense_paths
-        pa, pb = sorted((a_, b_)); paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=True)
-        seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
-        IBSEQ[(a_, b_)] = seq if pa == a_ else seq[::-1]; return IBSEQ[(a_, b_)]
+        pa, pb = sorted((a_, b_)); IBSEQ[(a_, b_)] = dense_seq(pa, pb, pa != a_, True); return IBSEQ[(a_, b_)]
     if d is None: IBSEQ[(a_, b_)] = None; return None
     pa, pb, rev = d
     if INTERP and interp_on(INTERP, pa, pb):      # コマ補間: 描いた絵の間を RIFE で細かくした列（k は小数）
-        from interp import dense_paths
-        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr))
-        seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
-    else: seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
+        IBSEQ[(a_, b_)] = dense_seq(pa, pb, rev, False); return IBSEQ[(a_, b_)]
+    seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
     IBSEQ[(a_, b_)] = seq[::-1] if rev else seq; return IBSEQ[(a_, b_)]
 def direct_ok(a_, b_):                            # 中割りの無い組を直に補間するか（interp.direct、向きの同じ組だけ）
     return bool(INTERP) and INTERP["direct"] and a_ != b_ and P.pair_dir(a_, b_) is None and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
