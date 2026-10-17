@@ -43,3 +43,19 @@ gestures:
 
 `count_2`・`count_3` は `raise_r`（指を1本立てる）の腕のまま指だけ変える。手首から先しか変わらないので中割りは描かない。
 指の数の切り替えが多くなったら、口と同じ「差分を描かせて切り抜く」部品（手の形の部品）にするかを考える。
+
+### 指の本数は手の部品で作る（vm hands）
+
+全身の絵のまま「2本」「3本」を描かせると、立てた指の本数は合っても、曲げた指が1本指のときのまま残る（立てた2本＋曲げた3本で指が6本、など）。描かせる文を5通り変えても、ほぼ直らなかった（2026-10-18）。
+1本指（`raise_r`）の絵から手の周りを切り出して参照にし、手だけを描かせると、立てた指と曲げた指の本数が合った。その手を `raise_r` の絵の同じ場所にはめ込めば、体は `raise_r` と同じ絵になり、指の切り替えで手以外が動かない。
+
+```json
+"hands": {
+  "count_2": {"base": "raise_r", "box": [560, 520, 840, 880],
+              "desc": "the hand shows the number two: the index and middle fingers point straight up, parallel and close together; the ring and little fingers are curled down into the palm (exactly TWO curled fingers), with the thumb folded across them. Count check: 2 raised + 2 curled + thumb = 5 digits."}
+}
+```
+
+`vm hands <作業フォルダ> draw` → `check`（拡大した絵で、曲げた指まで数える）→ `place` → `vm parts <作業フォルダ> --borrow home count_2`。`config.hands` に書いた姿勢は `vm poses poses` が全身の絵として描かない。
+数えたあと手を下ろす・数える前に手を上げるときは、指を全部握った姿勢（グー）と home の中割りを描いて、グーを通す（1本指の中割りを通すと、一度1本に戻って見える）。
+

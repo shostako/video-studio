@@ -68,7 +68,9 @@ def jobs_poses(P):
     desc = P.cfg["mascot"]["description"]; base = P.p("mascot.png"); out = []
     common = (f"Same character as the reference image: {desc} Full body, centered, vertical 9:16 portrait, plain white studio background, soft studio lighting, "
               "exactly the same rendering style, face and proportions as the reference. No text, no logos.")
+    hands = P.cfg.get("hands") or {}
     for n, c in P.cfg["poses"].items():
+        if n in hands: continue                   # 手の部品（vm hands）で作る姿勢は、全身の絵として描かない
         refs = [base] + [P.pose_path(r) for r in c.get("refs", [])]
         out.append((P.pose_path(n), f"{common} Pose: {c['desc']}", refs))
     return out
