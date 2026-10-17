@@ -154,3 +154,24 @@ def test_self_referential_base_is_rejected_before_any_change(tmp_path):
     r = run(p, "place", "--force")
     assert r.returncode != 0 and "自分自身" in r.stderr + r.stdout
     assert (p / "poses/pose_count_3.png").read_bytes() == before and not (p / "reject").exists()
+
+
+def test_box_outside_the_base_is_rejected_before_any_change(tmp_path):
+    p = proj(tmp_path); drawn_hand(p)
+    old = cv2.imread(str(p / "poses/pose_point.png")); cv2.imwrite(str(p / "poses/pose_count_3.png"), old)
+    cfg = json.loads((p / "config.json").read_text(encoding="utf-8")); cfg["hands"]["count_3"]["box"] = [400, 380, 520, 480]   # 幅 470 の外
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    before = (p / "poses/pose_count_3.png").read_bytes()
+    r = run(p, "place", "--force")
+    assert r.returncode != 0 and "外に出る" in r.stderr + r.stdout
+    assert (p / "poses/pose_count_3.png").read_bytes() == before and not (p / "reject").exists()
+
+
+def test_replacing_twice_keeps_the_first_backup(tmp_path):
+    p = proj(tmp_path); drawn_hand(p)
+    old = cv2.imread(str(p / "poses/pose_point.png")); cv2.imwrite(str(p / "poses/pose_count_3.png"), old)
+    before = (p / "poses/pose_count_3.png").read_bytes()
+    assert run(p, "place", "count_3", "count_3", "--force").returncode == 0      # 同じ名前を2回
+    assert run(p, "place", "--force").returncode == 0                             # 同じ秒にもう一度
+    saved = [f.read_bytes() for f in (p / "reject/hands_replaced").glob("count_3_*/poses/pose_count_3.png")]
+    assert before in saved and len(saved) == 2

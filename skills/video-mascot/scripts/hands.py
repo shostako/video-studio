@@ -31,6 +31,10 @@ def spec(P, name):
     if h["base"] == name: die(f"config.hands.{name}.base が自分自身。手を描き換える元は別の姿勢にする（例: raise_r）")
     x0, y0, x1, y1 = h["box"]
     if not (x0 < x1 and y0 < y1): die(f"config.hands.{name}.box がおかしい: {h['box']}")
+    bp = P.pose_path(h["base"])
+    if os.path.exists(bp):                                  # 何かを変える前に、box が base の絵に収まるかを見る
+        H, W = cv2.imread(bp).shape[:2]
+        if x0 < 0 or y0 < 0 or x1 > W or y1 > H: die(f"config.hands.{name}.box {h['box']} が {h['base']} の絵（{W}x{H}）の外に出る")
     return h
 
 
@@ -40,8 +44,6 @@ def names(P, args):
 
 def ref_crop(P, name):
     h = spec(P, name); base = P.read_pose(h["base"]); x0, y0, x1, y1 = h["box"]
-    H, W = base.shape[:2]
-    if x0 < 0 or y0 < 0 or x1 > W or y1 > H: die(f"config.hands.{name}.box が絵（{W}x{H}）の外に出る")
     crop = cv2.resize(base[y0:y1, x0:x1], ((x1 - x0) * SCALE, (y1 - y0) * SCALE), interpolation=cv2.INTER_LANCZOS4)
     os.makedirs(P.p("hands"), exist_ok=True); p = P.p("hands", f"_ref_{name}.png"); cv2.imwrite(p, crop)
     return p
@@ -57,7 +59,9 @@ def archive_old(P, name, pose=True, parts_dir=True):
     名前はぴったり一致で選ぶ（count を置き換えても count_2 の絵は動かさない）。"""
     import re, time
     from lib import MOUTHS, EYES, GAZES
-    rd = P.p("reject", "hands_replaced", f"{name}_{time.strftime('%Y%m%d_%H%M%S')}"); moved = []
+    stem = P.p("reject", "hands_replaced", f"{name}_{time.strftime('%Y%m%d_%H%M%S')}"); rd = stem; n = 1
+    while os.path.exists(rd): n += 1; rd = f"{stem}_{n}"     # 同じ秒にもう一度置き換えても、前の退避を上書きしない
+    os.makedirs(rd); moved = []
     src = ([P.pose_path(name)] if pose else []) + [P.p("parts", f"{name}_{k}.png") for k in MOUTHS + EYES + GAZES] + ([P.p(f"parts_{name}")] if parts_dir else [])
     for a, b in P.cfg.get("pairs", []):
         if name not in (a, b): continue
@@ -124,7 +128,7 @@ if __name__ == "__main__":
     import poses
     backend = poses.img_backend(argv, {}) if "--img" in argv else None
     if "--img" in argv: i = argv.index("--img"); del argv[i:i + 2]
-    P = Proj(argv[0]); what = argv[1]; rest = [a for a in argv[2:] if not a.startswith("--")]; ns = names(P, rest)
+    P = Proj(argv[0]); what = argv[1]; rest = [a for a in argv[2:] if not a.startswith("--")]; ns = list(dict.fromkeys(names(P, rest)))   # 同じ名前は1回
     if not ns: die("config.hands が空")
     if what == "draw":
         ok = poses.run_jobs(jobs_draw(P, ns), 2, "--dry-run" in argv, backend=backend or poses.img_backend([], P.cfg))
