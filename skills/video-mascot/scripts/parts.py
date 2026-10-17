@@ -1,6 +1,10 @@
 """描いた口・目の差分から「元と違う所」だけを切り抜いて部品にする。
   vm parts <作業フォルダ> [姿勢 ...]            未指定なら全姿勢。parts_<姿勢>/ に m1..m7, e1, e2 と parts.json を作る
   vm parts <作業フォルダ> --check [姿勢 ...]    貼った結果を並べた確認の絵を parts_check/<姿勢>.png に書く
+  vm parts <作業フォルダ> --borrow <元の姿勢> 姿勢 ...
+                                              差分を描かずに、元の姿勢の部品を顔を重ね合わせて写す（同じ顔の正面の身振り向け。opt-in）。
+                                              顔の合いが --min-cc（既定 0.95）に届かない姿勢には書かない。写した姿勢は parts_<姿勢>/borrowed.json を持ち、
+                                              vm parts はその姿勢を切り直さず、vm poses parts はその姿勢の差分を描かない（描くなら borrowed.json を消す）
 口と目の範囲は config.json の face.mouth_roi / face.eye_roi（基本の姿勢 home の絵で測った座標）。
 他の姿勢へは、顔の周りを重ね合わせた変換でその範囲を写す（髪の差分を拾わないため）。"""
 import json, os, sys
@@ -58,8 +62,52 @@ def cut(base, var_path, roi):
     return np.dstack([var[y0:y1, x0:x1], (a * 255).astype(np.uint8)]), int(x0), int(y0)
 
 
+BORROWED = "borrowed.json"
+
+
+def borrowed(P, pose):
+    """--borrow で写した姿勢なら、その記録（{"from": 元の姿勢, "cc": 顔の合い}）。写していなければ None。"""
+    f = P.p(f"parts_{pose}", BORROWED)
+    return json.load(open(f)) if os.path.exists(f) else None
+
+
+def borrow(P, src, pose, min_cc=0.95):
+    """src の部品を、顔の周りを重ね合わせた変換で pose へ写す（差分を描かない）。書いたら True。"""
+    if pose == src: print(f"{pose}: 元の姿勢と同じ。飛ばす"); return False
+    if P.cfg["poses"].get(pose, {}).get("face", True) is False: print(f"{pose}: 顔なし（face: false）。部品は作らない"); return False
+    if any(os.path.exists(P.p("parts", f"{pose}_{k}.png")) for k in MOUTHS + EYES + GAZES):
+        print(f"{pose}: 描いた差分（parts/{pose}_*.png）があるので写さない。vm parts で切る"); return False
+    sm = P.p(f"parts_{src}", "parts.json")
+    if not os.path.exists(sm): die(f"元の姿勢の部品が無い: parts_{src}（先に vm parts {src}）")
+    parts = {k: (cv2.imread(P.p(f"parts_{src}", f"{k}.png"), cv2.IMREAD_UNCHANGED), px, py) for k, (px, py) in json.load(open(sm)).items()}
+    if not parts: die(f"元の姿勢の部品が空: parts_{src}")
+    base, dst = P.read_pose(src), P.read_pose(pose); H, W = dst.shape[:2]
+    xs = [px for _, px, _ in parts.values()] + [px + im.shape[1] for im, px, _ in parts.values()]
+    ys = [py for _, _, py in parts.values()] + [py + im.shape[0] for im, _, py in parts.values()]
+    g0 = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mask = np.zeros(g0.shape, np.uint8); mask[max(0, min(ys) - 100):max(ys) + 60, max(0, min(xs) - 80):max(xs) + 80] = 1   # 部品の周り（render の中割りと同じ範囲）
+    M = np.eye(2, 3, dtype=np.float32); cc = -1.0
+    try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), mask, 5)
+    except cv2.error: pass
+    if cc < min_cc: print(f"{pose}: 顔の合い {cc:.3f} が {min_cc} に届かない。写さない（差分を描く）"); return False
+    A = cv2.invertAffineTransform(M); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
+    for k, (im, px, py) in parts.items():
+        T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
+        full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0)); yy, xx = np.where(full[:, :, 3] > 0)
+        if not len(xx): continue
+        cv2.imwrite(os.path.join(od, f"{k}.png"), full[yy.min():yy.max() + 1, xx.min():xx.max() + 1]); meta[k] = [int(xx.min()), int(yy.min())]
+    for f in os.listdir(od):                    # 前に切った部品の残りを消す（parts.json に無い絵は使われないが、紛らわしいので）
+        if f.endswith(".png") and f[:-4] not in meta: os.remove(os.path.join(od, f))
+    json.dump(meta, open(os.path.join(od, "parts.json"), "w"), indent=1)
+    json.dump({"from": src, "cc": round(float(cc), 4)}, open(os.path.join(od, BORROWED), "w"))
+    print(f"{pose}: {src} の部品を写した {sorted(meta)}  顔の合い {cc:.3f}  ずれ {np.round(A[:, 2], 1).tolist()}")
+    return True
+
+
 def extract(P, pose):
     if P.cfg["poses"].get(pose, {}).get("face", True) is False: print(f"{pose}: 顔なし（face: false）。部品は作らない"); return {}
+    b = borrowed(P, pose)
+    if b: print(f"{pose}: {b['from']} から写した部品。切り直さない（描いた差分で作るなら parts_{pose}/{BORROWED} を消す）"); return json.load(open(P.p(f"parts_{pose}", "parts.json")))
     mouth_roi, eye_roi, cc = map_rois(P, pose); base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
     for names, roi in ((MOUTHS, mouth_roi), (EYES + GAZES, eye_roi)):
         for k in names:
@@ -93,9 +141,27 @@ def check(P, pose):
 
 
 if __name__ == "__main__":
-    a = [x for x in sys.argv[1:] if not x.startswith("--")]
-    if not a: die("使い方: vm parts <作業フォルダ> [--check] [姿勢 ...]")
-    P = Proj(a[0]); poses = a[1:] or P.poses
+    argv = sys.argv[1:]; min_cc = 0.95
+    if "--min-cc" in argv:
+        i = argv.index("--min-cc")
+        if i + 1 >= len(argv): die("--min-cc の後に数が無い")
+        min_cc = float(argv[i + 1]); del argv[i:i + 2]
+    src = None
+    if "--borrow" in argv:
+        i = argv.index("--borrow")
+        if i + 1 >= len(argv) or argv[i + 1].startswith("--"): die("--borrow の後に元の姿勢が無い")
+        src = argv[i + 1]; del argv[i:i + 2]
+    a = [x for x in argv if not x.startswith("--")]
+    if not a: die("使い方: vm parts <作業フォルダ> [--check] [姿勢 ...] / vm parts <作業フォルダ> --borrow <元の姿勢> 姿勢 ...")
+    P = Proj(a[0])
+    if src is not None:
+        if src not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {src}")
+        if not a[1:]: die("--borrow は写す先の姿勢を名指しする（全姿勢へは写さない）")
+        bad = [p for p in a[1:] if p not in P.cfg["poses"]]
+        if bad: die(f"config に無い姿勢: {bad}")
+        n = sum(borrow(P, src, p, min_cc) for p in a[1:]); print(f"写した {n} / {len(a) - 1}")
+        sys.exit(0 if n == len(a) - 1 else 3)
+    poses = a[1:] or P.poses
     for p in poses:
         if "--check" in sys.argv: check(P, p)
         else: extract(P, p)

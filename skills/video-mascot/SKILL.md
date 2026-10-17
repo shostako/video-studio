@@ -35,6 +35,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 4. **姿勢の絵を描く**: `vm poses <作業フォルダ> poses`（home は元の絵そのままでもよい）。1枚ずつ見て、顔つき・服・指が崩れていないか確かめる。崩れた姿勢は絵を消して描き直す。
 5. **口・目の範囲を測る**: home の絵で `vm grid poses/pose_home.png x0 y0 x1 y1` を使って、口の範囲と目の範囲（目は両目）を読み取り、`config.face` に書く。他の姿勢へは自動で写る。
 6. **口と目の差分を描く**: `vm poses <作業フォルダ> parts`（姿勢×9枚。7形の口と2段の目）→ `vm parts <作業フォルダ>` で部品に切り抜き → `vm parts <作業フォルダ> --check` で `parts_check/<姿勢>.png` を Read して、口が変わっていて両目が閉じているかを全姿勢で見る。
+    - **同じ顔の正面の身振りを足したとき**（home を参照に描いた身振りは顔がほぼ同じ）は、差分を描かずに `vm parts <作業フォルダ> --borrow home <姿勢 ...>` で home の部品を写せる（opt-in。Codex の枠を使わない）。顔の合いが 0.95 に届かない姿勢には書かない。写した姿勢は `vm poses parts` が描かず、`vm parts` が切り直さない（描くなら `parts_<姿勢>/borrowed.json` を消す）。写したら `--check` で見る
 7. **中割りを描く**: `vm poses <作業フォルダ> inbetweens`（pairs ごとに5枚）。
 8. **姿勢の切り替えを書く**: `config.events` に、台詞のキーワード（ひらがな）か語で切り替え時刻を指定。`vm render <作業フォルダ> --mode white --from 秒 --to 秒` で姿勢の移り変わりが多い範囲だけ書き出し、`vm frames`（video-scene）で並べて確かめる。標準エラーに、キーワードが見つかった時刻（声／語／推定）が出る。**推定になった所は、語に替える**（references/lessons.md）。
 9. **全編を書き出す**: 主動画の背景が**白っぽい**なら `vm render <作業フォルダ> --mode white`（背景が白の mp4、声入り）、**暗い・色つき**なら `--mode alpha`（背景透明の webm）。
