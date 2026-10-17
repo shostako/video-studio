@@ -168,11 +168,12 @@ def face_affine(src, dst, roi):
     try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), mask, 5)
     except cv2.error: pass
     return cv2.invertAffineTransform(M), cc
-IBCACHE = {}
+IBCACHE = {}; IBCACHE_MAX = 48   # 中割りの絵の控え。補間で枚数が増えるとメモリを食い潰すので、古いものから捨てる
 def ib_item(item, src_pose):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
     path, a_, b_, k_ = item; key = (path, src_pose)
-    if key in IBCACHE: return IBCACHE[key]
+    if key in IBCACHE: IBCACHE[key] = IBCACHE.pop(key); return IBCACHE[key]   # 使った順に並べ直す
+    while len(IBCACHE) >= IBCACHE_MAX: IBCACHE.pop(next(iter(IBCACHE)))
     img = cv2.imread(path)
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
