@@ -123,3 +123,11 @@ def test_cli_force_refuses_drawn_pose(tmp_path):
     (tmp_path / "poses").mkdir(); (tmp_path / "poses" / "pose_open.png").write_bytes(b"x")
     r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "gestures.py"), str(tmp_path), "--add", "open", "--force"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 1 and "描けている" in r.stderr
+
+
+def test_cli_refuses_orphan_pose_image(tmp_path):
+    cfg = init.build("w", "a test", "she", "none"); (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    (tmp_path / "poses").mkdir(); (tmp_path / "poses" / "pose_span.png").write_bytes(b"x")       # config に無い絵だけが残っている
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "gestures.py"), str(tmp_path), "--add", "span"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "pose_span.png" in r.stderr
+    assert json.loads((tmp_path / "config.json").read_text(encoding="utf-8")) == cfg

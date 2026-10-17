@@ -123,8 +123,8 @@ def add(cfg, d, names, force=False, drawn=()):
         if n in poses and not (force and n in names):
             if n in names: raise GestureError(f"{n} は config に既にある（書き換えるなら --force）")
             continue
-        if n in poses and n in drawn:
-            raise GestureError(f"{n} は絵が描けている。書き換えるなら、先に poses/pose_{n}.png と {n} の部品・中割りを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
+        if n in drawn:                                        # config に無くても、絵だけ残っていれば vm poses はそれを飛ばす
+            raise GestureError(f"{n} は絵が描けている（poses/pose_{n}.png がある）。文を書くなら、先にその絵と {n} の部品・中割りを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
         e = d[n]; ren = lambda r: home if r == "home" else r
         pose = {"desc": e["desc"], "refs": [ren(r) for r in e["refs"]]}
         for k in ("scale", "expect_height"):
@@ -167,7 +167,8 @@ if __name__ == "__main__":
         cp = os.path.join(os.path.abspath(a.dir), "config.json")
         if not os.path.exists(cp): sys.exit(f"config.json が無い: {cp}（先に vm init）")
         with open(cp, encoding="utf-8") as f: cfg = json.load(f)
-        drawn = {n for n in cfg.get("poses", {}) if os.path.exists(os.path.join(os.path.dirname(cp), "poses", f"pose_{n}.png"))}
+        pd = os.path.join(os.path.dirname(cp), "poses")
+        drawn = {f[5:-4] for f in os.listdir(pd) if f.startswith("pose_") and f.endswith(".png")} if os.path.isdir(pd) else set()
         new, added = add(cfg, d, a.add, a.force, drawn)
     except (GestureError, yaml.YAMLError) as ex:
         print(f"ERROR: {ex}", file=sys.stderr); sys.exit(1)
