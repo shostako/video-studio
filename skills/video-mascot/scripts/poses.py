@@ -169,7 +169,13 @@ FELL_BACK = threading.Event()   # chat+codex で chat から /img に切り替�
 def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
     if only: jobs = [j for j in jobs if only in os.path.basename(j[0])]
     todo = [j for j in jobs if not os.path.exists(j[0])]
-    print(f"描く {len(todo)} 枚（済み {len(jobs) - len(todo)}）")
+    made = {j[0] for j in todo}                 # 参照の絵が無く、この回でも描かない仕事は道具を呼ばない（vm hands で作る姿勢をまだはめていない、など）
+    orphan = [j for j in todo if any(not os.path.exists(r) and r not in made for r in j[2])]
+    if orphan:
+        miss = sorted({os.path.relpath(r) for j in orphan for r in j[2] if not os.path.exists(r) and r not in made})
+        print(f"参照の絵が無いので描かない {len(orphan)} 枚（無い絵: {', '.join(miss)}。vm hands ... place などで先に作る）")
+        todo = [j for j in todo if j not in orphan]
+    print(f"描く {len(todo)} 枚（済み {len(jobs) - len(todo) - len(orphan)}）")
     if dry:
         for j in todo: print("  ", os.path.relpath(j[0]))
         return True
@@ -212,7 +218,7 @@ def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
         rest = [j for j in rest if j not in ready]
     miss = [j for j in todo if not os.path.exists(j[0])]
     print("終わり", len(todo) - len(miss), "/", len(todo), "（足りない分は同じコマンドを再実行）" if miss else "")
-    return not miss
+    return not miss and not orphan
 
 
 if __name__ == "__main__":

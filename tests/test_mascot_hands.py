@@ -102,3 +102,19 @@ def test_without_hands_config_vm_poses_is_unchanged(tmp_path):
     from lib import Proj
     import poses
     assert sorted(os.path.basename(j[0]) for j in poses.jobs_poses(Proj(str(p)))) == ["pose_home.png", "pose_point.png"]
+
+
+def test_run_jobs_does_not_call_the_tool_for_jobs_whose_reference_is_missing(tmp_path, monkeypatch):
+    sys.path.insert(0, str(ROOT / "skills/video-mascot/scripts"))
+    import poses
+    called = []
+    monkeypatch.setattr(poses.subprocess, "run", lambda cmd, **k: called.append(cmd) or subprocess.CompletedProcess(cmd, 1, "", ""))
+    monkeypatch.setattr(poses.time, "sleep", lambda s: None)
+    have = tmp_path / "have.png"; have.write_bytes(b"x")
+    jobs = [(str(tmp_path / "a.png"), "p", [str(tmp_path / "pose_count_3.png")]),      # まだはめていない手の姿勢を参照
+            (str(tmp_path / "b.png"), "p", [str(tmp_path / "c.png")]),                  # この回で描く絵を参照（待つ）
+            (str(tmp_path / "c.png"), "p", [str(have)])]
+    ok = poses.run_jobs(jobs, 1, False)
+    assert not ok
+    assert not any(str(tmp_path / "a.png") in c for c in called)                       # 参照が無い仕事は呼ばない
+    assert any(str(tmp_path / "c.png") in c for c in called)                           # ほかは今までどおり描きに行く
