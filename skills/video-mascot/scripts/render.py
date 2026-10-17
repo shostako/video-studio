@@ -32,6 +32,7 @@ P = Proj(a[0]); C = P.cfg
 def opt(name, default=None, cast=str): return cast(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
 MODE = opt("--mode", "alpha"); LIPSYNC = opt("--lipsync", C.get("lipsync", "amp"))
 if LIPSYNC not in ("amp", "mora"): die(f"lipsync は amp か mora: {LIPSYNC}")
+IDLE_OFF = C.get("idle", True) is False             # 既定（書かない・true）は今までどおりの息づかい（伸び縮み・上下・左右・声での持ち上がり）
 try: MOT = motion_config(C.get("motion"), opt("--motion"))     # 二次運動（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
 try: TRANS = transition_config(C.get("transition")); GZ = gaze_config(C.get("gaze"))   # 向きの切り替えのつなぎ・視線（None は使わない）
@@ -360,7 +361,9 @@ def finish(img, sh, boxes, sdd):
 
 for f in range(f0, min(f1, NALL)):
     pl = plan(f); tt = f / FPS
-    if MOT is None:
+    if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
+        s, dx, dy = 1.0, 0.0, 0.0
+    elif MOT is None:
         s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * math.sin(2 * math.pi * tt / 5.3); dy = -2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]
     else:
         s, dx, dy = 1.0, 0.0, -2.5 * sm[f]
