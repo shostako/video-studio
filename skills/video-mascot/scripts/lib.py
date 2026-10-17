@@ -227,26 +227,62 @@ def find_word(words_hira, start, dur, cands, frac):
 VIAS = ("cut", "fade", "turn")     # events の via: 姿勢の切り替えのつなぎ方（中割りを使わない時）
 
 
-def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, log=None, dur_of=None, with_via=False):
+def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, log=None, dur_of=None, with_via=False, route=None):
     """config.events を姿勢の切り替えの時間割 [(開始秒, 前の姿勢, 次の姿勢), ...]（開始の早い順）にする。
     開始の指定: kw（ひらがなの並び）/ word（語の候補）の声の時刻から中割りの長さ ibdur と 0.04 秒を引く、at（秒）、
     line_start（行頭）、line_end（行末。offset の既定 0.05）。offset はどれにも足す（at を除く）。starts/durs は {行番号: 秒}。
     dur_of(前, 次, via) を渡すと、kw/word で引く長さをその切り替えの長さにする（クロスフェードなど）。
-    with_via=True は (開始秒, 前, 次, via か None) の4つ組で返す（via は "cut"・"fade"・"turn"）。"""
+    with_via=True は (開始秒, 前, 次, via か None) の4つ組で返す（via は "cut"・"fade"・"turn"）。
+    route(前, 次, via)（home 経由の切り替え config.via_home の時だけ）: (前→home の秒, hold, home→次 の秒) か None。
+    返した切り替えは (s, 前, home) と (s + 前→home + hold, home, 次) の2つに分け（4つ組なら via は None）、kw/word は
+    3つの和だけ早く始める（語の直前に次の姿勢に着く）。時刻の順で前の切り替えが「前」の姿勢に着かないもの（events の
+    順と時刻の順が食い違う時）、前の切り替えを終える前に始まるもの、home→次 を終える前に次の切り替えが始まるものは分けず、
+    route が無い時と同じ長さで開始を決め直す（重なる組は時刻の遅い方から1つずつやめ、そのあと戻せるものは戻す）。"""
+    def check(off):                               # その off での時間割と、収まらない経由（時刻の順）
+        ev = _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, None, dur_of, route, off)
+        end = lambda e_: e_[0] + (sum(e_[4]) if e_[4] else e_[6])   # その切り替えを終える時刻
+        def fits(j, e_):                          # 前の切り替えで前の姿勢に着いていて、前が終わってから始まり、次の切り替えまでに終わる
+            prev = ev[j - 1] if j else None
+            return e_[1] == (prev[2] if prev else home) and not (prev and e_[0] < end(prev)) and not (j + 1 < len(ev) and ev[j + 1][0] < end(e_))
+        return ev, [e_[5] for j, e_ in enumerate(ev) if e_[4] and not fits(j, e_)]
+    off = set()                                   # home 経由をやめた切り替え（events の何番目か）
+    ev, bad = check(off)
+    while bad:                                    # 1つずつ（時刻の遅い方から）やめる。やめた分の開始と長さが変わると、残りは収まることがある
+        off.add(bad[-1]); ev, bad = check(off)
+    again = bool(off)
+    while again:                                  # やめたものを1つずつ戻してみて、全部が収まるなら戻す（戻せるものが無くなるまで）
+        again = False
+        for i in sorted(off):
+            ev2, bad2 = check(off - {i})
+            if not bad2: off.discard(i); ev = ev2; again = True; break
+    if log: _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, log, dur_of, route, off)
+    out = []
+    nv = (None,) if with_via else ()
+    for st, a_, b_, via, legs, _, _ in ev:
+        if legs: out += [(st, a_, home, *nv), (st + legs[0] + legs[1], home, b_, *nv)]
+        else: out.append((st, a_, b_, *((via,) if with_via else ())))
+    return out
+
+
+def _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, log, dur_of, route, off):
+    """resolve_events の1回分。[(開始秒, 前, 次, via, home 経由の (秒, hold, 秒) か None, events の何番目か,
+    経由しない時の切り替えの秒), ...]（開始の早い順）。"""
     ev = []; cur = home
-    for e in events:
+    for i, e in enumerate(events):
         to = e["pose"]; via = e.get("via")
         if via is not None and via not in VIAS: die(f"events の via は {'・'.join(VIAS)} のどれか: {via}")
+        legs = route(cur, to, via) if (route is not None and i not in off) else None
+        d1 = ibdur if dur_of is None else dur_of(cur, to, via)
         if "kw" in e or "word" in e:
             t, how = find_word(words_hira, starts[e["line"]], durs[e["line"]], tuple(e["word"]), e.get("fallback", 0.5)) if "word" in e \
                 else find_time(hira_stream, starts[e["line"]], durs[e["line"]], e["kw"], e.get("fallback", 0.5))
-            st = t - (ibdur if dur_of is None else dur_of(cur, to, via)) - 0.04 + float(e.get("offset", 0.0))
-            if log: log(f"行{e['line']} {cur}→{to}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）→ 開始 {st:.2f}s")
+            st = t - (sum(legs) if legs else d1) - 0.04 + float(e.get("offset", 0.0))
+            if log: log(f"行{e['line']} {cur}→{to}{'（home 経由）' if legs else ''}: 「{e.get('kw') or e['word']}」 {t:.2f}s（{how}）→ 開始 {st:.2f}s")
         elif "at" in e: st = float(e["at"])
         elif "line_start" in e: st = starts[e["line_start"]] + float(e.get("offset", 0.0))
         elif "line_end" in e: st = starts[e["line_end"]] + durs[e["line_end"]] + float(e.get("offset", 0.05))
         else: die(f"events に開始の指定が無い: {e}")
-        ev.append((st, cur, to, via) if with_via else (st, cur, to)); cur = to
+        ev.append((st, cur, to, via, legs, i, d1)); cur = to
     ev.sort(key=lambda x: x[:3])
     return ev
 
@@ -851,3 +887,27 @@ def interp_dur(cfg, a, b):
 def dense_ks(div, mult):
     """端の姿勢（k=0 と k=div）の間の、補間した列の位置（div 等分の単位。k が整数の所は描いた中割り）。"""
     return [j / mult for j in range(1, div * mult)]
+
+
+# ---------- home 経由の切り替え（config.via_home、opt-in。純関数）----------
+VIA_HOME_DEFAULTS = {"hold": 0.0}       # hold: home に着いてから次へ動き出すまでの秒
+
+
+def via_home_config(value):
+    """config.via_home を {"hold": 秒} か None（使わない＝今までどおり）に。true と {} は既定。"""
+    if value is None or value is False: return None
+    v = {} if value is True else value
+    if not isinstance(v, dict): raise ValueError(f"via_home は true/false か辞書: {value!r}")
+    bad = sorted(set(v) - set(VIA_HOME_DEFAULTS))
+    if bad: raise ValueError(f"via_home に知らない項目: {bad}")
+    out = {**VIA_HOME_DEFAULTS, **v}
+    h = out["hold"]
+    if isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(h) or h < 0: raise ValueError(f"via_home.hold は 0 以上の秒: {h!r}")
+    out["hold"] = float(h); return out
+
+
+def home_route(a, b, home, has_pair):
+    """a→b を home 経由でつなげるか。has_pair(x, y) は中割りの描いてある組か（向きは問わない）。
+    a→b に中割りが無く、a→home と home→b の両方にある時だけ。home を含む組と、同じ姿勢どうしは経由しない。"""
+    return a != b and home not in (a, b) and not has_pair(a, b) and has_pair(a, home) and has_pair(home, b)
+
