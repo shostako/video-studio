@@ -56,6 +56,6 @@ gestures:
 }
 ```
 
-`vm hands <作業フォルダ> draw` → `check`（拡大した絵で、曲げた指まで数える）→ `place` → `vm parts <作業フォルダ> --borrow home count_2`。全身で描いた `pose_count_2.png` がもうある作業フォルダでは `place --force`（古い絵は `reject/hands_replaced/` へ移る。付けないと置き換えずに終了コード 3）。`config.hands` に書いた姿勢は `vm poses poses` が全身の絵として描かない。
+`vm hands <作業フォルダ> draw` → `check`（拡大した絵で、曲げた指まで数える）→ `place` → `vm parts <作業フォルダ> --borrow home count_2`。全身で描いた `pose_count_2.png` がもうある作業フォルダでは `place --force`（古い絵と、それから作った口・目の差分・部品・中割りは `reject/hands_replaced/` へ移る。付けないと置き換えずに終了コード 3）。`config.hands` に書いた姿勢は `vm poses poses` が全身の絵として描かない。
 数えたあと手を下ろす・数える前に手を上げるときは、指を全部握った姿勢（グー）と home の中割りを描いて、グーを通す（1本指の中割りを通すと、一度1本に戻って見える）。
 

@@ -57,6 +57,7 @@ def test_place_changes_only_inside_the_box(tmp_path):
 def test_existing_full_body_pose_needs_force_and_is_moved_aside(tmp_path):
     p = proj(tmp_path); drawn_hand(p)
     old = cv2.imread(str(p / "poses/pose_point.png")); cv2.imwrite(str(p / "poses/pose_count_3.png"), old)   # 全身で描いた古い絵
+    cv2.imwrite(str(p / "parts/count_3_m1.png"), old); (p / "parts_count_3").mkdir(); (p / "parts_count_3/parts.json").write_text("{}")   # その差分と部品
     before = (p / "poses/pose_count_3.png").read_bytes()
     r = run(p, "place")
     assert r.returncode == 3 and "--force" in r.stdout                       # 黙って成功にしない
@@ -64,8 +65,12 @@ def test_existing_full_body_pose_needs_force_and_is_moved_aside(tmp_path):
     r = run(p, "place", "--force")
     assert r.returncode == 0, r.stdout + r.stderr
     assert (p / "poses/pose_count_3.png").read_bytes() != before
-    moved = list((p / "reject/hands_replaced").glob("pose_count_3_*.png"))
+    moved = list((p / "reject/hands_replaced").glob("count_3_*/poses/pose_count_3.png"))
     assert len(moved) == 1 and moved[0].read_bytes() == before
+    assert not (p / "parts/count_3_m1.png").exists() and not (p / "parts_count_3").exists()      # 古い差分・部品も移った
+    r = subprocess.run([sys.executable, "-B", str(ROOT / "skills/video-mascot/scripts/parts.py"), str(p), "--borrow", "home", "count_3"],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr                                                 # 手順書どおり --borrow が通る
 
 
 def test_pose_made_by_place_is_replaced_after_redrawing_the_hand(tmp_path):
@@ -118,3 +123,16 @@ def test_run_jobs_does_not_call_the_tool_for_jobs_whose_reference_is_missing(tmp
     assert not ok
     assert not any(str(tmp_path / "a.png") in c for c in called)                       # 参照が無い仕事は呼ばない
     assert any(str(tmp_path / "c.png") in c for c in called)                           # ほかは今までどおり描きに行く
+
+
+def test_run_jobs_skips_the_whole_chain_after_a_missing_reference(tmp_path, monkeypatch):
+    sys.path.insert(0, str(ROOT / "skills/video-mascot/scripts"))
+    import poses
+    called = []
+    monkeypatch.setattr(poses.subprocess, "run", lambda cmd, **k: called.append(cmd) or subprocess.CompletedProcess(cmd, 1, "", ""))
+    monkeypatch.setattr(poses.time, "sleep", lambda s: None)
+    start = str(tmp_path / "pose_count_3.png")                                                  # まだはめていない
+    ib = [str(tmp_path / f"ib_{k}.png") for k in range(1, 4)]
+    jobs = [(ib[0], "p", [start]), (ib[1], "p", [ib[0]]), (ib[2], "p", [ib[1]])]                 # chain: 前の1枚を参照に順に
+    assert not poses.run_jobs(jobs, 1, False)
+    assert called == []
