@@ -106,7 +106,7 @@ def main():
         args = ["ffmpeg", "-v", "error", "-y"]; flt = []; labs = []
         for k, x in enumerate(info):
             args += ["-i", P.p("voice", f"l{x['n']}.wav")]
-            flt.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=mono,loudnorm=I=-18:TP=-1.5:LRA=11,adelay={int(x['start'] * 1000)}:all=1,apad=whole_dur={end}[a{k}]"); labs.append(f"[a{k}]")
+            flt.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=mono,loudnorm=I=-18:TP=-1.5:LRA=11,adelay={int(x['start'] * 1000)}:all=1,asetpts=N/SR/TB,apad=whole_dur={end}[a{k}]"); labs.append(f"[a{k}]")
         flt.append("".join(labs) + f"amix=inputs={len(info)}:normalize=0:duration=longest,atrim=0:{end},loudnorm=I=-16:TP=-1.5:LRA=11[out]")
         subprocess.run(args + ["-filter_complex", ";".join(flt), "-map", "[out]", "-ar", "48000", "-ac", "1", P.p("voice", "master.wav")], check=True)
         json.dump({"lines": info, "end": end}, open(P.p("voice", "timing.json"), "w"), indent=1)
