@@ -81,6 +81,16 @@ def test_route_needs_the_start_pose_to_be_reached():
     events = [{"at": 5.0, "pose": "open"}, {"at": 1.0, "pose": "span"}]
     assert res(events, route=route()) == res(events)
 
+
+def test_overlapping_routes_drop_the_later_one_only():
+    # 語が 0.6 秒しか離れていない2つの経由（0.8 秒）。後ろをやめると後ろの開始が遅れ、前は収まる
+    words = [("ほんばん", 3.0, 3.5), ("です", 3.6, 3.9)]
+    events = [{"at": 0.2, "pose": "open"}, {"line": 1, "word": ["ほんばん"], "pose": "span"},
+              {"line": 1, "word": ["です"], "pose": "open"}]
+    ev = resolve_events(events, "home", {1: 0.5}, {1: 4.0}, 1 / 3, [], words, route=route())
+    assert [e[1:] for e in ev] == [("home", "open"), ("open", "home"), ("home", "span"), ("span", "open")]
+    assert ev[-1][0] == pytest.approx(3.6 - 1 / 3 - 0.04)
+
 def test_route_skips_via_and_keeps_via_slot():
     events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span", "via": "fade"}, {"at": 3.0, "pose": "open"}]
     ev = res(events, route=route(), with_via=True)

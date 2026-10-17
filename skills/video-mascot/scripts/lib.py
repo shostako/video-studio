@@ -236,7 +236,8 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
     route(前, 次, via)（home 経由の切り替え config.via_home の時だけ）: (前→home の秒, hold, home→次 の秒) か None。
     返した切り替えは (s, 前, home) と (s + 前→home + hold, home, 次) の2つに分け（4つ組なら via は None）、kw/word は
     3つの和だけ早く始める（語の直前に次の姿勢に着く）。時刻の順で前の切り替えが「前」の姿勢に着かないもの（events の
-    順と時刻の順が食い違う時）、前の切り替えを終える前に始まるもの、home→次 を終える前に次の切り替えが始まるものは分けず、route が無い時と同じ長さで開始を決め直す。"""
+    順と時刻の順が食い違う時）、前の切り替えを終える前に始まるもの、home→次 を終える前に次の切り替えが始まるものは分けず、
+    route が無い時と同じ長さで開始を決め直す（重なる組は時刻の遅い方から1つずつやめる）。"""
     off = set()                                   # home 経由をやめた切り替え（events の何番目か）
     while True:
         ev = _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, None, dur_of, route, off)
@@ -244,9 +245,9 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
         def fits(j, e_):                          # 前の切り替えで前の姿勢に着いていて、次の切り替えまでに終わる
             prev = ev[j - 1] if j else None
             return e_[1] == (prev[2] if prev else home) and not (prev and e_[0] < end(prev)) and not (j + 1 < len(ev) and ev[j + 1][0] < end(e_))
-        bad = {e_[5] for j, e_ in enumerate(ev) if e_[4] and not fits(j, e_)}
+        bad = [e_[5] for j, e_ in enumerate(ev) if e_[4] and not fits(j, e_)]
         if not bad: break
-        off |= bad
+        off.add(bad[-1])                          # 1つずつ（時刻の遅い方から）やめる。やめた分の開始が動くと、残りは収まることがある
     if log: _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, log, dur_of, route, off)
     out = []
     nv = (None,) if with_via else ()
