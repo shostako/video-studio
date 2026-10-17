@@ -78,11 +78,17 @@ def test_pose_made_by_place_is_replaced_after_redrawing_the_hand(tmp_path):
     assert run(p, "place").returncode == 0
     h = cv2.imread(str(p / "hands/count_3.png")); cy, cx = h.shape[0] // 2, h.shape[1] // 2
     h[cy - 30:cy + 30, cx - 20:cx + 20] = (0, 255, 0); cv2.imwrite(str(p / "hands/count_3.png"), h)   # 手を描き直した
+    cfg = json.loads((p / "config.json").read_text(encoding="utf-8")); cfg["pairs"].append(["home", "count_3"])
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    for k in (1, 2): cv2.imwrite(str(p / f"ib/ib_home_count_3_{k}.png"), h)              # 古い手で描いた中割り
+    cv2.imwrite(str(p / "parts/count_2_m1.png"), h)                                        # 名前が似た別の姿勢の差分
     r = run(p, "place")
     assert r.returncode == 0, r.stdout + r.stderr
     x0, y0, x1, y1 = BOX
     assert tuple(cv2.imread(str(p / "poses/pose_count_3.png"))[(y0 + y1) // 2, (x0 + x1) // 2]) == (0, 255, 0)
-    assert not (p / "reject/hands_replaced").exists()
+    assert not list((p / "ib").glob("ib_home_count_3_*.png"))              # 古い手で描いた中割りは使わない
+    assert len(list((p / "reject/hands_replaced").glob("count_3_*/ib/ib_home_count_3_1.png"))) == 1
+    assert (p / "parts/count_2_m1.png").exists()                            # 名前が似た別の姿勢は動かさない
 
 
 def test_draw_jobs_pass_the_base_crop_and_vm_poses_skips_the_pose(tmp_path):
