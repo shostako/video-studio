@@ -73,6 +73,7 @@ def test_add_uses_config_home_name():
     ("gestures:\n  - {name: open, preset: gestures, meaning: x, checked: true, desc: d}\n", "雛形から取る"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, inbetween: false, steps: [s]}\n", "steps は書かない"),
     ("gestures:\n  - {name: home, meaning: x, checked: true, desc: d}\n", "home"),
+    ("gestures:\n  - name: a\n    meaning: x\n    checked: true\n    desc: d\n    desc: e\n", "同じキーが2回"),
 ])
 def test_check_rejects_broken_dictionaries(tmp_path, body, msg):
     with pytest.raises(G.GestureError, match=msg): G.load(_dict(tmp_path, body))
@@ -98,3 +99,13 @@ def test_cli_add_writes_backup_and_check(tmp_path):
     assert run(tmp_path, "--add", "nope").returncode == 1
     r = run("--check"); assert r.returncode == 0 and r.stdout.startswith("ok:")
     assert "palm_stop" in run().stdout
+
+
+def test_force_with_reverse_pair_keeps_its_direction():
+    d = G.load(); base = init.build("x", "a test", "she", "none")
+    base["poses"]["pinch"] = {"desc": "old", "refs": ["home"]}; base["pairs"].append(["pinch", "home"])
+    cfg, _ = G.add(base, d, ["pinch"], force=True)
+    assert cfg["pairs"].count(["pinch", "home"]) == 1 and ["home", "pinch"] not in cfg["pairs"]
+    assert "home>pinch" not in cfg["ib_steps"]
+    fwd, _ = G.add(init.build("x", "a test", "she", "none"), d, ["pinch"])
+    assert cfg["ib_steps"]["pinch>home"] == fwd["ib_steps"]["home>pinch"][::-1]       # 組の向きで引かれ、段階は逆の順

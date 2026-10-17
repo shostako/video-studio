@@ -7,7 +7,8 @@
 動き出す姿勢（既定 home）からの組と中割りの段階。既にある姿勢は --force が無ければ書き換えない。絵は描かない（次に vm poses）。"""
 import argparse, json, os, shutil, sys
 from pathlib import Path
-import yaml
+try: import yaml
+except ImportError: sys.exit("ERROR: pyyaml が無い。~/.claude/skills/video-mascot/scripts/setup.sh を引数なしで流すと入る")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import init
 
@@ -30,7 +31,16 @@ def preset_entry(group, name):
 
 def load(path=DEFAULT_PATH):
     """辞書を読んで検査し、名前→身振りの辞書（読んだ順）を返す。preset の身振りは雛形の desc・refs・steps などを埋める。"""
-    with open(path, encoding="utf-8") as f: doc = yaml.safe_load(f)
+    class Loader(yaml.SafeLoader): pass
+    def no_dup(loader, node, deep=False):        # PyYAML は同じキーが2回あると黙って後ろを採るので止める（terms.py と同じ）
+        seen = set()
+        for k, _ in node.value:
+            key = loader.construct_object(k, deep=deep)
+            if key in seen: raise GestureError(f"同じキーが2回ある: {key}（{k.start_mark.line + 1} 行目）")
+            seen.add(key)
+        return loader.construct_mapping(node, deep=deep)
+    Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_dup)
+    with open(path, encoding="utf-8") as f: doc = yaml.load(f, Loader=Loader)
     if not isinstance(doc, dict) or not isinstance(doc.get("gestures"), list): raise GestureError("一番上に gestures: の並びが要る")
     out = {}
     for i, g in enumerate(doc["gestures"]):
@@ -118,8 +128,11 @@ def add(cfg, d, names, force=False):
         poses[n] = init.fill({n: pose}, pron)[n]
         if e["inbetween"]:                                    # 中割りを描く組（inbetween: false は組を足さない＝切り替えは一瞬か transition）
             a = ren(e["from"])
-            if [a, n] not in pairs and [n, a] not in pairs: pairs.append([a, n])
-            if e["steps"] is not None: cfg.setdefault("ib_steps", {})[f"{a}>{n}"] = init.fill_steps({"x": e["steps"]}, pron)["x"]
+            rev = [n, a] in pairs and [a, n] not in pairs     # 逆向きの組 [name, from] が既にあれば、そのまま使う
+            if not rev and [a, n] not in pairs: pairs.append([a, n])
+            if e["steps"] is not None:                        # 逆向きの組では、段階を逆の順にして [name>from] に書く（vm poses は組の向きで引く）
+                st = init.fill_steps({"x": e["steps"]}, pron)["x"]
+                cfg.setdefault("ib_steps", {})[f"{n}>{a}" if rev else f"{a}>{n}"] = st[::-1] if rev else st
         added.append(n)
     return cfg, added
 
