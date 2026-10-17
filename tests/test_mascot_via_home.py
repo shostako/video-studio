@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "skills/video-mascot/scripts"))
 sys.path.insert(0, str(ROOT / "tests/fixtures"))
-from lib import via_home_config, home_route, split_via_home, plan_at  # noqa: E402
+from lib import via_home_config, home_route, resolve_events, plan_at  # noqa: E402
 import synth_mascot  # noqa: E402
 
 PAIRS = {("home", "open"), ("home", "span"), ("open", "point")}
@@ -38,26 +38,45 @@ def test_home_route_only_when_both_legs_are_drawn():
     assert not home_route("span", "span", "home", has)
 
 
-def test_split_puts_home_between_and_keeps_others():
-    ev = [(1.0, "home", "open"), (2.0, "open", "span"), (4.0, "span", "home")]
-    out = split_via_home(ev, "home", lambda a, b, v: home_route(a, b, "home", has), lambda a, b: 0.4, 0.1)
-    assert out == [(1.0, "home", "open"), (2.0, "open", "home"), (2.5, "home", "span"), (4.0, "span", "home")]
-    assert ev[1] == (2.0, "open", "span")                               # 元のリストは書き換えない
+WORDS = [("ほんばん", 3.0, 3.5), ("です", 3.6, 3.9)]
+def route(hold=0.0, d=0.4):
+    return lambda a, b, v: (d, hold, d) if v is None and home_route(a, b, "home", has) else None
+def res(events, **kw):
+    return resolve_events(events, "home", {1: 0.5}, {1: 4.0}, 1 / 3, [], WORDS, **kw)
 
 
-def test_split_keeps_via_slot_and_skips_when_next_is_too_close():
-    ev = [(2.0, "open", "span", None), (2.3, "span", "home", None)]   # home に着く前に次が始まる
-    r = lambda a, b, v: v is None and home_route(a, b, "home", has)
-    assert split_via_home(ev, "home", r, lambda a, b: 0.4, 0.0) == ev
-    ev = [(2.0, "open", "span", None), (3.0, "span", "home", "fade")]
-    out = split_via_home(ev, "home", r, lambda a, b: 0.4, 0.0)
-    assert out[:2] == [(2.0, "open", "home", None), (2.4, "home", "span", None)] and out[2] == ev[1]
+def test_route_puts_home_between_and_keeps_others():
+    events = [{"at": 1.0, "pose": "open"}, {"at": 2.0, "pose": "span"}, {"at": 4.0, "pose": "home"}]
+    assert res(events, route=route(0.1)) == [(1.0, "home", "open"), (2.0, "open", "home"), (2.5, "home", "span"), (4.0, "span", "home")]
+    assert res(events) == [(1.0, "home", "open"), (2.0, "open", "span"), (4.0, "span", "home")]   # route が無ければ今までどおり
+
+
+def test_word_arrives_just_before_the_word():
+    events = [{"at": 0.2, "pose": "open"}, {"line": 1, "word": ["ほんばん"], "pose": "span"}]
+    ev = res(events, route=route(0.1), with_via=True)
+    assert ev[1][:3] == (pytest.approx(3.0 - 0.9 - 0.04), "open", "home") and ev[1][3] is None
+    assert ev[2][:3] == (pytest.approx(3.0 - 0.4 - 0.04), "home", "span")   # home→span を終えるのは語の 0.04 秒前
+
+
+def test_too_close_next_event_keeps_old_timing():
+    # home→span を終える前（2.8 秒）に次が始まるので経由しない。開始も経由しない時の長さ（1/3 秒）で決め直す
+    events = [{"at": 0.2, "pose": "open"}, {"line": 1, "word": ["ほんばん"], "pose": "span"}, {"at": 2.7, "pose": "home"}]
+    ev = res(events, route=route())
+    assert ev == res(events) and ev[1] == (pytest.approx(3.0 - 1 / 3 - 0.04), "open", "span")
+    events[2]["at"] = 2.3                                                   # 1本目（open→home、2.06〜2.46 秒）の途中で次が来る時も同じ
+    assert res(events, route=route()) == res(events)
+
+
+def test_route_skips_via_and_keeps_via_slot():
+    events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span", "via": "fade"}, {"at": 3.0, "pose": "open"}]
+    ev = res(events, route=route(), with_via=True)
+    assert ev[1] == (1.0, "open", "span", "fade")                             # via を書いた切り替えは via が優先
+    assert ev[2:] == [(3.0, "span", "home", None), (3.4, "home", "open", None)]
 
 
 def test_plan_at_walks_through_home():
     ib = lambda a, b: [(f"{a}-{b}", k) for k in range(5)] if has(a, b) else None
-    ev = split_via_home([(1.0, "home", "open"), (2.0, "open", "span")], "home",
-                        lambda a, b, v: home_route(a, b, "home", has), lambda a, b: 5 / 15, 0.0)
+    ev = res([{"at": 1.0, "pose": "open"}, {"at": 2.0, "pose": "span"}], route=route(d=5 / 15))
     seen = [plan_at(t, ev, "home", ib, 15, 5) for t in np.arange(1.95, 2.8, 1 / 30)]
     names = [p[1][0] if p[0] == "ib" else p[1] for p in seen]
     assert names[0] == "open" and names[-1] == "span"

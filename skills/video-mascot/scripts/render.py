@@ -23,7 +23,7 @@ from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
-from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, split_via_home
+from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -239,13 +239,11 @@ def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else 
 def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_), via, TRANS, ib_d(a_, b_))
 def sw_dur(a_, b_, via):
     k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
-def routed(a_, b_, via):                          # home 経由でつなぐ切り替えか（via_home。via を書いた切り替えは via が優先）
-    return bool(VH) and via is None and home_route(a_, b_, P.home, lambda x_, y_: P.pair_dir(x_, y_) is not None)
-def res_dur(a_, b_, via):                         # kw / word で引く長さ。home 経由なら2つの切り替えと hold の和（語の直前に b に着く）
-    return sw_dur(a_, P.home, None) + VH["hold"] + sw_dur(P.home, b_, None) if routed(a_, b_, via) else sw_dur(a_, b_, via)
+def route(a_, b_, via):                           # home 経由でつなぐ切り替えの (前→home の秒, hold, home→次 の秒)（via_home。via を書いた切り替えは via が優先）
+    if not (VH and via is None and home_route(a_, b_, P.home, lambda x_, y_: P.pair_dir(x_, y_) is not None)): return None
+    return sw_dur(a_, P.home, None), VH["hold"], sw_dur(P.home, b_, None)
 ev = resolve_events(EVS, P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr),
-                    dur_of=res_dur if (USE_VIA or INTERP or VH) else None, with_via=USE_VIA)
-if VH: ev = split_via_home(ev, P.home, routed, lambda a_, b_: sw_dur(a_, b_, None), VH["hold"])
+                    dur_of=sw_dur if (USE_VIA or INTERP) else None, with_via=USE_VIA, route=route if VH else None)
 EASE = MOT["switch"]["ease"] if MOT and MOT["switch"] else None
 IB_DUR = (lambda a_, b_: (interp_dur(INTERP, a_, b_), INTERP["ease"]) if interp_pair(a_, b_) else None) if INTERP else None
 def plan(f): return plan_at(f / FPS, ev, P.home, ib_seq, IBFPS, NIB, EASE, trans_of if USE_VIA else None, IB_DUR)
