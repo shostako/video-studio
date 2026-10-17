@@ -15,7 +15,7 @@ import init
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "gestures.yaml"
 KEYS = {"name", "preset", "meaning", "lines", "checked", "from", "inbetween", "refs", "desc", "steps", "scale", "expect_height"}
 PRESETS = ("gestures", "extras_a", "extras_b")
-PRONOUN = re.compile(r"\b(she|he|her|his|him|hers|herself|himself|my|mine|myself|our|ours|ourselves|your|yours|yourself)\b", re.I)   # 決め打ちの代名詞（{p} で書く。its・their・them は手や指を指すのにも使うので見ない）
+PRONOUN = re.compile(r"\b(i|me|my|mine|myself|we|us|our|ours|ourselves|you|your|yours|yourself|yourselves|she|her|hers|herself|he|him|his|himself)\b", re.I)   # 人称代名詞は全部止める（{p} で書く）。it・its・they・them・their は手や指を指すのにも使うので見ない
 OWN = ("refs", "desc", "steps", "scale", "expect_height")   # preset の身振りでは書かない（雛形から取る）
 
 
