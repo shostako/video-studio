@@ -142,7 +142,7 @@ def test_cli_refuses_orphan_pose_image(tmp_path):
     assert json.loads((tmp_path / "config.json").read_text(encoding="utf-8")) == cfg
 
 
-@pytest.mark.parametrize("left", ["parts/span_m1.png", "parts_span/m1.png", "ib/ib_home_span_3.png", "ib/ib_span_home_2_12.png"])
+@pytest.mark.parametrize("left", ["parts/span_m1.png", "parts_span/m1.png", "ib/ib_home_span_3.png", "ib/ib_span_home_2_12.png", "ib/ib_home_span_2_12.png"])
 def test_cli_refuses_leftover_derived_assets(tmp_path, left):
     cfg = init.build("w", "a test", "she", "none"); (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
     f = tmp_path / left; f.parent.mkdir(parents=True, exist_ok=True); f.write_bytes(b"x")          # 姿勢の絵は消えたが、差分・中割りが残っている

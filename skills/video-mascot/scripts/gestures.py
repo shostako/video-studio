@@ -156,9 +156,9 @@ def has_assets(root, n):
     if os.path.isdir(pd) and any(re.fullmatch(rf"{re.escape(n)}_(m\d+|e\d+|g_\w+)\.png", f) for f in os.listdir(pd)): return True
     ib = os.path.join(root, "ib")
     if os.path.isdir(ib):
-        for f in os.listdir(ib):
-            m = re.fullmatch(r"ib_(.+)_\d+(?:_\d+)?\.png", f)               # ib_<前>_<次>_<k>[_<div>].png
-            if m and (m.group(1).startswith(n + "_") or m.group(1).endswith("_" + n)): return True
+        k = r"_\d+(?:_\d+)?\.png"                                         # ib_<前>_<次>_<k>[_<div>].png
+        first, second = re.compile(rf"ib_{re.escape(n)}_.+{k}"), re.compile(rf"ib_.+_{re.escape(n)}{k}")
+        if any(first.fullmatch(f) or second.fullmatch(f) for f in os.listdir(ib)): return True   # 名前の _ で迷う時は止める側に倒す
     return False
 
 
