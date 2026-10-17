@@ -131,7 +131,7 @@ def add(cfg, d, names, force=False, drawn=()):
             if n in names: raise GestureError(f"{n} は config に既にある（書き換えるなら --force）")
             continue
         if n in drawn:                                        # config に無くても、絵だけ残っていれば vm poses はそれを飛ばす
-            raise GestureError(f"{n} は絵が描けている（poses/pose_{n}.png がある）。文を書くなら、先にその絵と {n} の部品・中割りを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
+            raise GestureError(f"{n} は絵が描けている（poses/pose_{n}.png か、{n} の差分・部品・中割りが残っている）。文を書くなら、先にそれらを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
         e = d[n]; ren = lambda r: home if r == "home" else r
         pose = {"desc": e["desc"], "refs": [ren(r) for r in e["refs"]]}
         for k in ("scale", "expect_height"):
@@ -146,6 +146,20 @@ def add(cfg, d, names, force=False, drawn=()):
                 cfg.setdefault("ib_steps", {})[f"{n}>{a}" if rev else f"{a}>{n}"] = st[::-1] if rev else st
         added.append(n)
     return cfg, added
+
+
+def has_assets(root, n):
+    """作業フォルダに、その姿勢から描いた絵（姿勢・口と目の差分・部品・中割り）が1つでも残っているか。
+    vm poses は描けている絵を飛ばすので、残っていると新しい文の絵と古い絵が混ざる。"""
+    if os.path.exists(os.path.join(root, "poses", f"pose_{n}.png")) or os.path.isdir(os.path.join(root, f"parts_{n}")): return True
+    pd = os.path.join(root, "parts")
+    if os.path.isdir(pd) and any(re.fullmatch(rf"{re.escape(n)}_(m\d+|e\d+|g_\w+)\.png", f) for f in os.listdir(pd)): return True
+    ib = os.path.join(root, "ib")
+    if os.path.isdir(ib):
+        for f in os.listdir(ib):
+            m = re.fullmatch(r"ib_(.+)_\d+(?:_\d+)?\.png", f)               # ib_<前>_<次>_<k>[_<div>].png
+            if m and (m.group(1).startswith(n + "_") or m.group(1).endswith("_" + n)): return True
+    return False
 
 
 def table(d):
@@ -174,8 +188,7 @@ if __name__ == "__main__":
         cp = os.path.join(os.path.abspath(a.dir), "config.json")
         if not os.path.exists(cp): sys.exit(f"config.json が無い: {cp}（先に vm init）")
         with open(cp, encoding="utf-8") as f: cfg = json.load(f)
-        pd = os.path.join(os.path.dirname(cp), "poses")
-        drawn = {f[5:-4] for f in os.listdir(pd) if f.startswith("pose_") and f.endswith(".png")} if os.path.isdir(pd) else set()
+        root = os.path.dirname(cp); drawn = {n for n in needs(d, a.add) if has_assets(root, n)}
         new, added = add(cfg, d, a.add, a.force, drawn)
     except (GestureError, yaml.YAMLError) as ex:
         print(f"ERROR: {ex}", file=sys.stderr); sys.exit(1)
