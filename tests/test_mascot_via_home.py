@@ -75,6 +75,12 @@ def test_route_starting_before_previous_switch_ends_keeps_old_timing():
     events[0]["at"] = 1.5                                                   # 前が終わってからなら経由する
     assert [e[2] for e in res(events, route=route())] == ["open", "home", "span"]
 
+
+def test_route_needs_the_start_pose_to_be_reached():
+    # events の順では open→span だが、時刻の順では span（1 秒）が先。1 秒の時点ではまだ home なので経由しない
+    events = [{"at": 5.0, "pose": "open"}, {"at": 1.0, "pose": "span"}]
+    assert res(events, route=route()) == res(events)
+
 def test_route_skips_via_and_keeps_via_slot():
     events = [{"at": 0.2, "pose": "open"}, {"at": 1.0, "pose": "span", "via": "fade"}, {"at": 3.0, "pose": "open"}]
     ev = res(events, route=route(), with_via=True)
