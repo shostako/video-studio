@@ -5,7 +5,7 @@
                                                config.json の poses・pairs・ib_steps に足す。書く前の config.json は config.json.bak に残す
 足すのは、姿勢の描かせる文（mascot.pronoun で代名詞を差し替える）・参照・大きさの決まり（scale・expect_height）と、
 動き出す姿勢（既定 home）からの組と中割りの段階。既にある姿勢は --force が無ければ書き換えない。絵は描かない（次に vm poses）。"""
-import argparse, json, math, os, shutil, sys
+import argparse, json, math, os, re, shutil, sys
 from pathlib import Path
 try: import yaml
 except ImportError: sys.exit("ERROR: pyyaml が無い。~/.claude/skills/video-mascot/scripts/setup.sh を引数なしで流すと入る")
@@ -15,6 +15,7 @@ import init
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "gestures.yaml"
 KEYS = {"name", "preset", "meaning", "lines", "checked", "from", "inbetween", "refs", "desc", "steps", "scale", "expect_height"}
 PRESETS = ("gestures", "extras_a", "extras_b")
+PRONOUN = re.compile(r"\b(she|he|her|his|him|hers|herself|himself)\b", re.I)   # 決め打ちの代名詞（{p} で書く。its・their・them は手や指を指すのにも使うので見ない）
 OWN = ("refs", "desc", "steps", "scale", "expect_height")   # preset の身振りでは書かない（雛形から取る）
 
 
@@ -90,9 +91,11 @@ def load(path=DEFAULT_PATH):
                 if not (isinstance(eh, list) and len(eh) == 2 and all(_num(v) for v in eh) and 0 < eh[0] < eh[1]):
                     raise GestureError(f"{n}: expect_height は [下限, 上限]（home を 1 とした背の比）")
                 e["expect_height"] = [float(v) for v in eh]
-        txt = e["desc"] + " ".join(e["steps"] or [])
+        txt = " ".join([e["desc"], *(e["steps"] or [])])
         left = txt.replace("{p}", "").replace("{P}", "")
         if "{" in left or "}" in left: raise GestureError(f"{n}: 置き換えられない {{…}} がある（使えるのは {{p}} と {{P}}）")
+        m = PRONOUN.search(left)
+        if m: raise GestureError(f"{n}: 代名詞 '{m.group(0)}' を決め打ちしている（所有格は {{p}} で書く。キャラが替わると合わない）")
         out[n] = e
     for n, e in out.items():     # 動き出す姿勢・参照は、辞書の身振りか home
         for r in [e["from"], *e["refs"]]:

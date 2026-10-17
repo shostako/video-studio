@@ -74,6 +74,8 @@ def test_add_uses_config_home_name():
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, inbetween: false, steps: [s]}\n", "steps は書かない"),
     ("gestures:\n  - {name: home, meaning: x, checked: true, desc: d}\n", "home"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: true}\n", "scale"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: 'raise her hand'}\n", "代名詞"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, steps: ['His arm is up']}\n", "代名詞"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .nan}\n", "scale"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .inf}\n", "scale"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, expect_height: [0.9, .inf]}\n", "expect_height"),
