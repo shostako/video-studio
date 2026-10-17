@@ -152,10 +152,11 @@
 | `ease` | `in_out` | 何枚目を出すかのイージング（`linear`・`in`・`out`・`in_out`・`sine`） |
 | `durs` | `{}` | 組ごとの秒 `{"前>次": 秒}`。逆向きにも効く。金型が閉じる合掌をゆっくり見せる、など |
 | `pairs` | 全部 | 補間する組 `["前>次", ...]`。書かなければ中割りのある全部の組 |
+| `direct` | false | true にすると、中割りの無い組（今は `transition` の fade で溶かす組）も、端の姿勢2枚の間を直に補間する。向き（`yaw`・`head_yaw`）の同じ組だけ。`via` を書いた切り替えは `via` が優先 |
 | `model` / `exe` / `tmp` | rife-v4.6 / 新PC の `C:\ComfyUI\tools` の exe / Windows の一時フォルダ | RIFE（rife-ncnn-vulkan の Windows 版を WSL から呼ぶ） |
 
 - 作った列は `ib_interp/<前>_<次>_x<倍>_<モデル>/` にためる。元の絵か `mult`・`model` が変わったら作り直す
-- 中割りの無い組（`transition` の fade など）は補間しない
+- 中割りの無い組は、`direct` が false なら補間しない（`transition` の fade などのまま）
 - `events` の `kw`・`word` で引く長さも、その組の秒になる（切り替えの終わりが語に合う）
 - RIFE は手元の GPU で動く。クラウドでは使わない（CI は純関数だけ）
 

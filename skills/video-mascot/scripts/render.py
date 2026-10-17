@@ -168,11 +168,12 @@ def face_affine(src, dst, roi):
     try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), mask, 5)
     except cv2.error: pass
     return cv2.invertAffineTransform(M), cc
-IBCACHE = {}
+IBCACHE = {}; IBCACHE_MAX = 48   # 中割りの絵の控え。補間で枚数が増えるとメモリを食い潰すので、古いものから捨てる
 def ib_item(item, src_pose):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
     path, a_, b_, k_ = item; key = (path, src_pose)
-    if key in IBCACHE: return IBCACHE[key]
+    if key in IBCACHE: IBCACHE[key] = IBCACHE.pop(key); return IBCACHE[key]   # 使った順に並べ直す
+    while len(IBCACHE) >= IBCACHE_MAX: IBCACHE.pop(next(iter(IBCACHE)))
     img = cv2.imread(path)
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
@@ -198,26 +199,42 @@ def ib_item(item, src_pose):
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
+class LazySeq:
+    """補間した列。長さは先に分かり、絵（RIFE）は最初に中身を引いた時に作る（--from/--to の範囲外の切り替えでは作らない）。"""
+    def __init__(self, n, make, rev): self.n, self.make, self.rev, self.items = n, make, rev, None
+    def __len__(self): return self.n
+    def __bool__(self): return self.n > 0
+    def __getitem__(self, i):
+        if self.items is None: self.items = self.make()
+        return self.items[self.n - 1 - i] if self.rev else self.items[i]
+def dense_seq(pa, pb, rev, direct):
+    def make():
+        from interp import dense_paths
+        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
+        return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
+    return LazySeq(DIV * INTERP["mult"] - 1, make, rev)
 IBSEQ = {}
 def ib_seq(a_, b_):
     if (a_, b_) in IBSEQ: return IBSEQ[(a_, b_)]
     d = P.pair_dir(a_, b_)
+    if d is None and direct_ok(a_, b_):           # 中割りの無い組を、端の姿勢2枚の間で直に補間する（interp.direct）
+        pa, pb = sorted((a_, b_)); IBSEQ[(a_, b_)] = dense_seq(pa, pb, pa != a_, True); return IBSEQ[(a_, b_)]
     if d is None: IBSEQ[(a_, b_)] = None; return None
     pa, pb, rev = d
     if INTERP and interp_on(INTERP, pa, pb):      # コマ補間: 描いた絵の間を RIFE で細かくした列（k は小数）
-        from interp import dense_paths
-        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr))
-        seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
-    else: seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
+        IBSEQ[(a_, b_)] = dense_seq(pa, pb, rev, False); return IBSEQ[(a_, b_)]
+    seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
     IBSEQ[(a_, b_)] = seq[::-1] if rev else seq; return IBSEQ[(a_, b_)]
-def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組だけ）
-    d = P.pair_dir(a_, b_); return bool(INTERP) and d is not None and interp_on(INTERP, d[0], d[1])
+def direct_ok(a_, b_):                            # 中割りの無い組を直に補間するか（interp.direct、向きの同じ組だけ）
+    return bool(INTERP) and INTERP["direct"] and a_ != b_ and P.pair_dir(a_, b_) is None and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
+def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組と、直に補間する組）
+    d = P.pair_dir(a_, b_); return bool(INTERP) and ((d is not None and interp_on(INTERP, d[0], d[1])) or direct_ok(a_, b_))
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
 EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
 def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
-def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None, via, TRANS, ib_d(a_, b_))
+def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_), via, TRANS, ib_d(a_, b_))
 def sw_dur(a_, b_, via):
     k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
 ev = resolve_events(EVS, P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr),
