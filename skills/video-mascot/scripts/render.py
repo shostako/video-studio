@@ -202,6 +202,11 @@ IBSEQ = {}
 def ib_seq(a_, b_):
     if (a_, b_) in IBSEQ: return IBSEQ[(a_, b_)]
     d = P.pair_dir(a_, b_)
+    if d is None and direct_ok(a_, b_):           # 中割りの無い組を、端の姿勢2枚の間で直に補間する（interp.direct）
+        from interp import dense_paths
+        pa, pb = sorted((a_, b_)); paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=True)
+        seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
+        IBSEQ[(a_, b_)] = seq if pa == a_ else seq[::-1]; return IBSEQ[(a_, b_)]
     if d is None: IBSEQ[(a_, b_)] = None; return None
     pa, pb, rev = d
     if INTERP and interp_on(INTERP, pa, pb):      # コマ補間: 描いた絵の間を RIFE で細かくした列（k は小数）
@@ -210,14 +215,16 @@ def ib_seq(a_, b_):
         seq = [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     else: seq = [(P.ib_path(pa, pb, k), pa, pb, k) for k in range(1, DIV)]
     IBSEQ[(a_, b_)] = seq[::-1] if rev else seq; return IBSEQ[(a_, b_)]
-def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組だけ）
-    d = P.pair_dir(a_, b_); return bool(INTERP) and d is not None and interp_on(INTERP, d[0], d[1])
+def direct_ok(a_, b_):                            # 中割りの無い組を直に補間するか（interp.direct、向きの同じ組だけ）
+    return bool(INTERP) and INTERP["direct"] and a_ != b_ and P.pair_dir(a_, b_) is None and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
+def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組と、直に補間する組）
+    d = P.pair_dir(a_, b_); return bool(INTERP) and ((d is not None and interp_on(INTERP, d[0], d[1])) or direct_ok(a_, b_))
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
 EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
 def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
-def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None, via, TRANS, ib_d(a_, b_))
+def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_), via, TRANS, ib_d(a_, b_))
 def sw_dur(a_, b_, via):
     k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
 ev = resolve_events(EVS, P.home, L, LDUR, IBDUR, hira_stream, WH, log=lambda m: print(m, file=sys.stderr),

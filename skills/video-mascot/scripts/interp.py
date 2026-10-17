@@ -20,14 +20,15 @@ def _stamp(srcs, cfg):
             "mult": cfg["mult"], "model": cfg["model"]}
 
 
-def dense_paths(proj, pa, pb, div, cfg, log=None):
-    """組 pa→pb（pairs の向き）の補間した列のパス（div*mult-1 枚、k=j/mult の順）。無ければ RIFE で作る。"""
-    mult = cfg["mult"]
-    srcs = [proj.pose_path(pa)] + [proj.ib_path(pa, pb, k) for k in range(1, div)] + [proj.pose_path(pb)]
+def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
+    """組 pa→pb（pairs の向き）の補間した列のパス（div*mult-1 枚、k=j/mult の順）。無ければ RIFE で作る。
+    direct=True は中割りを使わず、端の姿勢2枚の間を div*mult 倍に細かくする（枚数と k の位置は同じ）。"""
+    mult = cfg["mult"] * div if direct else cfg["mult"]
+    srcs = [proj.pose_path(pa)] + ([] if direct else [proj.ib_path(pa, pb, k) for k in range(1, div)]) + [proj.pose_path(pb)]
     miss = [p for p in srcs if not os.path.exists(p)]
     if miss: die(f"補間の元の絵が無い: {miss}")
-    out = proj.p("ib_interp", f"{pa}_{pb}_x{mult}_{cfg['model']}")
-    want = [os.path.join(out, f"f{j}.png") for j in range(1, div * mult)]
+    out = proj.p("ib_interp", f"{pa}_{pb}_{'direct_' if direct else ''}x{mult}_{cfg['model']}")
+    want = [os.path.join(out, f"f{j}.png") for j in range(1, (len(srcs) - 1) * mult)]
     st = _stamp(srcs, cfg); sf = os.path.join(out, "stamp.json")
     if os.path.exists(sf) and all(os.path.exists(p) for p in want):
         try:
@@ -45,9 +46,9 @@ def dense_paths(proj, pa, pb, div, cfg, log=None):
     outs = sorted(os.listdir(tmp + "/out"))[:n_out]
     if r.returncode != 0 or len(outs) < n_out: die(f"RIFE が失敗した（{pa}→{pb}、終了コード {r.returncode}）: {(r.stdout + r.stderr)[-800:]}")
     os.makedirs(out, exist_ok=True)
-    for j in range(1, div * mult):
+    for j in range(1, (len(srcs) - 1) * mult):
         if j % mult == 0: cv2.imwrite(want[j - 1], imgs[j // mult])          # 描いた中割りはそのまま使う
         else: shutil.copyfile(os.path.join(tmp, "out", outs[j]), want[j - 1])
     json.dump(st, open(sf, "w")); shutil.rmtree(tmp, ignore_errors=True)
-    if log: log(f"補間: {pa}→{pb} を {div * mult - 1} 枚に（RIFE {cfg['model']}）")
+    if log: log(f"補間: {pa}→{pb} を {len(want)} 枚に（RIFE {cfg['model']}{'、中割りなしで直に' if direct else ''}）")
     return want

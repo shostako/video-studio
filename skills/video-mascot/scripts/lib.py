@@ -801,6 +801,7 @@ INTERP_DEFAULTS = {
     "ease": "in_out",       # 何枚目を出すかのイージング（linear / in / out / in_out / sine）
     "durs": {},             # 組ごとの秒 {"gap>gassho": 1.2}（逆向きの組にも効く）
     "pairs": None,          # 補間する組 ["gap>gassho", ...]（None は中割りのある全部の組）
+    "direct": False,        # 中割りの無い組も、端の姿勢2枚の間を直に補間する（向きの同じ組だけ。溶かしの代わり）
     "model": "rife-v4.6",
     "exe": "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe",
     "tmp": "/mnt/c/Users/shost/AppData/Local/Temp/vm_rife",   # Windows の exe が読み書きできる所
@@ -827,6 +828,7 @@ def interp_config(value, flag=None):
     if not isinstance(out["mult"], int) or isinstance(out["mult"], bool) or out["mult"] < 2: raise ValueError(f"interp.mult は 2 以上の整数: {out['mult']!r}")
     if isinstance(out["dur"], bool) or not isinstance(out["dur"], (int, float)) or out["dur"] <= 0: raise ValueError(f"interp.dur は正の秒: {out['dur']!r}")
     ease(out["ease"], 0.5)                        # 名前の検査
+    if not isinstance(out["direct"], bool): raise ValueError(f"interp.direct は true か false: {out['direct']!r}")
     if not isinstance(out["durs"], dict): raise ValueError("interp.durs は {\"前>次\": 秒}")
     out["durs"] = {_pair_key(k): float(d) for k, d in out["durs"].items()}
     if any(d <= 0 for d in out["durs"].values()): raise ValueError("interp.durs の秒は正")

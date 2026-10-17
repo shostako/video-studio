@@ -23,7 +23,7 @@ def test_interp_config_overrides():
 
 @pytest.mark.parametrize("bad", [
     {"nope": 1}, {"engine": "film"}, {"mult": 1}, {"mult": 2.5}, {"mult": True}, {"dur": 0}, {"dur": True},
-    {"ease": "bounce"}, {"durs": {"gap": 1.0}}, {"durs": {"a>b": 0}}, {"durs": []}, {"pairs": "a>b"}, {"pairs": ["a>b>c"]}, "on",
+    {"ease": "bounce"}, {"direct": "yes"}, {"durs": {"gap": 1.0}}, {"durs": {"a>b": 0}}, {"durs": []}, {"pairs": "a>b"}, {"pairs": ["a>b>c"]}, "on",
 ])
 def test_interp_config_rejects(bad):
     with pytest.raises(ValueError):
@@ -83,3 +83,8 @@ def test_plan_at_ib_dur_yields_to_next_event():
     assert lib.plan_at(1.4, ev, "gap", ib, 15, 5, None, None, dur)[1] in SEQ
     f = lib.plan_at(1.5, ev, "gap", ib, 15, 5, None, None, dur)
     assert f == ("ib", "e1", "gassho")             # 次の切り替えが始まったら、前の補間は打ち切る
+
+
+def test_interp_config_direct():
+    assert lib.interp_config(True)["direct"] is False
+    assert lib.interp_config({"direct": True})["direct"] is True
