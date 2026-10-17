@@ -12,6 +12,9 @@ else say "NG   video-scene の Python が無い（~/.claude/skills/video-scene/s
 if [ -x "$PY" ] && "$PY" -c "import pykakasi" 2>/dev/null; then say "ok   pykakasi"
 elif [ $CHECK -eq 1 ]; then say "NG   pykakasi が無い"; ok=0
 else say "..   pykakasi を入れる"; "$PY" -m pip install -q pykakasi && say "ok   pykakasi" || { say "NG   pykakasi を入れられない"; ok=0; }; fi
+if [ -x "$PY" ] && "$PY" -c "import yaml" 2>/dev/null; then say "ok   pyyaml（vm gestures）"
+elif [ $CHECK -eq 1 ]; then say "NG   pyyaml が無い（vm gestures が使えない）"; ok=0
+else say "..   pyyaml を入れる"; "$PY" -m pip install -q pyyaml && say "ok   pyyaml" || { say "NG   pyyaml を入れられない（vm gestures が使えない）"; ok=0; }; fi
 for t in ffmpeg ffprobe uv git; do command -v "$t" >/dev/null 2>&1 && say "ok   $t" || { say "NG   $t が無い"; ok=0; }; done
 ENC="$(ffmpeg -hide_banner -encoders 2>/dev/null)"
 if printf "%s" "$ENC" | grep -q libvpx-vp9; then say "ok   ffmpeg libvpx-vp9（透明つき動画）"; else say "NG   ffmpeg に libvpx-vp9 が無い"; ok=0; fi

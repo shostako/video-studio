@@ -1,0 +1,163 @@
+# 身振りの辞書（キャラに依らない）。書き方と使い方は references/gestures.md、検査は `vm gestures --check`。
+#
+# 1つの身振り = 1つの姿勢（poses.<name>）。作業フォルダの config に足すのは `vm gestures <作業フォルダ> --add <name> ...`。
+# preset が書いてある身振りは、描かせる文・中割りの段階・大きさの決まりを vm init の雛形（scripts/init.py）から取る
+# （vm init --gestures / --extras と同じ文になる）。preset が無い身振りは、ここに書いた desc / steps を使う。
+# {p} は所有格（her/his/its/their）、{P} はその頭を大文字にしたもの。キャラ固有の値（服・色・座標）は書かない。
+#
+# from: どの姿勢から動き出すか（既定 home）。inbetween: false なら中割りの組を足さない（指だけ変える身振りなど）。
+# steps: 中割りの各枚の様子（config の ib_steps。書かなければ chain のまま）。
+# checked: この文で実物を描いて、見た目を確かめたか（true は手組み版などで確かめ済み。false は候補で、描いてみないと分からない）
+
+gestures:
+  # ---- vm init の雛形にあるもの ----
+  - name: open
+    preset: gestures
+    meaning: 説明する・話を広げる
+    lines: ["ここからが本番", "流れを見ていこう"]
+    checked: true
+  - name: point_l
+    preset: gestures
+    meaning: 画面の左にあるものを示す
+    lines: ["こっちの図を見て"]
+    checked: true
+  - name: point_r
+    preset: gestures
+    meaning: 画面の右にあるものを示す
+    lines: ["右の金型を見て"]
+    checked: true
+  - name: think
+    preset: extras_a
+    meaning: 考える・問いを立てる
+    lines: ["なぜだろう", "ここで疑問が出る"]
+    checked: true
+  - name: bow
+    preset: extras_a
+    meaning: あいさつ・締め
+    lines: ["よろしく", "以上です"]
+    checked: true
+  - name: raise_r
+    preset: extras_a
+    meaning: 1つ目・ポイントを挙げる（人差し指を1本立てる）
+    lines: ["ポイントは1つ", "まず1つ目"]
+    checked: true
+  - name: stretch
+    preset: extras_a
+    meaning: 区切り・ひと息
+    lines: ["さて", "一段落"]
+    checked: true
+  - name: crouch
+    preset: extras_b
+    meaning: 下にあるものを示す
+    lines: ["下の部分に注目"]
+    checked: false
+  - name: knee_bend
+    preset: extras_b
+    meaning: 軽い弾み・相づち
+    lines: ["そう"]
+    checked: false
+
+  # ---- 候補（解説で題材をまたいで使えるもの）----
+  - name: count_2
+    meaning: 2つ目（人差し指と中指を立てる）
+    lines: ["2つ目", "理由は2つ"]
+    checked: false
+    from: raise_r           # 腕は raise_r のまま、指だけ変える。中割りは描かない（切り替えは一瞬か transition の溶かし）
+    inbetween: false
+    refs: [raise_r]
+    desc: >-
+      exactly the same pose, arm position and body as the reference, only the raised hand changes: {p} index finger and
+      middle finger point straight up and are slightly apart, the other fingers folded, the back of the hand facing the viewer,
+      standing on exactly the same spot as the reference, calm closed mouth
+  - name: count_3
+    meaning: 3つ目（指を3本立てる）
+    lines: ["3つ目", "ポイントは3つ"]
+    checked: false
+    from: raise_r
+    inbetween: false
+    refs: [raise_r]
+    desc: >-
+      exactly the same pose, arm position and body as the reference, only the raised hand changes: {p} index, middle and ring
+      fingers point straight up and are slightly apart, the thumb and little finger folded, the back of the hand facing the viewer,
+      standing on exactly the same spot as the reference, calm closed mouth
+  - name: pinch
+    meaning: とても薄い・わずか（親指と人差し指の間を少しだけあける）
+    lines: ["厚みは0.3ミリ", "ほんのわずか"]
+    checked: false
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised in front of
+      {p} chest at shoulder height, the thumb and index finger held almost touching with a very small gap between them, the other
+      fingers loosely curled, the other hand stays lightly in front of {p} waist, {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body exactly as in the start pose; only {p} hand on the image-right side has begun to loosen"
+      - "{p} hand on the image-right side has left the other hand and is at waist height in front of {p} body, elbow bent, fingers relaxed"
+      - "{p} hand on the image-right side is at lower-chest height, elbow bent at about a right angle, the thumb and index finger starting to come together"
+      - "{p} hand on the image-right side is at chest height, the thumb and index finger close together with a clear gap, the other hand still in front of {p} waist"
+      - "{p} hand on the image-right side is almost at shoulder height, the thumb and index finger almost touching, just short of the end pose"
+  - name: span
+    meaning: 大きさ・幅・長さを示す（両手の手のひらを向かい合わせて肩幅にあける）
+    lines: ["このくらいの幅", "流れる長さ"]
+    checked: false
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, both hands raised in front of {p} body at chest height,
+      palms vertical and facing each other about shoulder width apart, as if showing the size of something, elbows bent,
+      {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body, lifted only slightly"
+      - "both hands have separated in front of {p} waist, palms starting to turn inward, only a small space between them"
+      - "both hands are at lower-chest height, palms facing each other about a hand width apart"
+      - "both hands are at chest height, palms facing each other, the space between them widening to about half the shoulder width"
+      - "both hands are at chest height with palms facing each other almost shoulder width apart, just short of the end pose"
+  - name: gap
+    meaning: 隙間・まだ少し残っている（両手の手のひらを指1本ほどあけて向かい合わせる）
+    lines: ["この隙間を覚えておいて", "残りがストローク"]
+    checked: false          # 射出成形の解説では作業フォルダの config の文で描いた。この文では未確認
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, both palms raised vertically in front of {p} chest
+      and facing each other with a narrow gap about one finger wide, not touching, {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body, lifted only slightly"
+      - "both hands have separated and are rising in front of {p} waist, palms starting to turn inward"
+      - "both hands are at lower-chest height, palms vertical and facing each other about a hand width apart"
+      - "both hands are at chest height, palms vertical and facing each other a few fingers apart"
+      - "both palms are at chest height facing each other with a gap only a little wider than one finger, just short of the end pose"
+  - name: gassho
+    meaning: 閉じきる・ぴたりと合う（両手の手のひらを胸の前で合わせる）
+    lines: ["ストロークがゼロになる", "ぴったり閉じる"]
+    checked: false
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, both palms pressed flat together in front of {p}
+      chest with the fingers pointing up, elbows relaxed, {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body, lifted only slightly"
+      - "both hands have separated and are rising in front of {p} waist, palms starting to turn inward"
+      - "both hands are at lower-chest height, palms facing each other a few fingers apart"
+      - "both hands are at chest height, palms facing each other about one finger apart, fingers pointing up"
+      - "both palms at chest height are almost touching, fingers pointing up, just short of the end pose"
+  - name: arms_crossed
+    meaning: 問題はここ・腕を組んで考える
+    lines: ["ここが難しい", "問題はここだ"]
+    checked: false
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, both arms folded across {p} chest, each hand resting
+      on the opposite upper arm, a calm and slightly serious expression, {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body, lifted only slightly"
+      - "both hands have separated and are rising toward {p} chest, elbows bent and pointing outward"
+      - "both forearms are in front of {p} lower chest, starting to cross each other"
+      - "both forearms are crossed in front of {p} chest, the hands reaching toward the opposite upper arms"
+      - "both arms are almost fully folded across {p} chest, each hand nearly on the opposite upper arm, just short of the end pose"
+  - name: palm_stop
+    meaning: 注意・ここで止まって（片手の手のひらを前に向ける）
+    lines: ["ここで注意", "ちょっと待って"]
+    checked: false
+    desc: >-
+      facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised to shoulder
+      height with the open palm facing the viewer and the fingers pointing up, elbow bent, like a gentle 'wait' sign, the other hand
+      stays lightly in front of {p} waist, {p} face fully visible, calm closed mouth
+    steps:
+      - "the movement has only just started: both hands are still clasped in front of {p} body exactly as in the start pose; only {p} hand on the image-right side has begun to loosen"
+      - "{p} hand on the image-right side has left the other hand and is at waist height, elbow bent, palm facing {p} body"
+      - "{p} hand on the image-right side is at lower-chest height, elbow bent at about a right angle, palm starting to turn toward the viewer"
+      - "{p} hand on the image-right side is at chest height, palm mostly facing the viewer, fingers pointing up"
+      - "{p} hand on the image-right side is almost at shoulder height with the palm facing the viewer, just short of the end pose"
