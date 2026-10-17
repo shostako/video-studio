@@ -71,12 +71,25 @@ def borrowed(P, pose):
     return json.load(open(f)) if os.path.exists(f) else None
 
 
+def drop_borrowed(P, pose):
+    """前に --borrow で写した部品と印（parts_<姿勢>/ の絵・parts.json・borrowed.json）を消す。写していなければ何もしない。"""
+    od = P.p(f"parts_{pose}")
+    if not os.path.exists(os.path.join(od, BORROWED)): return False
+    for f in os.listdir(od):
+        if f.endswith(".png") or f in ("parts.json", BORROWED): os.remove(os.path.join(od, f))
+    print(f"  {pose}: 前に写した部品を消した"); return True
+
+
+def has_diffs(P, pose):
+    return any(os.path.exists(P.p("parts", f"{pose}_{k}.png")) for k in MOUTHS + EYES + GAZES)
+
+
 def borrow(P, src, pose, min_cc=0.95):
     """src の部品を、顔の周りを重ね合わせた変換で pose へ写す（差分を描かない）。書いたら True。"""
     if pose == src: print(f"{pose}: 元の姿勢と同じ。飛ばす"); return False
     if P.cfg["poses"].get(pose, {}).get("face", True) is False: print(f"{pose}: 顔なし（face: false）。部品は作らない"); return False
-    if any(os.path.exists(P.p("parts", f"{pose}_{k}.png")) for k in MOUTHS + EYES + GAZES):
-        print(f"{pose}: 描いた差分（parts/{pose}_*.png）があるので写さない。vm parts で切る"); return False
+    if has_diffs(P, pose):
+        print(f"{pose}: 描いた差分（parts/{pose}_*.png）があるので写さない。vm parts で切る"); drop_borrowed(P, pose); return False
     sm = P.p(f"parts_{src}", "parts.json")
     if not os.path.exists(sm): die(f"元の姿勢の部品が無い: parts_{src}（先に vm parts {src}）")
     parts = {k: (cv2.imread(P.p(f"parts_{src}", f"{k}.png"), cv2.IMREAD_UNCHANGED), px, py) for k, (px, py) in json.load(open(sm)).items()}
@@ -89,7 +102,8 @@ def borrow(P, src, pose, min_cc=0.95):
     M = np.eye(2, 3, dtype=np.float32); cc = -1.0
     try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), mask, 5)
     except cv2.error: pass
-    if cc < min_cc: print(f"{pose}: 顔の合い {cc:.3f} が {min_cc} に届かない。写さない（差分を描く）"); return False
+    if cc < min_cc:                             # 前に写した部品が残ると、描き直した絵に古い部品が乗ったままになるので消す
+        print(f"{pose}: 顔の合い {cc:.3f} が {min_cc} に届かない。写さない（差分を描く）"); drop_borrowed(P, pose); return False
     A = cv2.invertAffineTransform(M); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
     for k, (im, px, py) in parts.items():
         T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
@@ -107,6 +121,8 @@ def borrow(P, src, pose, min_cc=0.95):
 def extract(P, pose):
     if P.cfg["poses"].get(pose, {}).get("face", True) is False: print(f"{pose}: 顔なし（face: false）。部品は作らない"); return {}
     b = borrowed(P, pose)
+    if b and has_diffs(P, pose):                # 写したあとに差分を描いたなら、描いた方で切る
+        print(f"{pose}: {b['from']} から写した部品があるが、描いた差分があるので切り直す"); drop_borrowed(P, pose); b = None
     if b: print(f"{pose}: {b['from']} から写した部品。切り直さない（描いた差分で作るなら parts_{pose}/{BORROWED} を消す）"); return json.load(open(P.p(f"parts_{pose}", "parts.json")))
     mouth_roi, eye_roi, cc = map_rois(P, pose); base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
     for names, roi in ((MOUTHS, mouth_roi), (EYES + GAZES, eye_roi)):

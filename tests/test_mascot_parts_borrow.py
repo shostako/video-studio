@@ -78,3 +78,25 @@ def test_vm_parts_keeps_borrowed_and_vm_poses_skips_it(tmp_path):
     jobs = [os.path.basename(j[0]) for j in poses.jobs_parts(Proj(str(p)))]
     assert not any(j.startswith("moved_") for j in jobs)
     assert any(j.startswith("back_") for j in jobs)        # 写していない姿勢は今までどおり描く
+
+
+def test_failed_reborrow_clears_the_old_borrowed_parts(tmp_path):
+    p = proj(tmp_path)
+    assert run(p, "--borrow", "home", "moved").returncode == 0
+    synth_mascot.figure_back().save(p / "poses/pose_moved.png")        # 描き直して顔が合わなくなった
+    r = run(p, "--borrow", "home", "moved")
+    assert r.returncode == 3
+    assert not (p / "parts_moved/borrowed.json").exists() and not (p / "parts_moved/parts.json").exists()
+    sys.path.insert(0, str(ROOT / "skills/video-mascot/scripts"))
+    from lib import Proj
+    import poses
+    assert any(os.path.basename(j[0]).startswith("moved_") for j in poses.jobs_parts(Proj(str(p))))   # また描く対象に戻る
+
+
+def test_drawn_diffs_win_over_borrowed_parts(tmp_path):
+    p = proj(tmp_path)
+    assert run(p, "--borrow", "home", "moved").returncode == 0
+    shifted(synth_mascot.figure(0), DX, DY).save(p / "parts/moved_m1.png")   # 写したあとに差分を描いた
+    r = run(p, "moved")
+    assert r.returncode == 0 and "切り直す" in r.stdout
+    assert not (p / "parts_moved/borrowed.json").exists()
