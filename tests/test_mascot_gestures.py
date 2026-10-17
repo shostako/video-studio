@@ -75,6 +75,7 @@ def test_add_uses_config_home_name():
     ("gestures:\n  - {name: home, meaning: x, checked: true, desc: d}\n", "home"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: true}\n", "scale"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: 'raise her hand'}\n", "代名詞"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: 'my hand is raised'}\n", "代名詞"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, steps: ['His arm is up']}\n", "代名詞"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .nan}\n", "scale"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .inf}\n", "scale"),
@@ -122,6 +123,8 @@ def test_force_refuses_home_and_drawn_poses():
     with pytest.raises(G.GestureError, match="drawn|描けている"): G.add(base, d, ["open"], force=True, drawn={"open"})
     base["home"] = "span"; base["poses"]["span"] = base["poses"].pop("home")
     with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["span"], force=True)
+    base = init.build("x", "a test", "she", "none"); base["home"] = "raise_r"; base["poses"] = {"raise_r": base["poses"].pop("home")}
+    with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["count_3"])            # 参照の raise_r が home と同じ名前
 
 
 def test_cli_force_refuses_drawn_pose(tmp_path):

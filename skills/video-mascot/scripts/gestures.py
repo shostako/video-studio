@@ -15,7 +15,7 @@ import init
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "gestures.yaml"
 KEYS = {"name", "preset", "meaning", "lines", "checked", "from", "inbetween", "refs", "desc", "steps", "scale", "expect_height"}
 PRESETS = ("gestures", "extras_a", "extras_b")
-PRONOUN = re.compile(r"\b(she|he|her|his|him|hers|herself|himself)\b", re.I)   # 決め打ちの代名詞（{p} で書く。its・their・them は手や指を指すのにも使うので見ない）
+PRONOUN = re.compile(r"\b(she|he|her|his|him|hers|herself|himself|my|mine|myself|our|ours|ourselves|your|yours|yourself)\b", re.I)   # 決め打ちの代名詞（{p} で書く。its・their・them は手や指を指すのにも使うので見ない）
 OWN = ("refs", "desc", "steps", "scale", "expect_height")   # preset の身振りでは書かない（雛形から取る）
 
 
@@ -121,7 +121,8 @@ def add(cfg, d, names, force=False, drawn=()):
     """config に身振りを足した新しい config と、足した姿勢の名前の並び。from・refs の姿勢が config に無ければ、辞書から一緒に足す。
     drawn は絵が描けている姿勢の名前。--force でも、描けている姿勢と home は書き換えない（vm poses は描けた絵を飛ばすので、文だけ変わって絵が古いままになる）。"""
     cfg = json.loads(json.dumps(cfg)); home = cfg.get("home", "home")
-    if home in names: raise GestureError(f"{home} は基本の姿勢（config の home）なので、辞書から足さない・書き換えない")
+    if home in needs(d, names):                        # 足す身振りの参照に home と同じ名前が入っていても止める
+        raise GestureError(f"{home} は基本の姿勢（config の home）なので、辞書から足さない・書き換えない")
     pron = cfg.get("mascot", {}).get("pronoun", "she")
     if pron not in init.POSS: raise GestureError(f"mascot.pronoun が知らない値: {pron}")
     poses = cfg.setdefault("poses", {}); pairs = cfg.setdefault("pairs", []); added = []
