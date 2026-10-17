@@ -5,7 +5,7 @@
                                                config.json の poses・pairs・ib_steps に足す。書く前の config.json は config.json.bak に残す
 足すのは、姿勢の描かせる文（mascot.pronoun で代名詞を差し替える）・参照・大きさの決まり（scale・expect_height）と、
 動き出す姿勢（既定 home）からの組と中割りの段階。既にある姿勢は --force が無ければ書き換えない。絵は描かない（次に vm poses）。"""
-import argparse, json, os, shutil, sys
+import argparse, json, math, os, shutil, sys
 from pathlib import Path
 try: import yaml
 except ImportError: sys.exit("ERROR: pyyaml が無い。~/.claude/skills/video-mascot/scripts/setup.sh を引数なしで流すと入る")
@@ -19,6 +19,9 @@ OWN = ("refs", "desc", "steps", "scale", "expect_height")   # preset の身振�
 
 
 class GestureError(ValueError): pass
+
+
+def _num(v): return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)   # true / .nan / .inf は数として通さない
 
 
 def preset_entry(group, name):
@@ -80,11 +83,11 @@ def load(path=DEFAULT_PATH):
                 raise GestureError(f"{n}: steps は中割りの各枚の様子の並び（書かなければ chain のまま、段階は言わせない）")
             e.update(desc=" ".join(g["desc"].split()), refs=refs, steps=st)
             if "scale" in g:
-                if not isinstance(g["scale"], (int, float)) or g["scale"] <= 0: raise GestureError(f"{n}: scale は正の数")
+                if not _num(g["scale"]) or g["scale"] <= 0: raise GestureError(f"{n}: scale は正の数")
                 e["scale"] = float(g["scale"])
             if "expect_height" in g:
                 eh = g["expect_height"]
-                if not (isinstance(eh, list) and len(eh) == 2 and all(isinstance(v, (int, float)) for v in eh) and 0 < eh[0] < eh[1]):
+                if not (isinstance(eh, list) and len(eh) == 2 and all(_num(v) for v in eh) and 0 < eh[0] < eh[1]):
                     raise GestureError(f"{n}: expect_height は [下限, 上限]（home を 1 とした背の比）")
                 e["expect_height"] = [float(v) for v in eh]
         txt = e["desc"] + " ".join(e["steps"] or [])

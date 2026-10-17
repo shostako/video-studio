@@ -73,6 +73,10 @@ def test_add_uses_config_home_name():
     ("gestures:\n  - {name: open, preset: gestures, meaning: x, checked: true, desc: d}\n", "雛形から取る"),
     ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, inbetween: false, steps: [s]}\n", "steps は書かない"),
     ("gestures:\n  - {name: home, meaning: x, checked: true, desc: d}\n", "home"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: true}\n", "scale"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .nan}\n", "scale"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, scale: .inf}\n", "scale"),
+    ("gestures:\n  - {name: a, meaning: x, checked: true, desc: d, expect_height: [0.9, .inf]}\n", "expect_height"),
     ("gestures:\n  - name: a\n    meaning: x\n    checked: true\n    desc: d\n    desc: e\n", "同じキーが2回"),
 ])
 def test_check_rejects_broken_dictionaries(tmp_path, body, msg):
