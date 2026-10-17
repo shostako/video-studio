@@ -60,7 +60,7 @@ def archive_old(P, name, pose=True, parts_dir=True):
     src = ([P.pose_path(name)] if pose else []) + [P.p("parts", f"{name}_{k}.png") for k in MOUTHS + EYES + GAZES] + ([P.p(f"parts_{name}")] if parts_dir else [])
     for a, b in P.cfg.get("pairs", []):
         if name not in (a, b): continue
-        ibr = re.compile(rf"^ib_{re.escape(a)}_{re.escape(b)}_\d+\.png$"); itr = re.compile(rf"^{re.escape(a)}_{re.escape(b)}_x\d+_")
+        ibr = re.compile(rf"^ib_{re.escape(a)}_{re.escape(b)}_\d+\.png$"); itr = re.compile(rf"^{re.escape(a)}_{re.escape(b)}_(direct_)?x\d+_")
         if os.path.isdir(P.p("ib")): src += [P.p("ib", f) for f in os.listdir(P.p("ib")) if ibr.match(f)]
         if os.path.isdir(P.p("ib_interp")): src += [P.p("ib_interp", f) for f in os.listdir(P.p("ib_interp")) if itr.match(f)]
     for f in src:
