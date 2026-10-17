@@ -77,3 +77,19 @@ def test_render_motion_typo_is_an_error(proj, env, tmp_path):
     r = subprocess.run([sys.executable, "-B", str(RENDER), str(proj), "--out", str(tmp_path / "x.mp4"), "--motion", "yes"],
                        env=env, capture_output=True, text=True, timeout=120)
     assert r.returncode != 0 and "--motion" in r.stderr
+
+
+def test_render_idle_false_stops_the_default_breathing(proj, env, tmp_path):
+    """config.idle: false（opt-in）: 声のない所で姿勢を変えない間、コマが変わらない（既定は息づかいで少しずつ動く）。"""
+    import json
+    on, off = tmp_path / "on.mp4", tmp_path / "off.mp4"
+    render(proj, env, on, "--mode", "white")
+    cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg2 = dict(cfg, idle=False)
+    (proj / "config.json").write_text(json.dumps(cfg2, ensure_ascii=False), encoding="utf-8")
+    try: render(proj, env, off, "--mode", "white")
+    finally: (proj / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    a, b = frames(on, env, False), frames(off, env, False)
+    i0, i1 = int(3.15 * FPS), int(3.35 * FPS)                         # 声の後・姿勢も止まっている所（END 3.4 の手前）
+    still = lambda x: np.abs(x[i0:i1].astype(np.int16) - x[i0].astype(np.int16)).max()
+    assert still(b) <= 2                                               # 止めると動かない（圧縮の誤差だけ）
+    assert still(a) > still(b)                                          # 既定は動いている
