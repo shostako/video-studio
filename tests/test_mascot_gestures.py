@@ -79,9 +79,11 @@ def test_check_rejects_broken_dictionaries(tmp_path, body, msg):
 
 
 def test_cycle_is_rejected(tmp_path):
-    d = G.load(_dict(tmp_path, "gestures:\n  - {name: a, meaning: x, checked: true, desc: d, refs: [b]}\n"
-                               "  - {name: b, meaning: y, checked: true, desc: d, refs: [a]}\n"))
-    with pytest.raises(G.GestureError, match="輪"): G.add(init.build("x", "t", "she", "none"), d, ["a"])
+    p = _dict(tmp_path, "gestures:\n  - {name: a, meaning: x, checked: true, desc: d, refs: [b]}\n"
+                        "  - {name: b, meaning: y, checked: true, desc: d, from: a}\n")
+    with pytest.raises(G.GestureError, match="輪"): G.load(p)                     # --check の段階で止める
+    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "gestures.py"), "--check", str(p)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "輪" in r.stderr
 
 
 def test_cli_add_writes_backup_and_check(tmp_path):

@@ -84,6 +84,7 @@ def load(path=DEFAULT_PATH):
     for n, e in out.items():     # 動き出す姿勢・参照は、辞書の身振りか home
         for r in [e["from"], *e["refs"]]:
             if r != "home" and r not in out: raise GestureError(f"{n}: {r} は辞書に無い姿勢")
+    needs(out, list(out))        # from / refs の輪は、足す時でなく読む時に止める（--check で拾う）
     return out
 
 
