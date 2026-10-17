@@ -54,12 +54,30 @@ def test_place_changes_only_inside_the_box(tmp_path):
     assert np.abs(out - base)[y0, x0:x1].max() == 0                   # box の縁は元の絵（四角い継ぎ目を出さない）
 
 
-def test_place_does_not_overwrite_without_force(tmp_path):
+def test_existing_full_body_pose_needs_force_and_is_moved_aside(tmp_path):
     p = proj(tmp_path); drawn_hand(p)
-    assert run(p, "place").returncode == 0
+    old = cv2.imread(str(p / "poses/pose_point.png")); cv2.imwrite(str(p / "poses/pose_count_3.png"), old)   # 全身で描いた古い絵
     before = (p / "poses/pose_count_3.png").read_bytes()
     r = run(p, "place")
-    assert "--force" in r.stdout and (p / "poses/pose_count_3.png").read_bytes() == before
+    assert r.returncode == 3 and "--force" in r.stdout                       # 黙って成功にしない
+    assert (p / "poses/pose_count_3.png").read_bytes() == before
+    r = run(p, "place", "--force")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (p / "poses/pose_count_3.png").read_bytes() != before
+    moved = list((p / "reject/hands_replaced").glob("pose_count_3_*.png"))
+    assert len(moved) == 1 and moved[0].read_bytes() == before
+
+
+def test_pose_made_by_place_is_replaced_after_redrawing_the_hand(tmp_path):
+    p = proj(tmp_path); drawn_hand(p)
+    assert run(p, "place").returncode == 0
+    h = cv2.imread(str(p / "hands/count_3.png")); cy, cx = h.shape[0] // 2, h.shape[1] // 2
+    h[cy - 30:cy + 30, cx - 20:cx + 20] = (0, 255, 0); cv2.imwrite(str(p / "hands/count_3.png"), h)   # 手を描き直した
+    r = run(p, "place")
+    assert r.returncode == 0, r.stdout + r.stderr
+    x0, y0, x1, y1 = BOX
+    assert tuple(cv2.imread(str(p / "poses/pose_count_3.png"))[(y0 + y1) // 2, (x0 + x1) // 2]) == (0, 255, 0)
+    assert not (p / "reject/hands_replaced").exists()
 
 
 def test_draw_jobs_pass_the_base_crop_and_vm_poses_skips_the_pose(tmp_path):

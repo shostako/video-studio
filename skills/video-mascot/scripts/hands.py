@@ -4,6 +4,8 @@
   vm hands <作業フォルダ> check [名前 ...]   描いた手を拡大して並べる → hands/check.png（指の本数は、曲げた指まで数えて人か Claude が確かめる）
   vm hands <作業フォルダ> place [名前 ...] [--force]
       hands/<名前>.png を base の絵の box にはめ込む → poses/pose_<名前>.png。体は base の絵のまま（切り替えで手以外が動かない）
+      前に place で作った絵は置き換える。それ以外（全身で描いた絵など）がある姿勢は置き換えずに終了コード 3。
+      --force でその古い絵を reject/hands_replaced/ へ移してから書く
 config:
   "hands": {"count_3": {"base": "raise_r", "box": [x0, y0, x1, y1],
                         "desc": "the hand shows the number three: ... Count check: 3 raised + 1 curled + thumb = 5 digits."}}
@@ -50,10 +52,15 @@ def jobs_draw(P, ns):
 
 def place(P, name, force=False):
     """描いた手を base の絵の box に重ね、違う所だけを縁をぼかして貼る。書いたら True。"""
-    h = spec(P, name); out = P.pose_path(name)
-    if os.path.exists(out) and not force: print(f"{name}: poses/pose_{name}.png がもうある。置き換えるなら --force"); return False
+    h = spec(P, name); out = P.pose_path(name); mark = P.p("hands", f"{name}.placed.json")
     hp = P.p("hands", f"{name}.png")
     if not os.path.exists(hp): die(f"手の絵が無い: hands/{name}.png（先に vm hands ... draw）")
+    if os.path.exists(out) and not os.path.exists(mark):    # 前に place で作った絵ではない（全身で描いた絵など）
+        if not force:
+            print(f"{name}: poses/pose_{name}.png は place で作った絵ではない（全身で描いた絵など）。置き換えるなら --force（古い絵は reject/hands_replaced/ へ移す）")
+            return False
+        rd = P.p("reject", "hands_replaced"); os.makedirs(rd, exist_ok=True)
+        os.replace(out, os.path.join(rd, f"pose_{name}_{int(os.path.getmtime(out))}.png")); print(f"  {name}: 古い絵を reject/hands_replaced/ へ移した")
     base = P.read_pose(h["base"]); x0, y0, x1, y1 = h["box"]; ref = base[y0:y1, x0:x1]
     hand = cv2.resize(cv2.imread(hp), (x1 - x0, y1 - y0), interpolation=cv2.INTER_AREA)
     g0 = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(hand, cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -71,6 +78,7 @@ def place(P, name, force=False):
     a = (a * ramp)[..., None]
     img = base.copy(); img[y0:y1, x0:x1] = (hand * a + ref * (1 - a)).astype(np.uint8)
     os.makedirs(os.path.dirname(out), exist_ok=True); cv2.imwrite(out, img)
+    json.dump({"base": h["base"], "box": h["box"], "cc": round(float(cc), 4)}, open(mark, "w"))   # place で作った印（次は --force なしで置き換える）
     print(f"{name}: hands/{name}.png を {h['base']} の {h['box']} にはめた（合わせ cc {cc:.3f}、ずれ {np.round(M[:, 2], 1).tolist()}）")
     return True
 
@@ -100,3 +108,4 @@ if __name__ == "__main__":
         sys.exit(0 if ok else 1)
     if what == "check": check(P, ns); sys.exit(0)
     n = sum(place(P, x, "--force" in argv) for x in ns); print(f"はめた {n} / {len(ns)}")
+    sys.exit(0 if n == len(ns) else 3)                       # 置き換えなかった姿勢があれば黙って成功にしない
