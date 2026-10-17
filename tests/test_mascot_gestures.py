@@ -46,12 +46,10 @@ def test_add_fills_pronoun_pairs_steps_and_dependencies():
     assert base["pairs"] == [["turn_l", "present_l"], ["turn_r", "present_r"]]   # 元の config は書き換えない
 
 
-def test_add_keeps_existing_poses_unless_forced():
+def test_add_never_rewrites_existing_poses():
     d = G.load(); base = init.build("x", "a test", "she", "none", gestures=True)
     base["poses"]["open"]["desc"] = "my own text"
-    with pytest.raises(G.GestureError): G.add(base, d, ["open"])
-    cfg, added = G.add(base, d, ["open"], force=True)
-    assert added == ["open"] and cfg["poses"]["open"]["desc"] != "my own text"
+    with pytest.raises(G.GestureError, match="既にある"): G.add(base, d, ["open"])
     base["poses"]["raise_r"] = {"desc": "already drawn", "refs": ["home"]}
     cfg, added = G.add(base, d, ["count_2"])
     assert added == ["count_2"] and cfg["poses"]["raise_r"]["desc"] == "already drawn"   # 参照に要るだけの既にある姿勢はそのまま
@@ -110,30 +108,22 @@ def test_cli_add_writes_backup_and_check(tmp_path):
     assert "palm_stop" in run().stdout
 
 
-def test_force_with_reverse_pair_keeps_its_direction():
-    d = G.load(); base = init.build("x", "a test", "she", "none")
-    base["poses"]["pinch"] = {"desc": "old", "refs": ["home"]}; base["pairs"].append(["pinch", "home"])
-    cfg, _ = G.add(base, d, ["pinch"], force=True)
+def test_left_over_reverse_pair_keeps_its_direction():
+    d = G.load(); base = init.build("x", "a test", "she", "none"); base["pairs"].append(["pinch", "home"])   # 姿勢を消した後に組だけ残った
+    cfg, _ = G.add(base, d, ["pinch"])
     assert cfg["pairs"].count(["pinch", "home"]) == 1 and ["home", "pinch"] not in cfg["pairs"]
     assert "home>pinch" not in cfg["ib_steps"]
     fwd, _ = G.add(init.build("x", "a test", "she", "none"), d, ["pinch"])
     assert cfg["ib_steps"]["pinch>home"] == fwd["ib_steps"]["home>pinch"][::-1]       # 組の向きで引かれ、段階は逆の順
 
 
-def test_force_refuses_home_and_drawn_poses():
-    d = G.load(); base = init.build("x", "a test", "she", "none", gestures=True)
-    with pytest.raises(G.GestureError, match="drawn|描けている"): G.add(base, d, ["open"], force=True, drawn={"open"})
-    base["home"] = "span"; base["poses"]["span"] = base["poses"].pop("home")
-    with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["span"], force=True)
+def test_refuses_home_and_drawn_poses():
+    d = G.load(); base = init.build("x", "a test", "she", "none")
+    with pytest.raises(G.GestureError, match="描けている"): G.add(base, d, ["open"], drawn={"open"})
+    base["home"] = "span"; base["poses"] = {"span": base["poses"].pop("home")}
+    with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["span"])
     base = init.build("x", "a test", "she", "none"); base["home"] = "raise_r"; base["poses"] = {"raise_r": base["poses"].pop("home")}
     with pytest.raises(G.GestureError, match="基本の姿勢"): G.add(base, d, ["count_3"])            # 参照の raise_r が home と同じ名前
-
-
-def test_cli_force_refuses_drawn_pose(tmp_path):
-    cfg = init.build("w", "a test", "she", "none", gestures=True); (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
-    (tmp_path / "poses").mkdir(); (tmp_path / "poses" / "pose_open.png").write_bytes(b"x")
-    r = subprocess.run([sys.executable, "-B", str(SCRIPTS / "gestures.py"), str(tmp_path), "--add", "open", "--force"], capture_output=True, text=True, timeout=60)
-    assert r.returncode == 1 and "描けている" in r.stderr
 
 
 def test_cli_refuses_orphan_pose_image(tmp_path):

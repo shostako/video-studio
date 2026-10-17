@@ -1,10 +1,10 @@
 """身振りの辞書（data/gestures.yaml）を読み、作業フォルダの config に身振りの姿勢を足す。キャラに依らない（書き方は references/gestures.md）。
   vm gestures                                  辞書の一覧（名前・意味・確かめたか・どこから動くか）
   vm gestures --check [辞書.yaml]              辞書の形を検査する（崩れていれば理由を出して終了コード 1）
-  vm gestures <作業フォルダ> --add 名前 ... [--print] [--force]
+  vm gestures <作業フォルダ> --add 名前 ... [--print]
                                                config.json の poses・pairs・ib_steps に足す。書く前の config.json は config.json.bak に残す
 足すのは、姿勢の描かせる文（mascot.pronoun で代名詞を差し替える）・参照・大きさの決まり（scale・expect_height）と、
-動き出す姿勢（既定 home）からの組と中割りの段階。既にある姿勢は --force が無ければ書き換えない。絵は描かない（次に vm poses）。"""
+動き出す姿勢（既定 home）からの組と中割りの段階。config に既にある姿勢は書き換えない（直すなら config を手で直す）。絵は描かない（次に vm poses）。"""
 import argparse, json, math, os, re, shutil, sys
 from pathlib import Path
 try: import yaml
@@ -117,9 +117,9 @@ def needs(d, names):
     return order
 
 
-def add(cfg, d, names, force=False, drawn=()):
+def add(cfg, d, names, drawn=()):
     """config に身振りを足した新しい config と、足した姿勢の名前の並び。from・refs の姿勢が config に無ければ、辞書から一緒に足す。
-    drawn は絵が描けている姿勢の名前。--force でも、描けている姿勢と home は書き換えない（vm poses は描けた絵を飛ばすので、文だけ変わって絵が古いままになる）。"""
+    drawn は絵が描けている姿勢の名前。描けている姿勢と home には書かない（vm poses は描けた絵を飛ばすので、文だけ変わって絵が古いままになる）。"""
     cfg = json.loads(json.dumps(cfg)); home = cfg.get("home", "home")
     if home in needs(d, names):                        # 足す身振りの参照に home と同じ名前が入っていても止める
         raise GestureError(f"{home} は基本の姿勢（config の home）なので、辞書から足さない・書き換えない")
@@ -127,8 +127,8 @@ def add(cfg, d, names, force=False, drawn=()):
     if pron not in init.POSS: raise GestureError(f"mascot.pronoun が知らない値: {pron}")
     poses = cfg.setdefault("poses", {}); pairs = cfg.setdefault("pairs", []); added = []
     for n in needs(d, names):
-        if n in poses and not (force and n in names):
-            if n in names: raise GestureError(f"{n} は config に既にある（書き換えるなら --force）")
+        if n in poses:
+            if n in names: raise GestureError(f"{n} は config に既にある（vm gestures は書き換えない。直すなら config を手で直す）")
             continue
         if n in drawn:                                        # config に無くても、絵だけ残っていれば vm poses はそれを飛ばす
             raise GestureError(f"{n} は絵が描けている（poses/pose_{n}.png か、{n} の差分・部品・中割りが残っている）。文を書くなら、先にそれらを別のフォルダへ移す（描き直しになる）")                                          # 参照に要るだけの姿勢は、既にあればそのまま使う
@@ -174,7 +174,6 @@ if __name__ == "__main__":
     ap.add_argument("--add", nargs="+", metavar="名前", help="config に足す身振り")
     ap.add_argument("--check", action="store_true", help="辞書の形を検査する")
     ap.add_argument("--print", action="store_true", help="書き込まずに、足したあとの config.json を出す")
-    ap.add_argument("--force", action="store_true", help="既にある姿勢も書き換える")
     ap.add_argument("--dict", default=str(DEFAULT_PATH), help="辞書のファイル（既定 data/gestures.yaml）")
     a = ap.parse_args()
     try:
@@ -189,7 +188,7 @@ if __name__ == "__main__":
         if not os.path.exists(cp): sys.exit(f"config.json が無い: {cp}（先に vm init）")
         with open(cp, encoding="utf-8") as f: cfg = json.load(f)
         root = os.path.dirname(cp); drawn = {n for n in needs(d, a.add) if has_assets(root, n)}
-        new, added = add(cfg, d, a.add, a.force, drawn)
+        new, added = add(cfg, d, a.add, drawn)
     except (GestureError, yaml.YAMLError) as ex:
         print(f"ERROR: {ex}", file=sys.stderr); sys.exit(1)
     if a.print: print(json.dumps(new, ensure_ascii=False, indent=1)); sys.exit(0)
