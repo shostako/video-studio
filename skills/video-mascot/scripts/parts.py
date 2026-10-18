@@ -10,7 +10,7 @@
 import json, os, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, MOUTHS, EYES, GAZES, die
+from lib import Proj, MOUTHS, EYES, GAZES, die, occlude
 
 
 def face_box(P):
@@ -105,9 +105,12 @@ def borrow(P, src, pose, min_cc=0.95):
     if cc < min_cc:                             # 前に写した部品が残ると、描き直した絵に古い部品が乗ったままになるので消す
         print(f"{pose}: 顔の合い {cc:.3f} が {min_cc} に届かない。写さない（差分を描く）"); drop_borrowed(P, pose); return False
     A = cv2.invertAffineTransform(M); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
+    ref = cv2.warpAffine(base, A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)   # 元の姿勢の絵を写す先の顔に合わせたもの
     for k, (im, px, py) in parts.items():
         T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
-        full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0)); yy, xx = np.where(full[:, :, 3] > 0)
+        full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
+        full = occlude(full, dst, ref)          # 顔の前の手（元の絵と大きく違う所）には貼らない
+        yy, xx = np.where(full[:, :, 3] > 0)
         if not len(xx): continue
         cv2.imwrite(os.path.join(od, f"{k}.png"), full[yy.min():yy.max() + 1, xx.min():xx.max() + 1]); meta[k] = [int(xx.min()), int(yy.min())]
     for f in os.listdir(od):                    # 前に切った部品の残りを消す（parts.json に無い絵は使われないが、紛らわしいので）
