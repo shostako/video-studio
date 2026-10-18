@@ -90,7 +90,7 @@ KEEP_JAW = ("Edit this exact image. Keep the hair, eyes, eyebrows, nose, ears, n
 
 def mouth_prompts(P):
     """口7形の描かせる文。config.mouth_prompt が "jaw"（opt-in）なら、口の開きに合わせてあごの線も下げさせる（首・襟はそのまま）。
-    口の部品を切り抜く範囲（face.mouth_roi）も頬からあごの下まで広げること。書かなければ今までどおり。"""
+    口の部品を切り抜く範囲は face.jaw_roi に頬からあごの下までを書く（face.mouth_roi は首の位置などに使うので広げない）。書かなければ今までどおり。"""
     if P.cfg.get("mouth_prompt") == "jaw":
         return {k: f"{KEEP_JAW} {v} The eyes stay exactly as they are." for k, v in MJ.items()}
     return {k: f"{KEEP} {v}" for k, v in M.items() if k.startswith("m")}

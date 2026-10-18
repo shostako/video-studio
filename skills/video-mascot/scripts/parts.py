@@ -18,13 +18,13 @@ def face_box(P):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def map_rois(P, pose, pad=8):
+def map_rois(P, pose, pad=8, mouth_key="mouth_roi"):
     """home で測った口・目の範囲を、顔を重ね合わせて pose に写す。
     poses.<姿勢>.face に範囲が書いてあれば（斜め・横の顔）、写さずにそれを使う（顔の合いは 1.0 とする）。"""
     own = P.cfg["poses"].get(pose, {}).get("face")
-    if isinstance(own, dict): return [max(0, v) for v in own["mouth_roi"]], [max(0, v) for v in own["eye_roi"]], 1.0
-    f = P.cfg["face"]; home = P.read_pose(P.home)
-    if pose == P.home: return [max(0, v) for v in f["mouth_roi"]], [max(0, v) for v in f["eye_roi"]], 1.0
+    if isinstance(own, dict): return [max(0, v) for v in own.get(mouth_key, own["mouth_roi"])], [max(0, v) for v in own["eye_roi"]], 1.0
+    f = P.cfg["face"]; home = P.read_pose(P.home); mk = f.get(mouth_key, f["mouth_roi"])
+    if pose == P.home: return [max(0, v) for v in mk], [max(0, v) for v in f["eye_roi"]], 1.0
     dst = P.read_pose(pose); x0, y0, x1, y1 = face_box(P); H, W = dst.shape[:2]
     g0 = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(home, cv2.COLOR_BGR2GRAY).astype(np.float32)
     mask = np.zeros(g0.shape, np.uint8); mask[max(0, y0 - 170):y1 + 170, max(0, x0 - 170):x1 + 170] = 1; M = np.eye(2, 3, dtype=np.float32)
@@ -33,7 +33,7 @@ def map_rois(P, pose, pad=8):
     def box(b):
         pts = np.array([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]], np.float32); q = pts @ A[:, :2].T + A[:, 2]
         return [int(max(0, q[:, 0].min() - pad)), int(max(0, q[:, 1].min() - pad)), int(min(W, q[:, 0].max() + pad)), int(min(H, q[:, 1].max() + pad))]
-    return box(f["mouth_roi"]), box(f["eye_roi"]), float(cc)
+    return box(mk), box(f["eye_roi"]), float(cc)
 
 
 def align(base, var, roi):
@@ -127,7 +127,8 @@ def extract(P, pose):
     if b and has_diffs(P, pose):                # 写したあとに差分を描いたなら、描いた方で切る
         print(f"{pose}: {b['from']} から写した部品があるが、描いた差分があるので切り直す"); drop_borrowed(P, pose); b = None
     if b: print(f"{pose}: {b['from']} から写した部品。切り直さない（描いた差分で作るなら parts_{pose}/{BORROWED} を消す）"); return json.load(open(P.p(f"parts_{pose}", "parts.json")))
-    mouth_roi, eye_roi, cc = map_rois(P, pose); base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
+    mouth_roi, eye_roi, cc = map_rois(P, pose, mouth_key="jaw_roi")   # 口の部品は jaw_roi があればそこで切る（首の位置などは mouth_roi のまま）
+    base = P.read_pose(pose); od = P.p(f"parts_{pose}"); os.makedirs(od, exist_ok=True); meta = {}
     for names, roi in ((MOUTHS, mouth_roi), (EYES + GAZES, eye_roi)):
         for k in names:
             vp = P.p("parts", f"{pose}_{k}.png")

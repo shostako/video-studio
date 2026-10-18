@@ -38,3 +38,15 @@ def test_mouth_prompt_default_is_unchanged_and_jaw_is_opt_in(tmp_path):
     after = {j[0]: j[1] for j in poses.jobs_parts(Proj(str(p)))}
     assert "lower jaw drops" in after[str(p / "parts/home_m3.png")] and "neck, collar" in after[str(p / "parts/home_m3.png")]
     assert after[str(p / "parts/home_e1.png")] == before[str(p / "parts/home_e1.png")]   # 目は変えない
+
+
+def test_jaw_roi_is_used_for_cutting_but_mouth_roi_stays_for_the_rig(tmp_path):
+    import json, sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures")); import synth_mascot
+    import parts
+    p = Path(synth_mascot.make(str(tmp_path / "proj"))); cfg = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    cfg["face"]["jaw_roi"] = [180, 230, 290, 300]; (p / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    P = Proj(str(p))
+    assert parts.map_rois(P, "home")[0] == synth_mascot.MOUTH_ROI                   # 首の位置などに使う範囲は変わらない
+    assert parts.map_rois(P, "home", mouth_key="jaw_roi")[0] == [180, 230, 290, 300]
