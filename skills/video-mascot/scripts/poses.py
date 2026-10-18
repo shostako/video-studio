@@ -68,7 +68,9 @@ def jobs_poses(P):
     desc = P.cfg["mascot"]["description"]; base = P.p("mascot.png"); out = []
     common = (f"Same character as the reference image: {desc} Full body, centered, vertical 9:16 portrait, plain white studio background, soft studio lighting, "
               "exactly the same rendering style, face and proportions as the reference. No text, no logos.")
+    hands = P.cfg.get("hands") or {}
     for n, c in P.cfg["poses"].items():
+        if n in hands: continue                   # 手の部品（vm hands）で作る姿勢は、全身の絵として描かない
         refs = [base] + [P.pose_path(r) for r in c.get("refs", [])]
         out.append((P.pose_path(n), f"{common} Pose: {c['desc']}", refs))
     return out
@@ -190,7 +192,18 @@ FELL_BACK = threading.Event()   # chat+codex で chat から /img に切り替�
 def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
     if only: jobs = [j for j in jobs if only in os.path.basename(j[0])]
     todo = [j for j in jobs if not os.path.exists(j[0])]
-    print(f"描く {len(todo)} 枚（済み {len(jobs) - len(todo)}）")
+    orphan = []                                 # 参照の絵が無く、この回でも描かない仕事は道具を呼ばない（vm hands で作る姿勢をまだはめていない、など）
+    while True:                                 # 飛ばした仕事の絵を参照にする仕事も飛ばす（chain の中割り）。増えなくなるまで
+        made = {j[0] for j in todo if j not in orphan}
+        more = [j for j in todo if j not in orphan and any(not os.path.exists(r) and r not in made for r in j[2])]
+        if not more: break
+        orphan += more
+    if orphan:
+        gone = {j[0] for j in orphan}
+        miss = sorted({os.path.relpath(r) for j in orphan for r in j[2] if not os.path.exists(r) and r not in gone})
+        print(f"参照の絵が無いので描かない {len(orphan)} 枚（無い絵: {', '.join(miss)}。vm hands ... place などで先に作る）")
+        todo = [j for j in todo if j not in orphan]
+    print(f"描く {len(todo)} 枚（済み {len(jobs) - len(todo) - len(orphan)}）")
     if dry:
         for j in todo: print("  ", os.path.relpath(j[0]))
         return True
@@ -233,7 +246,7 @@ def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
         rest = [j for j in rest if j not in ready]
     miss = [j for j in todo if not os.path.exists(j[0])]
     print("終わり", len(todo) - len(miss), "/", len(todo), "（足りない分は同じコマンドを再実行）" if miss else "")
-    return not miss
+    return not miss and not orphan
 
 
 if __name__ == "__main__":
