@@ -22,7 +22,11 @@ def map_rois(P, pose, pad=8, mouth_key="mouth_roi"):
     """home で測った口・目の範囲を、顔を重ね合わせて pose に写す。
     poses.<姿勢>.face に範囲が書いてあれば（斜め・横の顔）、写さずにそれを使う（顔の合いは 1.0 とする）。"""
     own = P.cfg["poses"].get(pose, {}).get("face")
-    if isinstance(own, dict): return [max(0, v) for v in own.get(mouth_key, own["mouth_roi"])], [max(0, v) for v in own["eye_roi"]], 1.0
+    if isinstance(own, dict):
+        if mouth_key not in own and mouth_key in P.cfg.get("face", {}):   # 向きの違う姿勢は顔の範囲を手で書くので、jaw_roi も姿勢ごとに書く
+            print(f"  {pose}: poses.{pose}.face に {mouth_key} が無い。口の範囲（mouth_roi）で切るので、あごの線の変化は切り落とされる。"
+                  f"向きの違う姿勢は poses.{pose}.face.{mouth_key} を書く", file=sys.stderr)
+        return [max(0, v) for v in own.get(mouth_key, own["mouth_roi"])], [max(0, v) for v in own["eye_roi"]], 1.0
     f = P.cfg["face"]; home = P.read_pose(P.home); mk = f.get(mouth_key, f["mouth_roi"])
     if pose == P.home: return [max(0, v) for v in mk], [max(0, v) for v in f["eye_roi"]], 1.0
     dst = P.read_pose(pose); x0, y0, x1, y1 = face_box(P); H, W = dst.shape[:2]

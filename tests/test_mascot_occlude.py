@@ -50,3 +50,17 @@ def test_jaw_roi_is_used_for_cutting_but_mouth_roi_stays_for_the_rig(tmp_path):
     P = Proj(str(p))
     assert parts.map_rois(P, "home")[0] == synth_mascot.MOUTH_ROI                   # 首の位置などに使う範囲は変わらない
     assert parts.map_rois(P, "home", mouth_key="jaw_roi")[0] == [180, 230, 290, 300]
+
+
+def test_pose_with_own_face_box_warns_without_its_own_jaw_roi(tmp_path, capsys):
+    import json, sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures")); import synth_mascot
+    import parts
+    p = Path(synth_mascot.make(str(tmp_path / "proj"))); cfg = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    cfg["face"]["jaw_roi"] = [180, 230, 290, 300]; cfg["poses"]["point"]["face"] = {"mouth_roi": [200, 236, 260, 270], "eye_roi": [180, 180, 290, 226]}
+    (p / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert parts.map_rois(Proj(str(p)), "point", mouth_key="jaw_roi")[0] == [200, 236, 260, 270]
+    assert "jaw_roi" in capsys.readouterr().err
+    cfg["poses"]["point"]["face"]["jaw_roi"] = [190, 230, 280, 300]; (p / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert parts.map_rois(Proj(str(p)), "point", mouth_key="jaw_roi")[0] == [190, 230, 280, 300]
