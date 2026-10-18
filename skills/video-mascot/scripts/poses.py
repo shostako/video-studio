@@ -76,6 +76,28 @@ def jobs_poses(P):
     return out
 
 
+MJ = {"m1": "lips slightly parted with a small gap, as when speaking softly. The jaw drops only very slightly (the chin moves down by about 1 percent of the face height).",
+      "m2": ("half open, as when saying a short 'a' sound. Because the mouth is open, the lower jaw drops: the chin moves down and the jawline and lower cheeks follow, "
+             "so the lower face becomes slightly longer (the chin moves down by about 4 percent of the face height)."),
+      "m3": ("open wide, as when saying a loud 'a' sound, inside of the mouth visible. Because the mouth is wide open, the lower jaw drops clearly: the chin moves down "
+             "and the jawline and lower cheeks follow, so the lower face becomes longer (the chin moves down by about 7 percent of the face height)."),
+      "m4": "a small round 'o' shape. The lower jaw drops a little with the open mouth: the chin moves slightly down and the jawline follows (about 3 percent of the face height).",
+      "m5": "lips pushed forward into a small round pout, as when saying 'u'. The jaw drops only very slightly (about 1 percent of the face height).",
+      "m6": "stretched wide and flat with the upper teeth slightly visible, as when saying 'i' or 'e'. The jaw drops slightly (about 2 percent of the face height).",
+      "m7": ("slightly open, a small narrow gap between the lips with only a hint of the upper teeth, as when speaking quietly; clearly LESS open than a half-open mouth. "
+             "The jaw drops slightly (the chin moves down by about 2 percent of the face height).")}
+KEEP_JAW = ("Edit this exact image. Keep the hair, eyes, eyebrows, nose, ears, neck, collar, shirt, jacket, hands, pose, lighting, framing, size and the plain white background "
+            "exactly identical to the input image. Change ONLY the mouth and, as a natural result of the mouth opening, the lower jaw: the mouth:")
+
+
+def mouth_prompts(P):
+    """口7形の描かせる文。config.mouth_prompt が "jaw"（opt-in）なら、口の開きに合わせてあごの線も下げさせる（首・襟はそのまま）。
+    口の部品を切り抜く範囲は face.jaw_roi に頬からあごの下までを書く（face.mouth_roi は首の位置などに使うので広げない）。書かなければ今までどおり。"""
+    if P.cfg.get("mouth_prompt") == "jaw":
+        return {k: f"{KEEP_JAW} {v} The eyes stay exactly as they are." for k, v in MJ.items()}
+    return {k: f"{KEEP} {v}" for k, v in M.items() if k.startswith("m")}
+
+
 def jobs_parts(P):
     """口7形・目2段。config.gaze があれば視線の部品も（顔の向きで決まる: 正面は g_l g_r g_u、斜めは g_c g_u）。face: false の姿勢は作らない。"""
     out = []
@@ -83,7 +105,8 @@ def jobs_parts(P):
         pc = P.cfg["poses"][n]; face = pc.get("face", True) is not False
         if not face: continue
         if os.path.exists(P.p(f"parts_{n}", "borrowed.json")): continue   # vm parts --borrow で写した姿勢は描かない
-        out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {txt}", [P.pose_path(n)]) for k, txt in M.items()]
+        mp = mouth_prompts(P)
+        out += [(P.p("parts", f"{n}_{k}.png"), mp[k] if k in mp else f"{KEEP} {txt}", [P.pose_path(n)]) for k, txt in M.items()]
         if "gaze" in P.cfg and P.cfg["gaze"] is not False:
             out += [(P.p("parts", f"{n}_{k}.png"), f"{KEEP} {G[k]}", [P.pose_path(n)]) for k in gaze_keys(pose_view(pc)[1], face)]
     return out
