@@ -150,6 +150,7 @@ def run(P, maps, force=False, check=False):
     if not os.path.exists(P.p(f"parts_{P.home}", "parts.json")): die(f"home の部品が無い: parts_{P.home}（先に vm parts {P.home}）")
     for s, d in maps:
         if s not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {s}")
+        if cv2.imread(P.pose_path(s)) is None: die(f"元の姿勢の絵が無い: {P.pose_path(s)}")
         if d == P.home or d in dst_of: die(f"作る名前が使えない: {d}")
         if s == P.home: die("home は反転しない（頭を戻す土台）")
     cfg = P.cfg; rej = None
@@ -200,6 +201,10 @@ def run(P, maps, force=False, check=False):
         for k, v in list((it.get("durs") or {}).items()):
             a, b = k.split(">"); ma, mb = side(a) if a in dst_of or a == P.home else None, side(b) if b in dst_of or b == P.home else None
             if ma and mb and (ma, mb) != (a, b) and f"{ma}>{mb}" not in it["durs"]: it["durs"][f"{ma}>{mb}"] = v
+        if isinstance(it.get("pairs"), list):      # 補間する組を絞っているなら、反転した組も入れる
+            for k in list(it["pairs"]):
+                a, b = k.split(">"); ma, mb = side(a) if a in dst_of or a == P.home else None, side(b) if b in dst_of or b == P.home else None
+                if ma and mb and (ma, mb) != (a, b) and f"{ma}>{mb}" not in it["pairs"]: it["pairs"].append(f"{ma}>{mb}")
     cfg["pairs"] = [list(p) for p in pairs]
     if steps: cfg["ib_steps"] = steps
     cf = P.p("config.json"); shutil.copy2(cf, cf + ".bak")

@@ -128,3 +128,15 @@ def test_checks_happen_before_anything_is_written(tmp_path):
     import shutil; shutil.rmtree(p / "parts_home")
     r = run(p, "point:point_l")
     assert r.returncode != 0 and "vm parts" in (r.stdout + r.stderr) and not (p / "poses/pose_point_l.png").exists()
+
+
+def test_interp_allowlist_and_missing_source_image(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8")); c["interp"]["pairs"] = ["home>point", "point>raise"]
+    c["poses"]["undrawn"] = {"desc": "not drawn"}
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    r = run(p, "point:point_l", "undrawn:undrawn_l")
+    assert r.returncode != 0 and not (p / "poses/pose_point_l.png").exists()    # 絵の無い元があれば、何も書かずに止まる
+    assert run(p, "point:point_l", "raise:raise_l").returncode == 0
+    ps = json.loads((p / "config.json").read_text(encoding="utf-8"))["interp"]["pairs"]
+    assert "home>point_l" in ps and "point_l>raise_l" in ps
