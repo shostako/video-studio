@@ -204,6 +204,8 @@ def run(P, maps, force=False, check=False):
         W = img.shape[1]; flip_pt = lambda q: [W - 1 - float(q[0]), float(q[1])]
         if "anchor" in pc: pc["anchor"] = flip_pt(pc["anchor"])      # 立ち位置の点も反転する
         cfg["poses"][d] = pc
+        ll = cfg.get("legs_lock")                  # 下半身をそろえる姿勢を並べて書いているなら、反転先も入れる
+        if isinstance(ll, dict) and isinstance(ll.get("poses"), list) and s in ll["poses"] and d not in ll["poses"]: ll["poses"].append(d)
         an = cfg.get("anchor")
         if isinstance(an, dict):
             if s in (an.get("points") or {}): an["points"][d] = flip_pt(an["points"][s])

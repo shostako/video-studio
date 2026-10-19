@@ -224,3 +224,11 @@ def test_pose_with_moved_head_is_rejected_and_face_meta_dropped(tmp_path):
     assert run(p, "point:point_l").returncode == 0
     pc = json.loads((p / "config.json").read_text(encoding="utf-8"))["poses"]["point_l"]
     assert "face" not in pc and "scale" not in pc
+
+
+def test_legs_lock_list_includes_mirrored_pose(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8")); c["legs_lock"] = {"from": "home", "poses": ["point"]}
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l", "raise:raise_l").returncode == 0
+    assert json.loads((p / "config.json").read_text(encoding="utf-8"))["legs_lock"]["poses"] == ["point", "point_l"]
