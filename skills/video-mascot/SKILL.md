@@ -64,6 +64,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 - `vm init <作業フォルダ> <元の絵> --desc "…"` — 新しいキャラの作業フォルダと config の雛形（向き・視線の姿勢つき）を作る。手順は references/new-character.md
 - `vm gestures [<作業フォルダ> --add 名前 ...]` — 身振りの辞書（数える・つまむ・幅を示す・腕組みなど、意味と描かせる文つき）の一覧と、config への追加。書き方は references/gestures.md
 - `vm hands <作業フォルダ> draw|check|place` — 指の形のような細かい所を、手のアップで一度だけ描いて元の姿勢の絵にはめ込む（opt-in、`config.hands`）。全身の絵で指の本数を描き分けさせると曲げた指が残って指が多くなりやすいので、数える手（`count_2`・`count_3`）はこちらで作る。描いたら `check` の絵で、**曲げた指まで数える**（親指を除いて合計4本）。書き方は references/gestures.md `draw --img qwen` で新PC の ComfyUI の Qwen-Image-Edit-2511 で描ける（Codex の枠を使わない。`skills/video-mascot/scripts/qwenimg/qwenimg.py` の先頭に、指の本数を合わせる描かせ方）。3本が4本に倒れるときは `config.hands.<名前>.refs` に正しい手の手本を足す
+- `vm pack <パック> --from <作業フォルダ> ...` / `vm pack <パック> --new <作業フォルダ>` — 1体のキャラの姿勢・部品・中割り・手の部品を、動画ごとの作業フォルダから1つのパックにまとめ（後の `--from` が勝つ）、新しい動画はパックから作業フォルダを作って始める（opt-in）。中割りは、端の絵がパックと同じ作業フォルダからだけ持ってくる。持ってこられなかった組は `vm poses <パック> inbetweens` で描き足す。台本・声・動きは持ってこない
 - `vm mirror <作業フォルダ> <右の姿勢>:<左の姿勢> ... [--check] [--force]` — 右の姿勢を左右反転して左の姿勢を作る（opt-in）。腕・手・指・体は反転、頭（髪の輪郭ごと）は home の絵に戻す（顔は左右対称に描かれていないので、丸ごと反転すると別の顔に見える）。home や反転する姿勢との中割りも反転し、顔の部品は home からずらさず写す。髪と肌の色は home の絵から測り、合わなければ `config.mirror`（`chin`・`neck_x`・`hair_tol`・`skin_tol`）で上書きする。`--check` の絵で頭の範囲と、髪の上に戻した手を確かめる
 - `vm face <作業フォルダ> [--write]` — 描いた口・目の差分から口と目の範囲（`face`）を測る（`vm grid` で読む代わり）
 - `vm views <作業フォルダ>` — 姿勢の絵の大きさ・足元・立ち位置・背の高さを home と比べた表と、立ち位置を揃える anchor の候補（向きの違う姿勢を描いたあとに）
