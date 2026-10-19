@@ -190,6 +190,8 @@ def run(P, maps, force=False, check=False):
                 os.makedirs(rej)
             for o in dict.fromkeys(olds):
                 if os.path.exists(o): shutil.move(o, os.path.join(rej, os.path.basename(o.rstrip("/"))))
+        ll = cfg.get("legs_lock")                  # 前に足した下半身の並びからも外す（元が外されていれば戻さない）
+        if isinstance(ll, dict) and isinstance(ll.get("poses"), list) and d in ll["poses"]: ll["poses"].remove(d)
         an = cfg.get("anchor")                     # 前に写した立ち位置も消す（元から消えた点が残らないように）
         if isinstance(an, dict):
             for k in ("points", "scales"):

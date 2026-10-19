@@ -232,3 +232,9 @@ def test_legs_lock_list_includes_mirrored_pose(tmp_path):
     (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
     assert run(p, "point:point_l", "raise:raise_l").returncode == 0
     assert json.loads((p / "config.json").read_text(encoding="utf-8"))["legs_lock"]["poses"] == ["point", "point_l"]
+
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    c["legs_lock"]["poses"] = ["point_l"]                              # 元の point を外した
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l", "--force").returncode == 0
+    assert "point_l" not in json.loads((p / "config.json").read_text(encoding="utf-8"))["legs_lock"]["poses"]
