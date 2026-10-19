@@ -160,3 +160,17 @@ def test_edge_words_and_reverse_pair_and_forced_cleanup(tmp_path):
     assert run(p, "point:point_l", "--force").returncode == 0
     c = json.loads((p / "config.json").read_text(encoding="utf-8"))
     assert not any("point_l" in q for q in c["pairs"]) and not any("point_l" in k for k in c.get("ib_steps", {}))
+
+
+def test_incomplete_source_pairs_and_non_frontal_sources(tmp_path):
+    p = proj(tmp_path)
+    (p / "ib/ib_home_point_3.png").unlink()
+    r = run(p, "point:point_l")
+    assert r.returncode == 0 and "そろっていない" in r.stdout
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    assert ["home", "point_l"] not in c["pairs"] and not list((p / "ib").glob("ib_home_point_l_*"))
+    c["poses"]["back"] = {"desc": "back", "face": False}; c["poses"]["turn"] = {"desc": "turn", "yaw": 40}
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    import shutil
+    for n in ("back", "turn"): shutil.copy(p / "poses/pose_home.png", p / f"poses/pose_{n}.png")
+    assert run(p, "back:back_l").returncode != 0 and run(p, "turn:turn_l").returncode != 0

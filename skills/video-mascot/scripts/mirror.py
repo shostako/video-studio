@@ -155,6 +155,8 @@ def run(P, maps, force=False, check=False):
     for s, d in maps:
         if s not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {s}")
         if cv2.imread(P.pose_path(s)) is None: die(f"元の姿勢の絵が無い: {P.pose_path(s)}")
+        pc = P.cfg["poses"][s]                      # 頭を home に戻すので、正面で顔の見える姿勢だけ
+        if pc.get("face", True) is False or pc.get("yaw") or pc.get("head_yaw"): die(f"{s} は正面で顔の見える姿勢ではない（face: false・yaw・head_yaw）。反転できるのは正面の姿勢だけ")
         if d == P.home or d in dst_of: die(f"作る名前が使えない: {d}")
         if s == P.home: die("home は反転しない（頭を戻す土台）")
     cfg = P.cfg; rej = None
@@ -193,12 +195,15 @@ def run(P, maps, force=False, check=False):
             vis[hk > 0] = (0, 0, 255)
             cv2.imwrite(P.p("mirror_check", f"{d}.png"), np.hstack([P.read_pose(s), img, vis]))
         print(f"{s} → {d}: 絵を作った（頭は {P.home} の絵、髪の上に戻した手 {int(hk.sum())} 画素）")
-    pairs = [tuple(p) for p in cfg.get("pairs", [])]; steps = cfg.get("ib_steps") or {}
+    pairs = [tuple(p) for p in cfg.get("pairs", [])]; steps = cfg.get("ib_steps") or {}; skipped = []
     for a, b in list(pairs):
         if a not in dst_of and b not in dst_of: continue
         ma, mb = side(a), side(b)
         if ma is None or mb is None or (ma, mb) == (a, b): continue
-        fs = ib_list(P, a, b)
+        div = P.ib_div
+        fs = [f"ib_{a}_{b}_{k}.png" if div == 6 else f"ib_{a}_{b}_{k}_{div}.png" for k in range(1, div)]
+        if not all(os.path.exists(P.p("ib", f)) for f in fs):   # 元の中割りがそろっていない組は、反転した組を足さない
+            skipped.append(f"{a}>{b}"); continue
         rev = (mb, ma) in pairs and (ma, mb) not in pairs          # 反転先の組が逆向きで書いてあれば、その向きで絵の名前と順番を作る
         for f in fs:
             ks = f[len(f"ib_{a}_{b}_"):-4].split("_"); k = int(ks[0]); div = int(ks[1]) if len(ks) > 1 else 6
@@ -224,6 +229,7 @@ def run(P, maps, force=False, check=False):
     cf = P.p("config.json"); shutil.copy2(cf, cf + ".bak")
     json.dump(cfg, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if done_pairs: print("反転した中割り:", ", ".join(done_pairs))
+    if skipped: print("中割りがそろっていないので反転しなかった組:", ", ".join(skipped), "（元の組を描いてから --force で作り直す）")
     if check: print("確かめる絵:", P.p("mirror_check"), "（橙が home から戻した頭、赤が髪の上に戻した手）")
 
 
