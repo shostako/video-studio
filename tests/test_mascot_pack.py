@@ -238,3 +238,15 @@ def test_anchor_value_follows_the_pose_owner(tmp_path):
     cb["poses"]["wave"] = {"desc": "not drawn in B"}; put(b, cb)      # B は wave の絵が無いのに点だけ持つ
     assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
     assert cfg(pk)["anchor"]["points"]["wave"] == [3, 3]                # 絵の持ち主（A）の点
+
+
+def test_reverse_durations_and_face_rois_follow_home_owner(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    ca = cfg(a); ca["interp"]["durs"]["point>home"] = 0.5; ca["face"]["jaw_roi"] = [1, 2, 3, 4]; put(a, ca)
+    cb = cfg(b); cb["interp"]["durs"]["home>point"] = 0.8; cb["face"]["mouth_roi"] = [9, 9, 9, 9]; cb["poses"]["home"] = {"desc": "x"}; put(b, cb)
+    (b / "poses/pose_home.png").unlink()                               # B は home の絵を持たない（A の home を使う）
+    shutil.copytree(a / "parts_home", b / "parts_home", dirs_exist_ok=True)
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    c = cfg(pk)
+    assert c["interp"]["durs"]["home>point"] == 0.8 and "point>home" not in c["interp"]["durs"]
+    assert c["face"]["mouth_roi"] == cfg(a)["face"]["mouth_roi"] and c["face"]["jaw_roi"] == [1, 2, 3, 4]

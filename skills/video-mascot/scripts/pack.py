@@ -89,7 +89,9 @@ def merge_top(cfg, c):
         if k in SCRIPT_KEYS or k in SPECIAL or k.startswith("events_") or k.startswith("gaze_"): continue
         cfg[k] = v
     if isinstance(c.get("interp"), dict):
-        it = dict(cfg.get("interp") or {}); durs = {**(it.get("durs") or {}), **(c["interp"].get("durs") or {})}
+        it = dict(cfg.get("interp") or {}); durs = dict(it.get("durs") or {})
+        for k, v in (c["interp"].get("durs") or {}).items():   # 向きだけ違う組は同じ組なので、逆向きの古い秒は消す
+            x, _, y = k.partition(">"); durs.pop(f"{y}>{x}", None); durs[k] = v
         it.update(c["interp"]); it["durs"] = durs; cfg["interp"] = it
     elif "interp" in c: cfg["interp"] = c["interp"]
     if isinstance(c.get("face"), dict): cfg["face"] = {**(cfg.get("face") or {}), **c["face"]}
@@ -132,6 +134,12 @@ def build(pack, sources, force=False):
                     if not isinstance(an.get(k), dict): continue
                     if n in (own.get(k) or {}): an[k][n] = own[k][n]
                     elif n in an[k]: del an[k][n]
+        home = cfg.get("home", "home")
+        if isinstance(cfg.get("face"), dict) and home in owner:   # 顔の範囲は home の絵の座標なので、home の絵の持ち主の値にする
+            hf = cfgs[sources.index(owner[home])].get("face"); hf = hf if isinstance(hf, dict) else {}
+            for k in ("mouth_roi", "eye_roi", "jaw_roi"):
+                if k in hf: cfg["face"][k] = hf[k]
+                else: cfg["face"].pop(k, None)
         cfg["poses"] = {}; hands = {}; mirrored = {}
         for n, s in owner.items():
             c = cfgs[sources.index(s)]
