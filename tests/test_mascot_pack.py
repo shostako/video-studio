@@ -157,10 +157,10 @@ def test_partial_inbetweens_count_as_missing(tmp_path):
 def test_manual_anchor_maps_are_merged(tmp_path):
     a, b = two(tmp_path); pk = tmp_path / "pack"
     ca = cfg(a); ca["anchor"] = {"mode": "manual", "points": {"home": [10, 20], "wave": [11, 21]}, "scales": {"wave": 1.01}}; put(a, ca)
-    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [12, 22], "bow": [13, 23]}}; put(b, cb)
+    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [12, 22], "bow": [13, 23], "point": [14, 24]}}; put(b, cb)
     assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
     an = cfg(pk)["anchor"]
-    assert an["points"] == {"home": [12, 22], "wave": [11, 21], "bow": [13, 23]} and an["scales"] == {"wave": 1.01}
+    assert an["points"] == {"home": [12, 22], "wave": [11, 21], "bow": [13, 23], "point": [14, 24]} and an["scales"] == {"wave": 1.01}
 
 
 def test_nested_destinations_are_rejected(tmp_path):
@@ -198,3 +198,19 @@ def test_replaced_pose_drops_stale_manual_anchor(tmp_path):
     an = cfg(pk)["anchor"]
     assert "point" not in an["points"] and "point" not in an.get("scales", {})     # B の point（姿勢の anchor を使う）に A の点を残さない
     assert an["points"]["wave"] == [6, 6]                                          # A だけの姿勢の点は残す
+
+
+def test_manual_anchor_must_cover_every_pose(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [1, 1], "point": [2, 2], "bow": [3, 3]}}; put(b, cb)
+    r = run("pack.py", pk, "--from", a, "--from", b)                   # A の wave に立ち位置が無い
+    assert r.returncode != 0 and "wave" in (r.stdout + r.stderr) and not pk.exists()
+
+
+def test_missing_pair_follows_latest_hint_direction(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    ca = cfg(a); ca["pairs"].append(["home", "wave"]); ca["ib_steps"]["home>wave"] = ["old"] * 5; put(a, ca)
+    cb = cfg(b); cb["pairs"].append(["wave", "home"]); cb["ib_steps"]["wave>home"] = ["new"] * 5; put(b, cb)
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    c = cfg(pk)
+    assert ["wave", "home"] in c["pairs"] and c["ib_steps"]["wave>home"] == ["new"] * 5 and "home>wave" not in c["ib_steps"]

@@ -164,6 +164,9 @@ def build(pack, sources, force=False):
                             got = (s, x, y); [copy(s, rel, tmp) for rel in fs]; break
                     if got: break
                 if got: s, a, b = got
+                else:                                             # 描き足す組は、最後に文を書いた作業フォルダの向きにそろえる
+                    lst = next(((x, y) for s in reversed(sources) for x, y in ((a, b), (b, a)) if f"{x}>{y}" in steps_of(s)), None)
+                    if lst: a, b = lst
                 key = f"{a}>{b}"
                 pairs.append([a, b])
                 src = [got[0]] if got else list(reversed(sources))
@@ -172,6 +175,10 @@ def build(pack, sources, force=False):
                 pair_src[key] = got[0] if got else None
                 if not got: missing.append(key)
         cfg["pairs"] = pairs
+        an = cfg.get("anchor")
+        if isinstance(an, dict) and an.get("mode") == "manual":   # manual では、どの姿勢にも手で決めた立ち位置が要る
+            lack = sorted(n for n, pc in cfg["poses"].items() if n not in (an.get("points") or {}) and "anchor" not in pc)
+            if lack: die(f"anchor.mode が manual なのに、立ち位置の無い姿勢がある: {lack}（作業フォルダの anchor をそろえてからまとめる）")
         settle_mtimes(tmp, pairs)
         if ib_steps: cfg["ib_steps"] = ib_steps
         for d in ("poses", "parts", "ib", "out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
@@ -212,12 +219,15 @@ def new(pack, dst, name=None):
     if not os.path.exists(os.path.join(pack, "pack.json")): die(f"パックではない（pack.json が無い）: {pack}")
     if os.path.exists(dst): die(f"作業フォルダが既にある: {dst}")
     tmp = dst + f".tmp-{os.getpid()}"
-    shutil.copytree(pack, tmp, ignore=shutil.ignore_patterns("pack.json", "ib_interp", "out", "voice", "reject"))
-    for d in ("out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
-    cf = os.path.join(tmp, "config.json"); c = json.load(open(cf, encoding="utf-8"))
-    c["name"] = name or os.path.basename(dst); c["from_pack"] = pack
-    json.dump(c, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    os.rename(tmp, dst)
+    try:
+        shutil.copytree(pack, tmp, ignore=shutil.ignore_patterns("pack.json", "ib_interp", "out", "voice", "reject"))
+        for d in ("out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
+        cf = os.path.join(tmp, "config.json"); c = json.load(open(cf, encoding="utf-8"))
+        c["name"] = name or os.path.basename(dst); c["from_pack"] = pack
+        json.dump(c, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        os.rename(tmp, dst)
+    except BaseException:                          # 途中で落ちたら、半端な複製を残さない
+        shutil.rmtree(tmp, ignore_errors=True); raise
     print("作業フォルダ:", dst, f"（{pack} から。台本・声・動きは空）")
 
 
