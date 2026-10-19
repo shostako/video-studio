@@ -2,6 +2,7 @@
 後の --from が姿勢を取ること、中割りは端の絵がパックと同じ作業フォルダからだけ持ってくること（逆向きの組も同じ組）、
 台本に属する設定を持ってこないこと、パックから作った作業フォルダで書き出しが通ることを確かめる。"""
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,8 +16,19 @@ sys.path.insert(0, str(ROOT / "tests/fixtures"))
 import synth_mascot  # noqa: E402
 
 
-def run(script, *args):
-    return subprocess.run([sys.executable, "-B", str(SCRIPTS / script), *map(str, args)], capture_output=True, text=True, timeout=300)
+def run(script, *args, env=None):
+    return subprocess.run([sys.executable, "-B", str(SCRIPTS / script), *map(str, args)], capture_output=True, text=True, timeout=300, env=env)
+
+
+def ffmpeg_env(tmp_path):
+    """ffmpeg が無い機体（CI）では imageio-ffmpeg の ffmpeg を PATH の先頭に置く。"""
+    e = dict(os.environ)
+    if not shutil.which("ffmpeg"):
+        import pytest
+        imageio_ffmpeg = pytest.importorskip("imageio_ffmpeg")
+        b = tmp_path / "bin"; b.mkdir(); (b / "ffmpeg").symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+        e["PATH"] = f"{b}{os.pathsep}{e['PATH']}"
+    return e
 
 
 def wf(tmp_path, name):
@@ -115,7 +127,7 @@ def test_new_workfolder_from_pack_renders(tmp_path):
     shutil.rmtree(nw / "voice"); shutil.copytree(a / "voice", nw / "voice")
     c.pop("interp")                                                   # CI に RIFE は無い
     c["voice"] = cfg(a)["voice"]; c["events"] = [{"at": 0.6, "pose": "bow"}, {"at": 2.0, "pose": "point"}]; put(nw, c)
-    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4")
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", env=ffmpeg_env(tmp_path))
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert (nw / "out/t.mp4").stat().st_size > 0
 
