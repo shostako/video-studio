@@ -22,7 +22,6 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - ベンチ（専門語を詰めた60秒の台本と、決めたマスコット1体）の確定と、本物の素材の用意
 - TTS エンジンの比較（Gemini TTS、Irodori、アクセントを指定できるローカル系、新しいオープン重み）
 - 声の聞き比べと、アクセントの最終判定（耳）
-- マスコットパック: `vm pack` で作業フォルダ（射出成形の `icm-v3` と仕組みの `mascot-howto-v2`）をまとめる。端の絵が変わった中割り4組（open>gassho・gassho>gap・point>raise_r・raise_r>think）を /img で描き足す
 - フレーム補間（RIFE）: `vm render` に組み込んだ（`config.interp`、opt-in）。射出成形の解説動画の作り直し（作業フォルダ `icm-v2`）で、合掌の切り替えを 1.2 秒にした書き出しを見て、既定にするかを決める。切り絵リグはそのあと
 - `vm overlay --preset` の数値（大きさの割合・安全領域 0.05）と、登場・退場の速さ・動き方が実物の動画で見て良いか（見た目の判定）
 - `vs accent` の点数が本物の声で耳の判定と合うか（`--thresh` 1.5 半音は仮の値。Gemini TTS の声で「薄い板」の良い版・崩れた版を測って比べる）
@@ -33,6 +32,8 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
 ## 済んだこと
+
+- Monday のマスコットパック（2026-10-19、各PC のローカル `~/.local/share/video-scene/packs/monday-suit`）: 射出成形の `icm-v3` と仕組みの `mascot-howto-v2` を `vm pack` でまとめ、左手を `vm mirror` で作り、中割り2組（open>gassho・gassho>gap）を描き足した。point>raise_r・raise_r>think は via_home で home を通すので組から外した。足りない絵は無い。旧PC には無い（新PC で作った）
 
 - 口パクの方式と二次運動の見比べ（2026-10-19、ユーザーの判定）: 口はモーラ式、首の傾き・うなずきは採用、呼吸・体の揺れ・切り替えの予備動作は不採用。Monday のパックの config に入れた。既定は変えていない（DECISIONS.md の同じ日）
 
