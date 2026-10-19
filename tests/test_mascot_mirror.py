@@ -238,3 +238,11 @@ def test_legs_lock_list_includes_mirrored_pose(tmp_path):
     (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
     assert run(p, "point:point_l", "--force").returncode == 0
     assert "point_l" not in json.loads((p / "config.json").read_text(encoding="utf-8"))["legs_lock"]["poses"]
+
+
+def test_force_moves_old_drawn_face_diffs(tmp_path):
+    p = proj(tmp_path)
+    assert run(p, "point:point_l").returncode == 0
+    import shutil; shutil.copy(p / "poses/pose_home.png", p / "parts/point_l_m1.png")   # 前に反転先で描いた口の差分
+    assert run(p, "point:point_l", "--force").returncode == 0
+    assert not (p / "parts/point_l_m1.png").exists() and list((p / "reject/mirror_replaced").glob("*/point_l_m1.png"))

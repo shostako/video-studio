@@ -174,7 +174,9 @@ def run(P, maps, force=False, check=False):
     for s, d in maps:
         olds = ([P.pose_path(d)] if os.path.exists(P.pose_path(d)) else []) + \
                [P.p("ib", f) for x, y in [(p[0], p[1]) for p in P.pairs] if d in (x, y) for f in ib_list(P, x, y)] + \
-               ([P.p(f"parts_{d}")] if os.path.isdir(P.p(f"parts_{d}")) else [])
+               ([P.p(f"parts_{d}")] if os.path.isdir(P.p(f"parts_{d}")) else []) + \
+               [P.p("parts", f) for f in sorted(os.listdir(P.p("parts"))) if os.path.isdir(P.p("parts")) and f.startswith(f"{d}_") and f.endswith(".png")
+                and f[len(d) + 1:-4] in ("m1", "m2", "m3", "m4", "m5", "m6", "m7", "e1", "e2", "g_l", "g_r", "g_u", "g_c")]
         if olds and not force: die(f"{d} は既にある（作り直すなら --force。古い絵は reject/mirror_replaced/ へ移す）")
         # 作り直すときは、前に反転して足した組・文・秒も消し、今の元の設定から足し直す（元の組を消した後に古い組が残らないように）
         cfg["pairs"] = [p for p in cfg.get("pairs", []) if d not in p]
