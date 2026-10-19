@@ -113,28 +113,36 @@ def generate(a, h3, names, stamp):
     for t in range(tries):
         left = DEADLINE - (time.time() - t0)
         if left < 60: print("ERROR: タイムアウト（描き直しの時間が残っていない）", file=sys.stderr); return 5
-        prefix = f"qwen_{stamp}_{t}"; job = {"graph": graph(a.prompt, names, steps, 1.0, seed + t, prefix), "timeout": int(left)}
+        prefix = f"qwen_{stamp}_{t}"
         jp, rp = os.path.join(h3.VS_DIR, f"{prefix}.json"), os.path.join(h3.VS_DIR, f"{prefix}_res.json")
-        json.dump(job, open(jp, "w", encoding="utf-8"))
-        h3.client("run", h3.winpath(jp), h3.winpath(rp))
-        if not os.path.exists(rp): print("ERROR: ComfyUI から結果が返らない", file=sys.stderr); return 1
-        res = json.load(open(rp, encoding="utf-8"))
-        if res.get("status") == "timeout": print("ERROR: タイムアウト", file=sys.stderr); return 5
-        imgs = [o for o in res.get("outputs", []) if o["filename"].lower().endswith(".png")]
-        if res.get("status") != "success" or not imgs: print(json.dumps(res, ensure_ascii=False)[:2000], file=sys.stderr); return 1
-        o = imgs[0]; src = os.path.join(h3.ROOT, "ComfyUI", "output", o["subfolder"], o["filename"])
-        out = cv2.imread(src)
+        junk = [jp, rp, os.path.splitext(rp)[0] + "_gpu.csv"]   # 1回ごとの控え（ジョブ・結果・GPU の記録・出た絵）は、どの抜け方でも消す
         try:
-            if out is not None and ref is not None and flipped(out, ref):
-                print(f"種 {seed + t}: 左右が反転した絵が出た。種を変えて描き直す", file=sys.stderr); continue
-            os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True); shutil.copy(src, a.out)
-        finally:                                     # ComfyUI の output に残した絵は写したら消す（回すたびに溜まる）
-            for f in (src, jp, rp):
+            rc = attempt(a, h3, names, steps, seed + t, prefix, jp, rp, int(left), ref, junk)
+        finally:
+            for f in junk:
                 try: os.remove(f)
                 except OSError: pass
-        print(f"{res.get('seconds')}s VRAM {res.get('vram_peak_mib')}MiB 種 {seed + t}", file=sys.stderr); print(os.path.abspath(a.out))
-        return 0
+        if rc is not None: return rc
     print(f"ERROR: {tries} 回とも左右が反転した絵だった", file=sys.stderr); return 1
+
+
+def attempt(a, h3, names, steps, seed, prefix, jp, rp, left, ref, junk):
+    """1回描く。終了コードか、左右が反転して描き直すなら None を返す。出た絵は junk に足す（呼び手が消す）。"""
+    json.dump({"graph": graph(a.prompt, names, steps, 1.0, seed, prefix), "timeout": left}, open(jp, "w", encoding="utf-8"))
+    h3.client("run", h3.winpath(jp), h3.winpath(rp))
+    if not os.path.exists(rp): print("ERROR: ComfyUI から結果が返らない", file=sys.stderr); return 1
+    res = json.load(open(rp, encoding="utf-8"))
+    for o in res.get("outputs", []): junk.append(os.path.join(h3.ROOT, "ComfyUI", "output", o.get("subfolder", ""), o["filename"]))
+    if res.get("status") == "timeout": print("ERROR: タイムアウト", file=sys.stderr); return 5
+    imgs = [o for o in res.get("outputs", []) if o["filename"].lower().endswith(".png")]
+    if res.get("status") != "success" or not imgs: print(json.dumps(res, ensure_ascii=False)[:2000], file=sys.stderr); return 1
+    src = os.path.join(h3.ROOT, "ComfyUI", "output", imgs[0]["subfolder"], imgs[0]["filename"])
+    out = cv2.imread(src)
+    if out is not None and ref is not None and flipped(out, ref):
+        print(f"種 {seed}: 左右が反転した絵が出た。種を変えて描き直す", file=sys.stderr); return None
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True); shutil.copy(src, a.out)
+    print(f"{res.get('seconds')}s VRAM {res.get('vram_peak_mib')}MiB 種 {seed}", file=sys.stderr); print(os.path.abspath(a.out))
+    return 0
 
 
 if __name__ == "__main__":

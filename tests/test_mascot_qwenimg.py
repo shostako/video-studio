@@ -75,3 +75,26 @@ def test_staged_references_are_removed_even_on_failure(tmp_path, monkeypatch):
         qwenimg.main()
     assert e.value.code == 2
     assert list((root / "ComfyUI/input/vm").iterdir()) == []
+
+
+def test_attempt_files_are_removed_on_failure(tmp_path, monkeypatch):
+    """ComfyUI が失敗を返しても、ジョブ・結果・GPU の記録・出た絵を残さない。"""
+    import json as _json
+    import types
+    root = tmp_path / "comfy"; vs = tmp_path / "vs"; vs.mkdir(); (root / "ComfyUI/output/vm").mkdir(parents=True)
+    for sub in ("unet", "text_encoders", "vae", "loras"): (root / "ComfyUI/models" / sub).mkdir(parents=True)
+    for kind, sub in (("unet", "unet"), ("clip", "text_encoders"), ("vae", "vae"), ("lora", "loras")):
+        (root / "ComfyUI/models" / sub / qwenimg.MODELS[kind]).write_bytes(b"")
+    def client(cmd, *args):
+        if cmd == "run":
+            rp = Path(args[1]); (root / "ComfyUI/output/vm/x.png").write_bytes(b"png")
+            Path(str(rp)[:-5] + "_gpu.csv").write_text("gpu")
+            rp.write_text(_json.dumps({"status": "error", "outputs": [{"filename": "x.png", "subfolder": "vm"}]}))
+        return 0
+    monkeypatch.setitem(sys.modules, "h3", types.SimpleNamespace(ROOT=str(root), VS_DIR=str(vs), SERVER_ARGS=[], winpath=lambda p: p, client=client))
+    ref = tmp_path / "r.png"; ref.write_bytes(b"x")
+    monkeypatch.setattr(sys, "argv", ["qwenimg.py", "-p", "x", "-o", str(tmp_path / "o.png"), "-r", str(ref)])
+    with pytest.raises(SystemExit) as e:
+        qwenimg.main()
+    assert e.value.code == 1
+    assert list(vs.iterdir()) == [] and list((root / "ComfyUI/output/vm").iterdir()) == []
