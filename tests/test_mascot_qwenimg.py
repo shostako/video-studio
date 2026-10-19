@@ -98,3 +98,10 @@ def test_attempt_files_are_removed_on_failure(tmp_path, monkeypatch):
         qwenimg.main()
     assert e.value.code == 1
     assert list(vs.iterdir()) == [] and list((root / "ComfyUI/output/vm").iterdir()) == []
+
+
+def test_qwen_refuses_jobs_with_more_than_three_references(tmp_path, capsys):
+    for i in range(4): (tmp_path / f"r{i}.png").write_bytes(b"x")
+    jobs = [(str(tmp_path / "a.png"), "x", [str(tmp_path / f"r{i}.png") for i in range(4)])]
+    assert poses.run_jobs(jobs, 1, False, backend="qwen") is False
+    assert "3枚まで" in capsys.readouterr().out and not (tmp_path / "a.png").exists()

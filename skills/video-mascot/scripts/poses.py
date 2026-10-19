@@ -210,6 +210,9 @@ def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
     if dry:
         for j in todo: print("  ", os.path.relpath(j[0]))
         return True
+    if backend == "qwen":                          # Qwen の参照は3枚まで（mascot.png と手本2つ）
+        many = [os.path.basename(j[0]) for j in todo if len(j[2]) > 3]
+        if many: print(f"--img qwen では参照が3枚までなので描けない（refs を2つまでにする）: {many}", flush=True); return False
     stop = threading.Event(); lock = threading.Lock(); done = [0]
     def run(job):
         out, prompt, refs = job
