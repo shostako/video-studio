@@ -137,6 +137,18 @@ def build(pack, sources, force=False):
             if n in (c.get("hands") or {}): hands[n] = c["hands"][n]
             if n in (c.get("mirrored") or {}): mirrored[n] = c["mirrored"][n]
             for rel in pose_files(s, n): copy(s, rel, tmp)
+            if c["poses"][n].get("face", True) is not False and not os.path.exists(os.path.join(tmp, f"parts_{n}", "parts.json")):
+                same = md5(os.path.join(s, f"poses/pose_{n}.png"))     # 部品を切っていなければ、同じ絵を持つ前の作業フォルダの部品を使う
+                alt = next((x for x in reversed(sources) if x != s and md5(os.path.join(x, f"poses/pose_{n}.png")) == same
+                            and os.path.exists(os.path.join(x, f"parts_{n}", "parts.json"))), None)
+                if not alt: die(f"顔の見える姿勢 {n} の部品が無い（{s} で vm parts {n} を先に）")
+                shutil.rmtree(os.path.join(tmp, f"parts_{n}"), ignore_errors=True); copy(alt, f"parts_{n}/", tmp)
+        stale_hands = []
+        for n, h in hands.items():                     # 手の部品は、描いたときの土台の絵とパックの土台の絵が同じときだけ、作り直しに使える
+            b = h.get("base")
+            if b in owner and md5(os.path.join(owner[n], f"poses/pose_{b}.png")) != md5(os.path.join(owner[b], f"poses/pose_{b}.png")):
+                stale_hands.append(n)
+        if stale_hands: print(f"  手の部品の土台の絵が、描いたときと違う: {stale_hands}（姿勢の絵はそのまま使える。vm hands place で作り直すなら、先に draw し直す）")
         if hands: cfg["hands"] = hands
         if mirrored:
             note = next((c["mirrored"]["note"] for c in reversed(cfgs) if "note" in (c.get("mirrored") or {})), None)
@@ -185,7 +197,7 @@ def build(pack, sources, force=False):
         cfg["name"] = os.path.basename(pack)
         json.dump(cfg, open(os.path.join(tmp, "config.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         man = {"built": time.strftime("%Y-%m-%d %H:%M:%S"), "sources": sources,
-               "poses": {n: s for n, s in owner.items()}, "pairs": pair_src, "missing_inbetweens": missing}
+               "poses": {n: s for n, s in owner.items()}, "pairs": pair_src, "missing_inbetweens": missing, "hands_base_changed": stale_hands}
         json.dump(man, open(os.path.join(tmp, "pack.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         if os.path.exists(pack):                  # 古いパックは消さずに、重ならない名前で残す（同じ秒に2回作っても）
             old = unique(pack + ".old-" + time.strftime("%Y%m%d_%H%M%S")); os.rename(pack, old); print("古いパック:", old)

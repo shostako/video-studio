@@ -214,3 +214,18 @@ def test_missing_pair_follows_latest_hint_direction(tmp_path):
     assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
     c = cfg(pk)
     assert ["wave", "home"] in c["pairs"] and c["ib_steps"]["wave>home"] == ["new"] * 5 and "home>wave" not in c["ib_steps"]
+
+
+def test_parts_are_required_or_reused_and_hand_base_change_is_reported(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    shutil.rmtree(b / "parts_home")                                    # B の home は A と同じ絵で、部品を切っていない
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    assert (pk / "parts_home/parts.json").exists()                      # A の部品を使う
+    shutil.rmtree(b / "parts_bow")                                     # B だけの bow に部品が無い
+    r = run("pack.py", pk, "--from", a, "--from", b, "--force")
+    assert r.returncode != 0 and "bow" in (r.stdout + r.stderr)
+    shutil.copytree(b / "parts_home", b / "parts_bow") if (b / "parts_home").exists() else shutil.copytree(a / "parts_home", b / "parts_bow")
+    ca = cfg(a); ca["hands"] = {"wave": {"base": "point", "box": [0, 0, 10, 10], "desc": "x"}}; put(a, ca)   # A の wave は A の point（B と違う絵）から作った
+    r = run("pack.py", pk, "--from", a, "--from", b, "--force")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads((pk / "pack.json").read_text(encoding="utf-8"))["hands_base_changed"] == ["wave"]
