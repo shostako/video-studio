@@ -250,3 +250,11 @@ def test_reverse_durations_and_face_rois_follow_home_owner(tmp_path):
     c = cfg(pk)
     assert c["interp"]["durs"]["home>point"] == 0.8 and "point>home" not in c["interp"]["durs"]
     assert c["face"]["mouth_roi"] == cfg(a)["face"]["mouth_roi"] and c["face"]["jaw_roi"] == [1, 2, 3, 4]
+
+
+def test_boolean_gaze_is_merged(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    cb = cfg(b); cb["gaze"] = False; put(b, cb)                         # A は辞書、B は false
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0 and cfg(pk)["gaze"] is False
+    cb["gaze"] = True; put(b, cb)
+    assert run("pack.py", pk, "--from", a, "--from", b, "--force").returncode == 0 and cfg(pk)["gaze"] is True

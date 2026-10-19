@@ -101,6 +101,7 @@ def merge_top(cfg, c):
             if isinstance(old.get(k), dict) or isinstance(c["anchor"].get(k), dict): new[k] = {**(old.get(k) or {}), **(c["anchor"].get(k) or {})}
         cfg["anchor"] = new
     if isinstance(c.get("gaze"), dict): cfg["gaze"] = {k: v for k, v in c["gaze"].items() if k != "events"}   # 視線の予定は台本に属する
+    elif "gaze" in c: cfg["gaze"] = c["gaze"]      # true / false はそのまま（後が勝つ）
 
 
 def build(pack, sources, force=False):
