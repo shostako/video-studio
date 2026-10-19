@@ -152,6 +152,8 @@ def run(P, maps, force=False, check=False):
     if len(set(ds)) != len(ds): die(f"作る名前が重なっている: {sorted({d for d in ds if ds.count(d) > 1})}")
     if len(dst_of) != len(maps): die("同じ元の姿勢を2回書いている")
     if not os.path.exists(P.p(f"parts_{P.home}", "parts.json")): die(f"home の部品が無い: parts_{P.home}（先に vm parts {P.home}）")
+    bad = [k for k in json.load(open(P.p(f"parts_{P.home}", "parts.json"))) if cv2.imread(P.p(f"parts_{P.home}", f"{k}.png"), cv2.IMREAD_UNCHANGED) is None]
+    if bad: die(f"home の部品の絵が読めない: {bad}（vm parts {P.home} で切り直す）")
     for s, d in maps:
         if s not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {s}")
         if cv2.imread(P.pose_path(s)) is None: die(f"元の姿勢の絵が無い: {P.pose_path(s)}")
@@ -173,7 +175,10 @@ def run(P, maps, force=False, check=False):
             for k in [k for k in (it.get("durs") or {}) if d in k.split(">")]: del it["durs"][k]
             if isinstance(it.get("pairs"), list): it["pairs"] = [k for k in it["pairs"] if d not in k.split(">")]
         if olds:                                   # 2つの反転先をつなぐ組の絵は両方の olds に入るので、もう移したものは飛ばす
-            rej = rej or P.p("reject", "mirror_replaced", time.strftime("%Y%m%d_%H%M%S")); os.makedirs(rej, exist_ok=True)
+            if not rej:                            # 同じ秒に2回作り直しても、前の控えに重ねない
+                rej = P.p("reject", "mirror_replaced", time.strftime("%Y%m%d_%H%M%S")); n = 2; base = rej
+                while os.path.exists(rej): rej = f"{base}_{n}"; n += 1
+                os.makedirs(rej)
             for o in dict.fromkeys(olds):
                 if os.path.exists(o): shutil.move(o, os.path.join(rej, os.path.basename(o.rstrip("/"))))
         an = cfg.get("anchor")                     # 前に写した立ち位置も消す（元から消えた点が残らないように）

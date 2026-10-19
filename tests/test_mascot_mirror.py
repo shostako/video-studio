@@ -191,3 +191,12 @@ def test_force_rebuild_of_connected_pair_and_stale_anchor(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     c = json.loads((p / "config.json").read_text(encoding="utf-8"))
     assert "raise_l" not in c["anchor"]["points"] and c["poses"]["raise_l"]["anchor"] == [470 - 1 - 230, 735]
+
+
+def test_unreadable_home_part_and_unique_archive(tmp_path):
+    p = proj(tmp_path)
+    for _ in range(3): assert run(p, "point:point_l", "--force").returncode == 0
+    assert len(list((p / "reject/mirror_replaced").iterdir())) == 2      # 1回目は移すものが無い。2回目と3回目は別の控え
+    (p / "parts_home/m1.png").write_bytes(b"broken")
+    r = run(p, "point:point_l", "--force")
+    assert r.returncode != 0 and "m1" in (r.stdout + r.stderr) and (p / "poses/pose_point_l.png").exists()   # 何も移さずに止まる
