@@ -124,9 +124,14 @@ def generate(a, h3, names, stamp):
         if res.get("status") != "success" or not imgs: print(json.dumps(res, ensure_ascii=False)[:2000], file=sys.stderr); return 1
         o = imgs[0]; src = os.path.join(h3.ROOT, "ComfyUI", "output", o["subfolder"], o["filename"])
         out = cv2.imread(src)
-        if out is not None and ref is not None and flipped(out, ref):
-            print(f"種 {seed + t}: 左右が反転した絵が出た。種を変えて描き直す", file=sys.stderr); continue
-        os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True); shutil.copy(src, a.out)
+        try:
+            if out is not None and ref is not None and flipped(out, ref):
+                print(f"種 {seed + t}: 左右が反転した絵が出た。種を変えて描き直す", file=sys.stderr); continue
+            os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True); shutil.copy(src, a.out)
+        finally:                                     # ComfyUI の output に残した絵は写したら消す（回すたびに溜まる）
+            for f in (src, jp, rp):
+                try: os.remove(f)
+                except OSError: pass
         print(f"{res.get('seconds')}s VRAM {res.get('vram_peak_mib')}MiB 種 {seed + t}", file=sys.stderr); print(os.path.abspath(a.out))
         return 0
     print(f"ERROR: {tries} 回とも左右が反転した絵だった", file=sys.stderr); return 1
