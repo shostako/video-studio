@@ -174,3 +174,20 @@ def test_incomplete_source_pairs_and_non_frontal_sources(tmp_path):
     import shutil
     for n in ("back", "turn"): shutil.copy(p / "poses/pose_home.png", p / f"poses/pose_{n}.png")
     assert run(p, "back:back_l").returncode != 0 and run(p, "turn:turn_l").returncode != 0
+
+
+def test_force_rebuild_of_connected_pair_and_stale_anchor(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    c["pairs"].append(["point", "raise"]); c["anchor"] = {"mode": "manual", "points": {"home": [235, 735], "point": [230, 735], "raise": [230, 735]}}
+    for k in range(1, 6):
+        import shutil; shutil.copy(p / f"ib/ib_home_point_{k}.png", p / f"ib/ib_point_raise_{k}.png")
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l", "raise:raise_l").returncode == 0
+    assert (p / "ib/ib_point_l_raise_l_1.png").exists()
+    c = json.loads((p / "config.json").read_text(encoding="utf-8")); del c["anchor"]["points"]["raise"]; c["poses"]["raise"]["anchor"] = [230, 735]
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    r = run(p, "point:point_l", "raise:raise_l", "--force")             # 2つをつなぐ組の絵を2回移そうとして落ちない
+    assert r.returncode == 0, r.stdout + r.stderr
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    assert "raise_l" not in c["anchor"]["points"] and c["poses"]["raise_l"]["anchor"] == [470 - 1 - 230, 735]

@@ -172,9 +172,14 @@ def run(P, maps, force=False, check=False):
         if isinstance(it, dict):
             for k in [k for k in (it.get("durs") or {}) if d in k.split(">")]: del it["durs"][k]
             if isinstance(it.get("pairs"), list): it["pairs"] = [k for k in it["pairs"] if d not in k.split(">")]
-        if olds:
+        if olds:                                   # 2つの反転先をつなぐ組の絵は両方の olds に入るので、もう移したものは飛ばす
             rej = rej or P.p("reject", "mirror_replaced", time.strftime("%Y%m%d_%H%M%S")); os.makedirs(rej, exist_ok=True)
-            for o in olds: shutil.move(o, os.path.join(rej, os.path.basename(o.rstrip("/"))))
+            for o in dict.fromkeys(olds):
+                if os.path.exists(o): shutil.move(o, os.path.join(rej, os.path.basename(o.rstrip("/"))))
+        an = cfg.get("anchor")                     # 前に写した立ち位置も消す（元から消えた点が残らないように）
+        if isinstance(an, dict):
+            for k in ("points", "scales"):
+                if isinstance(an.get(k), dict): an[k].pop(d, None)
     side = lambda x: x if x == P.home else dst_of.get(x)
     done_pairs = []
     for s, d in maps:
