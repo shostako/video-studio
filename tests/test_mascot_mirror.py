@@ -34,7 +34,7 @@ def proj(tmp_path):
     c = json.loads((p / "config.json").read_text(encoding="utf-8"))
     c["poses"]["raise"] = {"desc": "the hand on the image-right side raised beside her head"}
     c["ib_steps"] = {"home>point": [f"step {k}: the arm on the image-right side moves" for k in range(1, 6)]}
-    c["interp"] = {"durs": {"home>point": 0.9}}
+    c["interp"] = {"durs": {"home>point": 0.9, "point>raise": 0.3, "raise>point": 0.4}}
     (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
     import shutil; shutil.copytree(p / "parts_home", p / "parts_raise")
     return p
@@ -96,3 +96,14 @@ def test_rejects_home_and_bad_names(tmp_path):
     assert run(p, "point:home").returncode != 0
     assert run(p, "nothing:x").returncode != 0
     assert run(p, "point").returncode != 0
+
+
+def test_direct_switch_seconds_are_mirrored(tmp_path):
+    p = proj(tmp_path)
+    assert run(p, "point:point_l", "raise:raise_l").returncode == 0
+    d = json.loads((p / "config.json").read_text(encoding="utf-8"))["interp"]["durs"]
+    assert d["point_l>raise_l"] == 0.3 and d["raise_l>point_l"] == 0.4
+    p2 = proj(tmp_path / "x")
+    assert run(p2, "point:point_l").returncode == 0                    # 片方だけ反転するなら、相手の無い秒は写さない
+    d = json.loads((p2 / "config.json").read_text(encoding="utf-8"))["interp"]["durs"]
+    assert not any("point_l>raise" in k or "raise>point_l" in k for k in d)

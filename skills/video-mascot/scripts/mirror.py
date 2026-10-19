@@ -185,6 +185,11 @@ def run(P, maps, force=False, check=False):
         it = cfg.get("interp")
         if isinstance(it, dict) and f"{a}>{b}" in (it.get("durs") or {}): it["durs"][f"{ma}>{mb}"] = it["durs"][f"{a}>{b}"]
         done_pairs.append(f"{ma}>{mb}（{len(fs)} 枚）")
+    it = cfg.get("interp")                         # 中割りの無い切り替え（直の補間）の秒も、両端を反転できれば写す
+    if isinstance(it, dict):
+        for k, v in list((it.get("durs") or {}).items()):
+            a, b = k.split(">"); ma, mb = side(a) if a in dst_of or a == P.home else None, side(b) if b in dst_of or b == P.home else None
+            if ma and mb and (ma, mb) != (a, b) and f"{ma}>{mb}" not in it["durs"]: it["durs"][f"{ma}>{mb}"] = v
     cfg["pairs"] = [list(p) for p in pairs]
     if steps: cfg["ib_steps"] = steps
     cf = P.p("config.json"); shutil.copy2(cf, cf + ".bak")
