@@ -268,3 +268,11 @@ def test_hand_reference_images_are_copied(tmp_path):
     assert (pk / "guides/three.png").exists()
     (a / "guides/three.png").unlink()
     assert run("pack.py", pk, "--from", a, "--from", b, "--force").returncode != 0
+
+
+def test_hand_reference_outside_the_workspace_is_rejected(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    shutil.copy(a / "poses/pose_home.png", tmp_path / "outside.png")
+    ca = cfg(a); ca["hands"] = {"wave": {"base": "home", "box": [0, 0, 10, 10], "desc": "x", "refs": ["../outside.png"]}}; put(a, ca)
+    r = run("pack.py", pk, "--from", a, "--from", b)
+    assert r.returncode != 0 and not pk.exists()

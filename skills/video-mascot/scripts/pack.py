@@ -149,6 +149,7 @@ def build(pack, sources, force=False):
             if n in (c.get("mirrored") or {}): mirrored[n] = c["mirrored"][n]
             for rel in pose_files(s, n): copy(s, rel, tmp)
             for r in ((c.get("hands") or {}).get(n) or {}).get("refs", []):   # 手の部品の形の手本も持ってくる（無ければ止める）
+                if os.path.isabs(r) or not inside(os.path.join(s, r), s): die(f"手の部品 {n} の手本は作業フォルダの中に置く: {r}")
                 if not os.path.exists(os.path.join(s, r)): die(f"手の部品 {n} の手本が無い: {os.path.join(s, r)}")
                 if not os.path.exists(os.path.join(tmp, r)): copy(s, r, tmp)
             if c["poses"][n].get("face", True) is not False and not os.path.exists(os.path.join(tmp, f"parts_{n}", "parts.json")):
