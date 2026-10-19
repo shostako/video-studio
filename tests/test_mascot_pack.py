@@ -161,3 +161,19 @@ def test_manual_anchor_maps_are_merged(tmp_path):
     assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
     an = cfg(pk)["anchor"]
     assert an["points"] == {"home": [12, 22], "wave": [11, 21], "bow": [13, 23]} and an["scales"] == {"wave": 1.01}
+
+
+def test_nested_destinations_are_rejected(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", a / "pack", "--from", a).returncode != 0      # 作業フォルダの中にパックは作らない
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    r = run("pack.py", pk, "--new", pk / "poses" / "video")
+    assert r.returncode != 0 and not (pk / "poses" / "video").exists()
+
+
+def test_two_forced_rebuilds_in_the_same_second_keep_both_backups(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", a).returncode == 0
+    for _ in range(3):
+        r = run("pack.py", pk, "--from", a, "--force"); assert r.returncode == 0, r.stdout + r.stderr
+    assert len(list(tmp_path.glob("pack.old-*"))) == 3 and not list(tmp_path.glob("pack.tmp-*"))

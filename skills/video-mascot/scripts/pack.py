@@ -110,6 +110,8 @@ def build(pack, sources, force=False):
     if None in ms: die("mascot.png（元の絵）が無い作業フォルダがある")
     if len(ms) > 1: die("mascot.png（元の絵）が作業フォルダごとに違う。1つのパックには同じキャラだけをまとめる")
     pack = os.path.abspath(pack)
+    for s in sources:
+        if inside(pack, s) or inside(s, pack): die(f"パックは作業フォルダの外に作る: {pack}")
     if os.path.exists(pack) and not force: die(f"パックが既にある: {pack}（作り直すなら --force）")
     tmp = pack + f".tmp-{os.getpid()}"
     if os.path.exists(tmp): shutil.rmtree(tmp)
@@ -169,11 +171,11 @@ def build(pack, sources, force=False):
         man = {"built": time.strftime("%Y-%m-%d %H:%M:%S"), "sources": sources,
                "poses": {n: s for n, s in owner.items()}, "pairs": pair_src, "missing_inbetweens": missing}
         json.dump(man, open(os.path.join(tmp, "pack.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        if os.path.exists(pack):                  # 古いパックは消さずに、重ならない名前で残す（同じ秒に2回作っても）
+            old = unique(pack + ".old-" + time.strftime("%Y%m%d_%H%M%S")); os.rename(pack, old); print("古いパック:", old)
+        os.rename(tmp, pack)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True); raise
-    if os.path.exists(pack):
-        old = pack + ".old-" + time.strftime("%Y%m%d_%H%M%S"); os.rename(pack, old); print("古いパック:", old)
-    os.rename(tmp, pack)
     by = {}
     for n, s in owner.items(): by.setdefault(s, []).append(n)
     print("パック:", pack)
@@ -183,8 +185,21 @@ def build(pack, sources, force=False):
     return man
 
 
+def unique(path):
+    if not os.path.exists(path): return path
+    n = 2
+    while os.path.exists(f"{path}_{n}"): n += 1
+    return f"{path}_{n}"
+
+
+def inside(child, parent):
+    child, parent = os.path.realpath(child), os.path.realpath(parent)
+    return child == parent or child.startswith(parent.rstrip(os.sep) + os.sep)
+
+
 def new(pack, dst, name=None):
     pack = os.path.abspath(pack); dst = os.path.abspath(dst)
+    if inside(dst, pack) or inside(pack, dst): die(f"作業フォルダはパックの外に作る: {dst}")
     if not os.path.exists(os.path.join(pack, "pack.json")): die(f"パックではない（pack.json が無い）: {pack}")
     if os.path.exists(dst): die(f"作業フォルダが既にある: {dst}")
     tmp = dst + f".tmp-{os.getpid()}"
