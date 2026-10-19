@@ -118,3 +118,16 @@ def test_new_workfolder_from_pack_renders(tmp_path):
     r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4")
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert (nw / "out/t.mp4").stat().st_size > 0
+
+
+def test_inbetweens_are_not_redrawn_because_of_copied_dates(tmp_path):
+    """別の作業フォルダの姿勢の絵が中割りより新しくても、パックでは中割りを古いと見なさない（vm poses の chain の判定）。"""
+    import os, time
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    now = time.time()
+    for k in range(1, 6): os.utime(b / f"ib/ib_bow_home_{k}.png", (now - 1000, now - 1000))
+    os.utime(b / "poses/pose_home.png", (now, now))                    # 土台の絵が中割りより新しい
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    m = lambda p: os.path.getmtime(pk / p)
+    assert m("poses/pose_bow.png") <= m("ib/ib_bow_home_1.png") < m("ib/ib_bow_home_2.png") < m("ib/ib_bow_home_5.png")
+    assert m("poses/pose_home.png") <= m("ib/ib_bow_home_1.png")

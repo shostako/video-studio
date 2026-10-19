@@ -66,6 +66,17 @@ def copy(src, rel, dst):
         os.makedirs(os.path.dirname(d), exist_ok=True); shutil.copy2(s, d)
 
 
+def settle_mtimes(root, pairs):
+    """持ってきたファイルの日時を揃える。vm poses は chain の中割りが古いか（前の枚より古いか）を日時で決めるので、
+    別の作業フォルダから来た姿勢の絵が新しいと、持ってきた中割りを描き直してしまう。姿勢の絵を同じ日時にし、
+    中割りは k の順に1秒ずつ新しくする。"""
+    t0 = time.time() - 3600
+    for p in glob.glob(os.path.join(root, "poses", "pose_*.png")): os.utime(p, (t0, t0))
+    for a, b in pairs:
+        for rel in ib_files(root, a, b):
+            k = int(os.path.basename(rel)[len(f"ib_{a}_{b}_"):-4].split("_")[0]); os.utime(os.path.join(root, rel), (t0 + k, t0 + k))
+
+
 def merge_top(cfg, c):
     """台本に属さない上位の設定を重ねる（後が勝つ）。interp の durs と face は項目ごとに重ねる。"""
     for k, v in c.items():
@@ -138,6 +149,7 @@ def build(pack, sources, force=False):
                 pair_src[key] = got[0] if got else None
                 if not got: missing.append(key)
         cfg["pairs"] = pairs
+        settle_mtimes(tmp, pairs)
         if ib_steps: cfg["ib_steps"] = ib_steps
         for d in ("poses", "parts", "ib", "out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
         cfg["name"] = os.path.basename(pack)
