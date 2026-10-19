@@ -120,7 +120,16 @@ def build(pack, sources, force=False):
         cfg = {}; owner = {}
         for s, c in zip(sources, cfgs):
             merge_top(cfg, c)
-            for n in c.get("poses", {}): owner[n] = s
+            for n in c.get("poses", {}):              # 絵の無い姿勢では、前の作業フォルダの絵を置き換えない
+                if os.path.exists(os.path.join(s, f"poses/pose_{n}.png")) or n not in owner: owner[n] = s
+        nopic = sorted(n for n, s in owner.items() if not os.path.exists(os.path.join(s, f"poses/pose_{n}.png")))
+        if nopic: die(f"どの作業フォルダにも絵が無い姿勢: {nopic}（描いてからまとめるか、config.poses から外す）")
+        an = cfg.get("anchor")
+        if isinstance(an, dict):                       # 置き換えた姿勢に、前の作業フォルダの手で決めた立ち位置を残さない
+            for n, s in owner.items():
+                own = cfgs[sources.index(s)].get("anchor"); own = own if isinstance(own, dict) else {}
+                for k in ("points", "scales"):
+                    if isinstance(an.get(k), dict) and n in an[k] and n not in (own.get(k) or {}): del an[k][n]
         cfg["poses"] = {}; hands = {}; mirrored = {}
         for n, s in owner.items():
             c = cfgs[sources.index(s)]

@@ -177,3 +177,24 @@ def test_two_forced_rebuilds_in_the_same_second_keep_both_backups(tmp_path):
     for _ in range(3):
         r = run("pack.py", pk, "--from", a, "--force"); assert r.returncode == 0, r.stdout + r.stderr
     assert len(list(tmp_path.glob("pack.old-*"))) == 3 and not list(tmp_path.glob("pack.tmp-*"))
+
+
+def test_later_source_without_the_image_does_not_take_the_pose(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    cb = cfg(b); cb["poses"]["wave"] = {"desc": "wave, not drawn yet"}; put(b, cb)   # B は config にだけ書いて、絵が無い
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    man = json.loads((pk / "pack.json").read_text(encoding="utf-8"))
+    assert man["poses"]["wave"] == str(a) and (pk / "poses/pose_wave.png").exists()
+    cb["poses"]["ghost"] = {"desc": "nowhere"}; put(b, cb)
+    r = run("pack.py", pk, "--from", a, "--from", b, "--force")
+    assert r.returncode != 0 and "ghost" in (r.stdout + r.stderr)
+
+
+def test_replaced_pose_drops_stale_manual_anchor(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    ca = cfg(a); ca["anchor"] = {"mode": "manual", "points": {"home": [1, 1], "point": [5, 5], "wave": [6, 6]}, "scales": {"point": 1.2}}; put(a, ca)
+    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [2, 2], "bow": [3, 3]}}; cb["poses"]["point"]["anchor"] = [9, 9]; put(b, cb)
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    an = cfg(pk)["anchor"]
+    assert "point" not in an["points"] and "point" not in an.get("scales", {})     # B の point（姿勢の anchor を使う）に A の点を残さない
+    assert an["points"]["wave"] == [6, 6]                                          # A だけの姿勢の点は残す
