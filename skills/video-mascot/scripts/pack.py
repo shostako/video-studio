@@ -20,7 +20,7 @@ import time
 from lib import die
 
 SCRIPT_KEYS = {"name", "voice", "events", "events_kw", "events_script", "events_demo", "gaze_script", "gaze_demo"}
-SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face"}
+SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face", "anchor"}
 
 
 def md5(path):
@@ -46,6 +46,12 @@ def pose_files(src, n):
         if os.path.exists(os.path.join(src, f)): out.append(f)
     if os.path.isdir(os.path.join(src, f"parts_{n}")): out.append(f"parts_{n}/")
     return out
+
+
+def ib_full(src, a, b, div):
+    """組 a>b の中割りが、分割数 div の枚数そろっているときだけ、その名前（作業フォルダからの相対パス）を返す。欠けていれば []。"""
+    names = [f"ib/ib_{a}_{b}_{k}.png" if div == 6 else f"ib/ib_{a}_{b}_{k}_{div}.png" for k in range(1, div)]
+    return names if all(os.path.exists(os.path.join(src, n)) for n in names) else []
 
 
 def ib_files(src, a, b):
@@ -87,6 +93,11 @@ def merge_top(cfg, c):
         it.update(c["interp"]); it["durs"] = durs; cfg["interp"] = it
     elif "interp" in c: cfg["interp"] = c["interp"]
     if isinstance(c.get("face"), dict): cfg["face"] = {**(cfg.get("face") or {}), **c["face"]}
+    if isinstance(c.get("anchor"), dict):          # 手で決めた立ち位置（manual の points・scales）は姿勢ごとの表なので、表ごと重ねる
+        old = cfg.get("anchor") if isinstance(cfg.get("anchor"), dict) else {}; new = {**old, **c["anchor"]}
+        for k in ("points", "scales"):
+            if isinstance(old.get(k), dict) or isinstance(c["anchor"].get(k), dict): new[k] = {**(old.get(k) or {}), **(c["anchor"].get(k) or {})}
+        cfg["anchor"] = new
     if isinstance(c.get("gaze"), dict): cfg["gaze"] = {k: v for k, v in c["gaze"].items() if k != "events"}   # 視線の予定は台本に属する
 
 
@@ -123,6 +134,7 @@ def build(pack, sources, force=False):
             if h.get("base") not in cfg["poses"]: die(f"手の部品 {n} の土台 {h.get('base')} がパックに無い")
         shutil.copy2(os.path.join(sources[-1], "mascot.png"), os.path.join(tmp, "mascot.png"))
         pose_md5 = {n: md5(os.path.join(tmp, f"poses/pose_{n}.png")) for n in cfg["poses"]}
+        div = int(cfg.get("inbetween_div", 6))
         pairs, ib_steps, pair_src, missing = [], {}, {}, []
         steps_of = lambda s: cfgs[sources.index(s)].get("ib_steps") or {}
         has = lambda s, a, b: [a, b] in [list(p) for p in cfgs[sources.index(s)].get("pairs", [])]
@@ -136,7 +148,7 @@ def build(pack, sources, force=False):
                 for s in reversed(sources):                       # 後の作業フォルダから、端の絵がパックと同じ中割りを探す（どちらの向きでも）
                     for x, y in ((a, b), (b, a)):
                         if not has(s, x, y): continue
-                        fs = ib_files(s, x, y)
+                        fs = ib_full(s, x, y, div)
                         if fs and md5(os.path.join(s, f"poses/pose_{x}.png")) == pose_md5[x] and md5(os.path.join(s, f"poses/pose_{y}.png")) == pose_md5[y]:
                             got = (s, x, y); [copy(s, rel, tmp) for rel in fs]; break
                     if got: break

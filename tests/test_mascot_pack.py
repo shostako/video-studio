@@ -143,3 +143,21 @@ def test_inbetweens_are_not_redrawn_because_of_copied_dates(tmp_path):
     m = lambda p: os.path.getmtime(pk / p)
     assert m("poses/pose_bow.png") <= m("ib/ib_bow_home_1.png") < m("ib/ib_bow_home_2.png") < m("ib/ib_bow_home_5.png")
     assert m("poses/pose_home.png") <= m("ib/ib_bow_home_1.png")
+
+
+def test_partial_inbetweens_count_as_missing(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    (b / "ib/ib_bow_home_3.png").unlink()                              # 途中で止まった中割り
+    r = run("pack.py", pk, "--from", a, "--from", b)
+    assert r.returncode == 0, r.stdout + r.stderr
+    man = json.loads((pk / "pack.json").read_text(encoding="utf-8"))
+    assert "bow>home" in man["missing_inbetweens"] and not list((pk / "ib").glob("ib_bow_home_*"))
+
+
+def test_manual_anchor_maps_are_merged(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    ca = cfg(a); ca["anchor"] = {"mode": "manual", "points": {"home": [10, 20], "wave": [11, 21]}, "scales": {"wave": 1.01}}; put(a, ca)
+    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [12, 22], "bow": [13, 23]}}; put(b, cb)
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    an = cfg(pk)["anchor"]
+    assert an["points"] == {"home": [12, 22], "wave": [11, 21], "bow": [13, 23]} and an["scales"] == {"wave": 1.01}
