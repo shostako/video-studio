@@ -192,3 +192,8 @@ def test_extra_reference_hands_are_passed_after_the_crop(tmp_path):
     (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     r = run(p, "draw", "--dry-run")
     assert r.returncode != 0 and "none.png" in (r.stdout + r.stderr)
+
+    cfg["hands"]["count_3"]["refs"] = ["hands/model3.png"] * 3
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    r = run(p, "draw", "--dry-run")
+    assert r.returncode != 0 and "2つまで" in (r.stdout + r.stderr)

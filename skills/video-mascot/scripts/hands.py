@@ -30,7 +30,8 @@ def spec(P, name):
     if not h: die(f"config.hands に無い: {name}")
     for k in ("base", "box", "desc"):
         if k not in h: die(f"config.hands.{name} に {k} が無い")
-    if "refs" in h and (not isinstance(h["refs"], list) or not all(isinstance(r, str) for r in h["refs"])): die(f"config.hands.{name}.refs は作業フォルダからの相対パスの並び")
+    if "refs" in h and (not isinstance(h["refs"], list) or not all(isinstance(r, str) for r in h["refs"]) or len(h["refs"]) > 2):
+        die(f"config.hands.{name}.refs は作業フォルダからの相対パスの並び（2つまで。切り抜きと合わせて参照は3枚まで）")
     if h["base"] == name: die(f"config.hands.{name}.base が自分自身。手を描き換える元は別の姿勢にする（例: raise_r）")
     x0, y0, x1, y1 = h["box"]
     if not (x0 < x1 and y0 < y1): die(f"config.hands.{name}.box がおかしい: {h['box']}")
