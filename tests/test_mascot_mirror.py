@@ -140,3 +140,23 @@ def test_interp_allowlist_and_missing_source_image(tmp_path):
     assert run(p, "point:point_l", "raise:raise_l").returncode == 0
     ps = json.loads((p / "config.json").read_text(encoding="utf-8"))["interp"]["pairs"]
     assert "home>point_l" in ps and "point_l>raise_l" in ps
+
+
+def test_edge_words_and_reverse_pair_and_forced_cleanup(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    c["poses"]["point"]["desc"] = "her left arm points at the image-right side, toward the RIGHT edge"
+    c["pairs"].append(["point_l", "home"])                              # 反転先の組が逆向きで書いてある
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l").returncode == 0
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    assert c["poses"]["point_l"]["desc"] == "her right arm points at the image-left side, toward the LEFT edge"
+    # 前から書いてあった反転先の組は消して、元の組の向きで作り直す（組の向きと絵の名前が食い違わない）
+    assert ["home", "point_l"] in c["pairs"] and ["point_l", "home"] not in c["pairs"]
+    assert (p / "ib/ib_home_point_l_1.png").exists() and not (p / "ib/ib_point_l_home_1.png").exists()
+    # 元の組を消してから --force で作り直すと、反転した組も消える
+    c["pairs"] = [q for q in c["pairs"] if q != ["home", "point"]]; del c["ib_steps"]["home>point"]
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l", "--force").returncode == 0
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    assert not any("point_l" in q for q in c["pairs"]) and not any("point_l" in k for k in c.get("ib_steps", {}))

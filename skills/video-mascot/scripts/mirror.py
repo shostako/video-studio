@@ -111,8 +111,12 @@ def make(home, pose, prm, hm=None):
     return np.clip(out, 0, 255).astype(np.uint8), hm, hk
 
 
+SWAP = {"left": "right", "right": "left", "Left": "Right", "Right": "Left", "LEFT": "RIGHT", "RIGHT": "LEFT"}
+
+
 def swap_side(s):
-    return re.sub(r"image-(right|left)", lambda m: "image-" + ("left" if m.group(1) == "right" else "right"), s)
+    """左右の語を全部入れ替える（image-left/right、LEFT edge、her left arm も）。反転した絵では、画面の向きも体の左右も入れ替わる。"""
+    return re.sub(r"\b(left|right|Left|Right|LEFT|RIGHT)\b", lambda m: SWAP[m.group(1)], s)
 
 
 def ib_list(P, a, b):
@@ -159,6 +163,13 @@ def run(P, maps, force=False, check=False):
                [P.p("ib", f) for x, y in [(p[0], p[1]) for p in P.pairs] if d in (x, y) for f in ib_list(P, x, y)] + \
                ([P.p(f"parts_{d}")] if os.path.isdir(P.p(f"parts_{d}")) else [])
         if olds and not force: die(f"{d} は既にある（作り直すなら --force。古い絵は reject/mirror_replaced/ へ移す）")
+        # 作り直すときは、前に反転して足した組・文・秒も消し、今の元の設定から足し直す（元の組を消した後に古い組が残らないように）
+        cfg["pairs"] = [p for p in cfg.get("pairs", []) if d not in p]
+        for k in [k for k in (cfg.get("ib_steps") or {}) if d in k.split(">")]: del cfg["ib_steps"][k]
+        it = cfg.get("interp")
+        if isinstance(it, dict):
+            for k in [k for k in (it.get("durs") or {}) if d in k.split(">")]: del it["durs"][k]
+            if isinstance(it.get("pairs"), list): it["pairs"] = [k for k in it["pairs"] if d not in k.split(">")]
         if olds:
             rej = rej or P.p("reject", "mirror_replaced", time.strftime("%Y%m%d_%H%M%S")); os.makedirs(rej, exist_ok=True)
             for o in olds: shutil.move(o, os.path.join(rej, os.path.basename(o.rstrip("/"))))
@@ -188,14 +199,17 @@ def run(P, maps, force=False, check=False):
         ma, mb = side(a), side(b)
         if ma is None or mb is None or (ma, mb) == (a, b): continue
         fs = ib_list(P, a, b)
+        rev = (mb, ma) in pairs and (ma, mb) not in pairs          # 反転先の組が逆向きで書いてあれば、その向きで絵の名前と順番を作る
         for f in fs:
-            rest = f[len(f"ib_{a}_{b}_"):]
-            out, _, _ = make(home, cv2.imread(P.p("ib", f)), prm, hm); cv2.imwrite(P.p("ib", f"ib_{ma}_{mb}_{rest}"), out)
-        if (ma, mb) not in pairs and (mb, ma) not in pairs: pairs.append((ma, mb))
-        if f"{a}>{b}" in steps: steps[f"{ma}>{mb}"] = [swap_side(x) for x in steps[f"{a}>{b}"]]
+            ks = f[len(f"ib_{a}_{b}_"):-4].split("_"); k = int(ks[0]); div = int(ks[1]) if len(ks) > 1 else 6
+            name = f"ib_{mb}_{ma}_{div - k}" if rev else f"ib_{ma}_{mb}_{k}"
+            out, _, _ = make(home, cv2.imread(P.p("ib", f)), prm, hm); cv2.imwrite(P.p("ib", name + (f"_{div}" if len(ks) > 1 else "") + ".png"), out)
+        x, y = (mb, ma) if rev else (ma, mb)
+        if (x, y) not in pairs: pairs.append((x, y))
+        if f"{a}>{b}" in steps: steps[f"{x}>{y}"] = [swap_side(s_) for s_ in (steps[f"{a}>{b}"][::-1] if rev else steps[f"{a}>{b}"])]
         it = cfg.get("interp")
-        if isinstance(it, dict) and f"{a}>{b}" in (it.get("durs") or {}): it["durs"][f"{ma}>{mb}"] = it["durs"][f"{a}>{b}"]
-        done_pairs.append(f"{ma}>{mb}（{len(fs)} 枚）")
+        if isinstance(it, dict) and f"{a}>{b}" in (it.get("durs") or {}): it["durs"][f"{x}>{y}"] = it["durs"][f"{a}>{b}"]
+        done_pairs.append(f"{x}>{y}（{len(fs)} 枚）")
     it = cfg.get("interp")                         # 中割りの無い切り替え（直の補間）の秒も、両端を反転できれば写す
     if isinstance(it, dict):
         for k, v in list((it.get("durs") or {}).items()):
