@@ -148,6 +148,9 @@ def build(pack, sources, force=False):
             if n in (c.get("hands") or {}): hands[n] = c["hands"][n]
             if n in (c.get("mirrored") or {}): mirrored[n] = c["mirrored"][n]
             for rel in pose_files(s, n): copy(s, rel, tmp)
+            for r in ((c.get("hands") or {}).get(n) or {}).get("refs", []):   # 手の部品の形の手本も持ってくる（無ければ止める）
+                if not os.path.exists(os.path.join(s, r)): die(f"手の部品 {n} の手本が無い: {os.path.join(s, r)}")
+                if not os.path.exists(os.path.join(tmp, r)): copy(s, r, tmp)
             if c["poses"][n].get("face", True) is not False and not os.path.exists(os.path.join(tmp, f"parts_{n}", "parts.json")):
                 same = md5(os.path.join(s, f"poses/pose_{n}.png"))     # 部品を切っていなければ、同じ絵を持つ前の作業フォルダの部品を使う
                 alt = next((x for x in reversed(sources) if x != s and md5(os.path.join(x, f"poses/pose_{n}.png")) == same

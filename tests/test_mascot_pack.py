@@ -258,3 +258,13 @@ def test_boolean_gaze_is_merged(tmp_path):
     assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0 and cfg(pk)["gaze"] is False
     cb["gaze"] = True; put(b, cb)
     assert run("pack.py", pk, "--from", a, "--from", b, "--force").returncode == 0 and cfg(pk)["gaze"] is True
+
+
+def test_hand_reference_images_are_copied(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    (a / "guides").mkdir(); shutil.copy(a / "poses/pose_home.png", a / "guides/three.png")
+    ca = cfg(a); ca["hands"] = {"wave": {"base": "home", "box": [0, 0, 10, 10], "desc": "x", "refs": ["guides/three.png"]}}; put(a, ca)
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    assert (pk / "guides/three.png").exists()
+    (a / "guides/three.png").unlink()
+    assert run("pack.py", pk, "--from", a, "--from", b, "--force").returncode != 0
