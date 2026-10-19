@@ -144,6 +144,10 @@ def copy_home_parts(P, dst_name, img, home_img):
 def run(P, maps, force=False, check=False):
     home = P.read_pose(P.home); prm = params(P, home); hm = head_mask(home, prm)
     dst_of = dict(maps)
+    ds = [d for _, d in maps]
+    if len(set(ds)) != len(ds): die(f"作る名前が重なっている: {sorted({d for d in ds if ds.count(d) > 1})}")
+    if len(dst_of) != len(maps): die("同じ元の姿勢を2回書いている")
+    if not os.path.exists(P.p(f"parts_{P.home}", "parts.json")): die(f"home の部品が無い: parts_{P.home}（先に vm parts {P.home}）")
     for s, d in maps:
         if s not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {s}")
         if d == P.home or d in dst_of: die(f"作る名前が使えない: {d}")
@@ -163,7 +167,13 @@ def run(P, maps, force=False, check=False):
         img, hmask, hk = make(home, P.read_pose(s), prm, hm)
         cv2.imwrite(P.pose_path(d), img)
         pc = dict(cfg["poses"][s]); pc["desc"] = swap_side(pc.get("desc", "")); pc["mirror_of"] = s; pc["refs"] = [P.home]
+        W = img.shape[1]; flip_pt = lambda q: [W - 1 - float(q[0]), float(q[1])]
+        if "anchor" in pc: pc["anchor"] = flip_pt(pc["anchor"])      # 立ち位置の点も反転する
         cfg["poses"][d] = pc
+        an = cfg.get("anchor")
+        if isinstance(an, dict):
+            if s in (an.get("points") or {}): an["points"][d] = flip_pt(an["points"][s])
+            if s in (an.get("scales") or {}): an["scales"][d] = an["scales"][s]
         copy_home_parts(P, d, img, home)
         if check:
             os.makedirs(P.p("mirror_check"), exist_ok=True)

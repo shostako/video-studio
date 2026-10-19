@@ -107,3 +107,24 @@ def test_direct_switch_seconds_are_mirrored(tmp_path):
     assert run(p2, "point:point_l").returncode == 0                    # 片方だけ反転するなら、相手の無い秒は写さない
     d = json.loads((p2 / "config.json").read_text(encoding="utf-8"))["interp"]["durs"]
     assert not any("point_l>raise" in k or "raise>point_l" in k for k in d)
+
+
+def test_anchors_are_mirrored(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    c["poses"]["point"]["anchor"] = [200, 730]
+    c["anchor"] = {"mode": "manual", "points": {"home": [235, 735], "raise": [230, 735]}, "scales": {"raise": 1.01}}
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    assert run(p, "point:point_l", "raise:raise_l").returncode == 0
+    c = json.loads((p / "config.json").read_text(encoding="utf-8")); W = 470
+    assert c["poses"]["point_l"]["anchor"] == [W - 1 - 200, 730]
+    assert c["anchor"]["points"]["raise_l"] == [W - 1 - 230, 735] and c["anchor"]["scales"]["raise_l"] == 1.01
+
+
+def test_checks_happen_before_anything_is_written(tmp_path):
+    p = proj(tmp_path)
+    r = run(p, "raise:pose_l", "point:pose_l")
+    assert r.returncode != 0 and not (p / "poses/pose_pose_l.png").exists()
+    import shutil; shutil.rmtree(p / "parts_home")
+    r = run(p, "point:point_l")
+    assert r.returncode != 0 and "vm parts" in (r.stdout + r.stderr) and not (p / "poses/pose_point_l.png").exists()
