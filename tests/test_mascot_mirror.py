@@ -210,3 +210,17 @@ def test_bad_sizes_and_corrupt_frames_are_caught_before_writing(tmp_path):
     im = cv2.imread(str(p / "poses/pose_raise.png")); cv2.imwrite(str(p / "poses/pose_raise.png"), im[:-10])
     r = run(p, "raise:raise_l")
     assert r.returncode != 0 and not (p / "poses/pose_raise_l.png").exists()
+
+
+def test_pose_with_moved_head_is_rejected_and_face_meta_dropped(tmp_path):
+    p = proj(tmp_path)
+    c = json.loads((p / "config.json").read_text(encoding="utf-8")); c["poses"]["point"]["face"] = {"mouth_roi": [1, 2, 3, 4]}; c["poses"]["point"]["scale"] = 1.0
+    c["poses"]["bowish"] = {"desc": "head lower"}
+    (p / "config.json").write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+    im = cv2.imread(str(p / "poses/pose_home.png")); low = np.full_like(im, 253); low[80:] = im[:-80]   # 頭ごと 80px 下がった絵
+    cv2.imwrite(str(p / "poses/pose_bowish.png"), low)
+    r = run(p, "bowish:bowish_l")
+    assert r.returncode != 0 and "頭" in (r.stdout + r.stderr)
+    assert run(p, "point:point_l").returncode == 0
+    pc = json.loads((p / "config.json").read_text(encoding="utf-8"))["poses"]["point_l"]
+    assert "face" not in pc and "scale" not in pc

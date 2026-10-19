@@ -159,6 +159,8 @@ def run(P, maps, force=False, check=False):
         im = cv2.imread(P.pose_path(s))
         if im is None: die(f"元の姿勢の絵が無い・読めない: {P.pose_path(s)}")
         if im.shape != home.shape: die(f"{s} の絵の大きさ {im.shape[1]}x{im.shape[0]} が home と違う（反転は同じ大きさの絵だけ）")
+        sm = head_mask(im[:, ::-1].copy(), prm); iou = (sm & hm).sum() / max(1, (sm | hm).sum())   # 頭が home と同じ所にある姿勢だけ（頭を home の絵で戻すので）
+        if iou < 0.8: die(f"{s} の頭の位置・大きさが home と違う（重なり {iou:.2f}）。頭を home に戻すと首でずれるので反転しない")
         pc = P.cfg["poses"][s]                      # 頭を home に戻すので、正面で顔の見える姿勢だけ
         if pc.get("face", True) is False or pc.get("yaw") or pc.get("head_yaw"): die(f"{s} は正面で顔の見える姿勢ではない（face: false・yaw・head_yaw）。反転できるのは正面の姿勢だけ")
         if d == P.home or d in dst_of: die(f"作る名前が使えない: {d}")
@@ -198,6 +200,7 @@ def run(P, maps, force=False, check=False):
         img, hmask, hk = make(home, P.read_pose(s), prm, hm)
         cv2.imwrite(P.pose_path(d), img)
         pc = dict(cfg["poses"][s]); pc["desc"] = swap_side(pc.get("desc", "")); pc["mirror_of"] = s; pc["refs"] = [P.home]
+        for k in ("face", "scale"): pc.pop(k, None)   # 頭は home の絵そのものなので、顔の範囲と大きさは home のもの
         W = img.shape[1]; flip_pt = lambda q: [W - 1 - float(q[0]), float(q[1])]
         if "anchor" in pc: pc["anchor"] = flip_pt(pc["anchor"])      # 立ち位置の点も反転する
         cfg["poses"][d] = pc
