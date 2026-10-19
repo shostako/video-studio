@@ -1,5 +1,5 @@
 """手の部品（opt-in）: 指の形のような細かい所を、全身の絵ではなく手のアップで一度だけ描き、元の姿勢の絵にはめ込んで姿勢の絵を作る。
-  vm hands <作業フォルダ> draw [名前 ...] [--img codex|chat|chat+codex] [--dry-run]
+  vm hands <作業フォルダ> draw [名前 ...] [--img codex|chat|chat+codex|qwen] [--dry-run]
       config.hands.<名前> の base の姿勢から box を切り出して参照にし、手だけを描かせる → hands/<名前>.png（描けたものは飛ばす）
   vm hands <作業フォルダ> check [名前 ...]   描いた手を拡大して並べる → hands/check.png（指の本数は、曲げた指まで数えて人か Claude が確かめる）
   vm hands <作業フォルダ> place [名前 ...] [--force]
@@ -11,6 +11,8 @@ config:
                         "desc": "the hand shows the number three: ... Count check: 3 raised + 1 curled + thumb = 5 digits."}}
   - 名前は config.poses にも書いておく（口・目の部品や中割りの組は今までどおり。口・目は vm parts --borrow で写せる）
   - box は base の絵の座標。手首と手が全部入り、顔にかからない範囲にする（vm grid で読む）
+  - "refs": ["hands/count_4.png", ...]（opt-in）: 切り抜きの後ろに足す形の手本（作業フォルダからの相対パス）。
+    qwen で3本が4本に倒れるときは、base を4本の手にし、正しい3本の手を手本に足すと形を写す
 書かなければ何も変わらない。全身の絵で指の本数を描き分けさせると、曲げた指が残って指が多くなりやすい（手のアップだと本数が合った）。"""
 import json, os, sys
 import cv2, numpy as np
@@ -28,6 +30,7 @@ def spec(P, name):
     if not h: die(f"config.hands に無い: {name}")
     for k in ("base", "box", "desc"):
         if k not in h: die(f"config.hands.{name} に {k} が無い")
+    if "refs" in h and (not isinstance(h["refs"], list) or not all(isinstance(r, str) for r in h["refs"])): die(f"config.hands.{name}.refs は作業フォルダからの相対パスの並び")
     if h["base"] == name: die(f"config.hands.{name}.base が自分自身。手を描き換える元は別の姿勢にする（例: raise_r）")
     x0, y0, x1, y1 = h["box"]
     if not (x0 < x1 and y0 < y1): die(f"config.hands.{name}.box がおかしい: {h['box']}")
@@ -50,7 +53,13 @@ def ref_crop(P, name):
 
 
 def jobs_draw(P, ns):
-    return [(P.p("hands", f"{n}.png"), PROMPT.format(desc=spec(P, n)["desc"].strip()), [ref_crop(P, n)]) for n in ns]
+    out = []
+    for n in ns:
+        extra = [P.p(r) for r in spec(P, n).get("refs", [])]
+        miss = [r for r in extra if not os.path.exists(r)]
+        if miss: die(f"hands.{n}.refs の手本が無い: {miss}")
+        out.append((P.p("hands", f"{n}.png"), PROMPT.format(desc=spec(P, n)["desc"].strip()), [ref_crop(P, n)] + extra))
+    return out
 
 
 def archive_old(P, name, pose=True, parts_dir=True):

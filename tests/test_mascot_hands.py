@@ -175,3 +175,20 @@ def test_replacing_twice_keeps_the_first_backup(tmp_path):
     assert run(p, "place", "--force").returncode == 0                             # 同じ秒にもう一度
     saved = [f.read_bytes() for f in (p / "reject/hands_replaced").glob("count_3_*/poses/pose_count_3.png")]
     assert before in saved and len(saved) == 2
+
+
+def test_extra_reference_hands_are_passed_after_the_crop(tmp_path):
+    p = proj(tmp_path)
+    cfg = json.loads((p / "config.json").read_text(encoding="utf-8"))
+    (p / "hands").mkdir(exist_ok=True); cv2.imwrite(str(p / "hands/model3.png"), np.zeros((20, 20, 3), np.uint8))
+    cfg["hands"]["count_3"]["refs"] = ["hands/model3.png"]
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    sys.path.insert(0, str(ROOT / "skills/video-mascot/scripts"))
+    from lib import Proj
+    import hands
+    (out, prompt, refs), = hands.jobs_draw(Proj(str(p)), ["count_3"])
+    assert len(refs) == 2 and refs[0].endswith("_ref_count_3.png") and refs[1] == str(p / "hands/model3.png")
+    cfg["hands"]["count_3"]["refs"] = ["hands/none.png"]
+    (p / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    r = run(p, "draw", "--dry-run")
+    assert r.returncode != 0 and "none.png" in (r.stdout + r.stderr)

@@ -5,9 +5,10 @@
                                         （config の inbetween_prompt: "chain" なら、前の1枚だけを参照に少しずつ動かして順に描く）
   vm poses <作業フォルダ> all           上の3つを順に
   オプション: -j N（並列数、既定4）  --dry-run（描く予定だけ出す）  --only 語（出力名にその語を含むものだけ）
-            --img codex|chat|chat+codex（描く道具。既定 codex = /img。config の "img" でも指定できる。
+            --img codex|chat|chat+codex|qwen（描く道具。既定 codex = /img。config の "img" でも指定できる。
               chat は ChatGPT の通常 Chat 画面で1枚ずつ描く（references/chatgpt-chat.md）。
-              chat+codex は chat で描き、Chat の上限かログイン切れで止まったら残りを /img に切り替える）
+              chat+codex は chat で描き、Chat の上限かログイン切れで止まったら残りを /img に切り替える。
+              qwen は新PC の ComfyUI の Qwen-Image-Edit-2511 で1枚ずつ（qwenimg/qwenimg.py。手のアップ向き。Codex の枠を使わない））
 使用量の上限（img の終了コード 4）が出たら止める。止まったら時間をおいて同じコマンドをもう一度（描けた分は飛ばす）。"""
 import os, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,8 @@ from lib import Proj, die, gaze_keys, pose_view
 
 IMG = os.path.expanduser("~/.claude/skills/img/scripts/img.sh")
 CHATIMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chatimg", "chatimg.sh")
-BACKENDS = ("codex", "chat", "chat+codex")
+QWENIMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qwenimg", "qwenimg.sh")
+BACKENDS = ("codex", "chat", "chat+codex", "qwen")
 
 
 def img_backend(argv, cfg):
@@ -32,8 +34,9 @@ def img_backend(argv, cfg):
 
 
 def img_tool(backend, fell_back):
-    """この1枚を描く道具のパスと、並列にしてよいか。chat は画面が1つなので1枚ずつ。"""
+    """この1枚を描く道具のパスと、並列にしてよいか。chat は画面が1つ、qwen は GPU が1つなので1枚ずつ。"""
     if backend == "codex" or (backend == "chat+codex" and fell_back): return IMG, True
+    if backend == "qwen": return QWENIMG, False
     return CHATIMG, False
 
 
