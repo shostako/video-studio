@@ -229,3 +229,12 @@ def test_parts_are_required_or_reused_and_hand_base_change_is_reported(tmp_path)
     r = run("pack.py", pk, "--from", a, "--from", b, "--force")
     assert r.returncode == 0, r.stdout + r.stderr
     assert json.loads((pk / "pack.json").read_text(encoding="utf-8"))["hands_base_changed"] == ["wave"]
+
+
+def test_anchor_value_follows_the_pose_owner(tmp_path):
+    a, b = two(tmp_path); pk = tmp_path / "pack"
+    ca = cfg(a); ca["anchor"] = {"mode": "manual", "points": {"home": [1, 1], "point": [2, 2], "wave": [3, 3]}}; put(a, ca)
+    cb = cfg(b); cb["anchor"] = {"mode": "manual", "points": {"home": [4, 4], "point": [5, 5], "bow": [6, 6], "wave": [99, 99]}}
+    cb["poses"]["wave"] = {"desc": "not drawn in B"}; put(b, cb)      # B は wave の絵が無いのに点だけ持つ
+    assert run("pack.py", pk, "--from", a, "--from", b).returncode == 0
+    assert cfg(pk)["anchor"]["points"]["wave"] == [3, 3]                # 絵の持ち主（A）の点

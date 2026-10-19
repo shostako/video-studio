@@ -128,8 +128,10 @@ def build(pack, sources, force=False):
         if isinstance(an, dict):                       # 置き換えた姿勢に、前の作業フォルダの手で決めた立ち位置を残さない
             for n, s in owner.items():
                 own = cfgs[sources.index(s)].get("anchor"); own = own if isinstance(own, dict) else {}
-                for k in ("points", "scales"):
-                    if isinstance(an.get(k), dict) and n in an[k] and n not in (own.get(k) or {}): del an[k][n]
+                for k in ("points", "scales"):            # 姿勢の持ち主の値に戻す（後の作業フォルダの値が、前の絵に付かないように）
+                    if not isinstance(an.get(k), dict): continue
+                    if n in (own.get(k) or {}): an[k][n] = own[k][n]
+                    elif n in an[k]: del an[k][n]
         cfg["poses"] = {}; hands = {}; mirrored = {}
         for n, s in owner.items():
             c = cfgs[sources.index(s)]
