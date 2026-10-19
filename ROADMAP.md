@@ -22,12 +22,9 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - ベンチ（専門語を詰めた60秒の台本と、決めたマスコット1体）の確定と、本物の素材の用意
 - TTS エンジンの比較（Gemini TTS、Irodori、アクセントを指定できるローカル系、新しいオープン重み）
 - 声の聞き比べと、アクセントの最終判定（耳）
-- マスコットパック: `vm pack` で作業フォルダ（射出成形の `icm-v3` と仕組みの `mascot-howto-v2`）をまとめる。端の絵が変わった中割り4組（open>gassho・gassho>gap・point>raise_r・raise_r>think）を /img で描き足す
 - フレーム補間（RIFE）: `vm render` に組み込んだ（`config.interp`、opt-in）。射出成形の解説動画の作り直し（作業フォルダ `icm-v2`）で、合掌の切り替えを 1.2 秒にした書き出しを見て、既定にするかを決める。切り絵リグはそのあと
-- 口パク `mora` と `amp` の見比べ（同じ作業フォルダで `vm render --lipsync mora` と既定を書き出して並べる）
 - `vm overlay --preset` の数値（大きさの割合・安全領域 0.05）と、登場・退場の速さ・動き方が実物の動画で見て良いか（見た目の判定）
 - `vs accent` の点数が本物の声で耳の判定と合うか（`--thresh` 1.5 半音は仮の値。Gemini TTS の声で「薄い板」の良い版・崩れた版を測って比べる）
-- 二次運動（`--motion on`）と今までの動きの見比べ。首の傾き・うなずき・予備動作の大きさが実物の絵で自然か（`vm render <作業フォルダ> --motion on --mode white --from 0 --to 20` と既定を並べる）
 - 作った機能を既定にするかの判断
 - マスコットの向き・顔・視線の絵（`docs/mascot-views-spec.md` の段階 A）を `/img` で描き、揃い（足元・背の高さ・向きの取り違え）を確かめる。別の作業フォルダ `<名前>-views` で
 - 新しいキャラ（別の絵）で `references/new-character.md` を通して試す。`vm init` の雛形・`vm face` の測った範囲・`anchor.mode: feet` が実物の絵で合うか
@@ -35,6 +32,10 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
 ## 済んだこと
+
+- Monday のマスコットパック（2026-10-19、各PC のローカル `~/.local/share/video-scene/packs/monday-suit`）: 射出成形の `icm-v3` と仕組みの `mascot-howto-v2` を `vm pack` でまとめ、左手を `vm mirror` で作り、中割り2組（open>gassho・gassho>gap）を描き足した。point>raise_r・raise_r>think は via_home で home を通すので組から外した。足りない絵は無い。旧PC には無い（新PC で作った）
+
+- 口パクの方式と二次運動の見比べ（2026-10-19、ユーザーの判定）: 口はモーラ式、首の傾き・うなずきは採用、呼吸・体の揺れ・切り替えの予備動作は不採用。Monday のパックの config に入れた。既定は変えていない（DECISIONS.md の同じ日）
 
 - `vm pack` を足した（opt-in）。作業フォルダの姿勢・部品・中割り・手の部品を1つのパックにまとめ（後の `--from` が勝つ）、`--new` でパックから新しい作業フォルダを作る。中割りは端の絵がパックと同じ作業フォルダからだけ持ってくる（逆向きの組も同じ組）。台本・声・動き・視線の予定は持ってこない。テストは `tests/test_mascot_pack.py`（2026-10-19）
 
