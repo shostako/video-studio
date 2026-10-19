@@ -156,11 +156,18 @@ def run(P, maps, force=False, check=False):
     if bad: die(f"home の部品の絵が読めない: {bad}（vm parts {P.home} で切り直す）")
     for s, d in maps:
         if s not in P.cfg["poses"]: die(f"元の姿勢が config に無い: {s}")
-        if cv2.imread(P.pose_path(s)) is None: die(f"元の姿勢の絵が無い: {P.pose_path(s)}")
+        im = cv2.imread(P.pose_path(s))
+        if im is None: die(f"元の姿勢の絵が無い・読めない: {P.pose_path(s)}")
+        if im.shape != home.shape: die(f"{s} の絵の大きさ {im.shape[1]}x{im.shape[0]} が home と違う（反転は同じ大きさの絵だけ）")
         pc = P.cfg["poses"][s]                      # 頭を home に戻すので、正面で顔の見える姿勢だけ
         if pc.get("face", True) is False or pc.get("yaw") or pc.get("head_yaw"): die(f"{s} は正面で顔の見える姿勢ではない（face: false・yaw・head_yaw）。反転できるのは正面の姿勢だけ")
         if d == P.home or d in dst_of: die(f"作る名前が使えない: {d}")
         if s == P.home: die("home は反転しない（頭を戻す土台）")
+    ib_ok = {}                                   # 中割りの絵が読めて大きさが合うかは、何かを書く前にまとめて確かめる
+    for x, y in P.pairs:
+        if x in dst_of or y in dst_of:
+            for f in ib_list(P, x, y):
+                im = cv2.imread(P.p("ib", f)); ib_ok[f] = im is not None and im.shape == home.shape
     cfg = P.cfg; rej = None
     for s, d in maps:
         olds = ([P.pose_path(d)] if os.path.exists(P.pose_path(d)) else []) + \
@@ -212,7 +219,7 @@ def run(P, maps, force=False, check=False):
         if ma is None or mb is None or (ma, mb) == (a, b): continue
         div = P.ib_div
         fs = [f"ib_{a}_{b}_{k}.png" if div == 6 else f"ib_{a}_{b}_{k}_{div}.png" for k in range(1, div)]
-        if not all(os.path.exists(P.p("ib", f)) for f in fs):   # 元の中割りがそろっていない組は、反転した組を足さない
+        if not all(ib_ok.get(f) for f in fs):     # 元の中割りがそろっていない（読めない絵がある）組は、反転した組を足さない
             skipped.append(f"{a}>{b}"); continue
         rev = (mb, ma) in pairs and (ma, mb) not in pairs          # 反転先の組が逆向きで書いてあれば、その向きで絵の名前と順番を作る
         for f in fs:

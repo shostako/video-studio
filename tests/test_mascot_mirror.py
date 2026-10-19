@@ -200,3 +200,13 @@ def test_unreadable_home_part_and_unique_archive(tmp_path):
     (p / "parts_home/m1.png").write_bytes(b"broken")
     r = run(p, "point:point_l", "--force")
     assert r.returncode != 0 and "m1" in (r.stdout + r.stderr) and (p / "poses/pose_point_l.png").exists()   # 何も移さずに止まる
+
+
+def test_bad_sizes_and_corrupt_frames_are_caught_before_writing(tmp_path):
+    p = proj(tmp_path)
+    (p / "ib/ib_home_point_2.png").write_bytes(b"broken")
+    r = run(p, "point:point_l")
+    assert r.returncode == 0 and "そろっていない" in r.stdout and not list((p / "ib").glob("ib_home_point_l_*"))
+    im = cv2.imread(str(p / "poses/pose_raise.png")); cv2.imwrite(str(p / "poses/pose_raise.png"), im[:-10])
+    r = run(p, "raise:raise_l")
+    assert r.returncode != 0 and not (p / "poses/pose_raise_l.png").exists()
