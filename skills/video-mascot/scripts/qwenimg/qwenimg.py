@@ -27,6 +27,8 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "..", "..", "video-scene", "scripts")))
 
+DEADLINE = int(os.environ.get("QWENIMG_DEADLINE", "640"))     # 1回の呼び出し全体の上限（秒）。vm poses の 700 秒より短く
+
 MODELS = {"unet": "qwen-image-edit-2511-Q4_K_M.gguf", "clip": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
           "vae": "qwen_image_vae.safetensors", "lora": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"}
 
@@ -88,34 +90,46 @@ def main():
         if not any(os.path.exists(os.path.join(h3.ROOT, "ComfyUI", "models", s, MODELS[kind])) for s in subs):
             print(f"ERROR: モデルが無い: models/{subs[0]}/{MODELS[kind]}", file=sys.stderr); sys.exit(2)
     inp = os.path.join(h3.ROOT, "ComfyUI", "input", "vm"); os.makedirs(inp, exist_ok=True)
-    stamp = time.strftime("%Y%m%d_%H%M%S") + f"_{os.getpid()}"; names = []
-    for i, r in enumerate(a.ref):
-        n = f"{stamp}_{i}{os.path.splitext(r)[1] or '.png'}"; shutil.copy(r, os.path.join(inp, n)); names.append("vm/" + n)
+    stamp = time.strftime("%Y%m%d_%H%M%S") + f"_{os.getpid()}"; names = []; staged = []
+    try:
+        for i, r in enumerate(a.ref):
+            n = f"{stamp}_{i}{os.path.splitext(r)[1] or '.png'}"; shutil.copy(r, os.path.join(inp, n)); names.append("vm/" + n); staged.append(os.path.join(inp, n))
+        sys.exit(generate(a, h3, names, stamp))
+    finally:                                     # ComfyUI に渡した参照の写しは、終わったら消す（回すたびに溜まる）
+        for f in staged:
+            try: os.remove(f)
+            except OSError: pass
+
+
+def generate(a, h3, names, stamp):
+    """描いて a.out に置く。終了コードを返す。全体で DEADLINE 秒を超えない（vm poses は1枚を 700 秒で打ち切る）。"""
+    t0 = time.time()
     seed = int(os.environ.get("QWENIMG_SEED", "0")); steps = int(os.environ.get("QWENIMG_STEPS", "4")); tries = int(os.environ.get("QWENIMG_TRIES", "3"))
     try:
-        if h3.client("ensure", h3.winpath(h3.ROOT), *h3.SERVER_ARGS) != 0: print("ERROR: ComfyUI を起こせない", file=sys.stderr); sys.exit(2)
-    except SystemExit: raise
+        if h3.client("ensure", h3.winpath(h3.ROOT), *h3.SERVER_ARGS) != 0: print("ERROR: ComfyUI を起こせない", file=sys.stderr); return 2
     except Exception as e:
-        print(f"ERROR: ComfyUI を起こせない: {e}", file=sys.stderr); sys.exit(2)
+        print(f"ERROR: ComfyUI を起こせない: {e}", file=sys.stderr); return 2
     ref = cv2.imread(a.ref[0])
     for t in range(tries):
-        prefix = f"qwen_{stamp}_{t}"; job = {"graph": graph(a.prompt, names, steps, 1.0, seed + t, prefix), "timeout": 1800}
+        left = DEADLINE - (time.time() - t0)
+        if left < 60: print("ERROR: タイムアウト（描き直しの時間が残っていない）", file=sys.stderr); return 5
+        prefix = f"qwen_{stamp}_{t}"; job = {"graph": graph(a.prompt, names, steps, 1.0, seed + t, prefix), "timeout": int(left)}
         jp, rp = os.path.join(h3.VS_DIR, f"{prefix}.json"), os.path.join(h3.VS_DIR, f"{prefix}_res.json")
         json.dump(job, open(jp, "w", encoding="utf-8"))
         h3.client("run", h3.winpath(jp), h3.winpath(rp))
-        if not os.path.exists(rp): print("ERROR: ComfyUI から結果が返らない", file=sys.stderr); sys.exit(1)
+        if not os.path.exists(rp): print("ERROR: ComfyUI から結果が返らない", file=sys.stderr); return 1
         res = json.load(open(rp, encoding="utf-8"))
-        if res.get("status") == "timeout": print("ERROR: タイムアウト", file=sys.stderr); sys.exit(5)
+        if res.get("status") == "timeout": print("ERROR: タイムアウト", file=sys.stderr); return 5
         imgs = [o for o in res.get("outputs", []) if o["filename"].lower().endswith(".png")]
-        if res.get("status") != "success" or not imgs: print(json.dumps(res, ensure_ascii=False)[:2000], file=sys.stderr); sys.exit(1)
+        if res.get("status") != "success" or not imgs: print(json.dumps(res, ensure_ascii=False)[:2000], file=sys.stderr); return 1
         o = imgs[0]; src = os.path.join(h3.ROOT, "ComfyUI", "output", o["subfolder"], o["filename"])
         out = cv2.imread(src)
         if out is not None and ref is not None and flipped(out, ref):
             print(f"種 {seed + t}: 左右が反転した絵が出た。種を変えて描き直す", file=sys.stderr); continue
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True); shutil.copy(src, a.out)
         print(f"{res.get('seconds')}s VRAM {res.get('vram_peak_mib')}MiB 種 {seed + t}", file=sys.stderr); print(os.path.abspath(a.out))
-        sys.exit(0)
-    print(f"ERROR: {tries} 回とも左右が反転した絵だった", file=sys.stderr); sys.exit(1)
+        return 0
+    print(f"ERROR: {tries} 回とも左右が反転した絵だった", file=sys.stderr); return 1
 
 
 if __name__ == "__main__":

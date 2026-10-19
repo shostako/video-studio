@@ -58,3 +58,20 @@ def test_backend_qwen_is_serial():
     tool, parallel = poses.img_tool("qwen", False)
     assert tool.endswith("qwenimg.sh") and parallel is False
     assert os.access(tool, os.X_OK)
+
+
+def test_staged_references_are_removed_even_on_failure(tmp_path, monkeypatch):
+    """ComfyUI に渡す参照の写しは、失敗しても消す。h3 は合成のもの（ComfyUI を起こせない）。"""
+    import types
+    root = tmp_path / "comfy"
+    for sub in ("unet", "text_encoders", "vae", "loras"): (root / "ComfyUI/models" / sub).mkdir(parents=True)
+    for kind, sub in (("unet", "unet"), ("clip", "text_encoders"), ("vae", "vae"), ("lora", "loras")):
+        (root / "ComfyUI/models" / sub / qwenimg.MODELS[kind]).write_bytes(b"")
+    fake = types.SimpleNamespace(ROOT=str(root), VS_DIR=str(tmp_path / "vs"), SERVER_ARGS=[], winpath=lambda p: p, client=lambda *a, **k: 1)
+    monkeypatch.setitem(sys.modules, "h3", fake)
+    ref = tmp_path / "r.png"; ref.write_bytes(b"x")
+    monkeypatch.setattr(sys, "argv", ["qwenimg.py", "-p", "x", "-o", str(tmp_path / "o.png"), "-r", str(ref), "-r", str(ref)])
+    with pytest.raises(SystemExit) as e:
+        qwenimg.main()
+    assert e.value.code == 2
+    assert list((root / "ComfyUI/input/vm").iterdir()) == []
