@@ -64,6 +64,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 - `vm init <作業フォルダ> <元の絵> --desc "…"` — 新しいキャラの作業フォルダと config の雛形（向き・視線の姿勢つき）を作る。手順は references/new-character.md
 - `vm gestures [<作業フォルダ> --add 名前 ...]` — 身振りの辞書（数える・つまむ・幅を示す・腕組みなど、意味と描かせる文つき）の一覧と、config への追加。書き方は references/gestures.md
 - `vm hands <作業フォルダ> draw|check|place` — 指の形のような細かい所を、手のアップで一度だけ描いて元の姿勢の絵にはめ込む（opt-in、`config.hands`）。全身の絵で指の本数を描き分けさせると曲げた指が残って指が多くなりやすいので、数える手（`count_2`・`count_3`）はこちらで作る。描いたら `check` の絵で、**曲げた指まで数える**（親指を除いて合計4本）。書き方は references/gestures.md
+- `vm mirror <作業フォルダ> <右の姿勢>:<左の姿勢> ... [--check] [--force]` — 右の姿勢を左右反転して左の姿勢を作る（opt-in）。腕・手・指・体は反転、頭（髪の輪郭ごと）は home の絵に戻す（顔は左右対称に描かれていないので、丸ごと反転すると別の顔に見える）。home や反転する姿勢との中割りも反転し、顔の部品は home からずらさず写す。髪と肌の色は home の絵から測り、合わなければ `config.mirror`（`chin`・`neck_x`・`hair_tol`・`skin_tol`）で上書きする。`--check` の絵で頭の範囲と、髪の上に戻した手を確かめる
 - `vm face <作業フォルダ> [--write]` — 描いた口・目の差分から口と目の範囲（`face`）を測る（`vm grid` で読む代わり）
 - `vm views <作業フォルダ>` — 姿勢の絵の大きさ・足元・立ち位置・背の高さを home と比べた表と、立ち位置を揃える anchor の候補（向きの違う姿勢を描いたあとに）
 - references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md。足すポーズ（考える・お辞儀・伸びなど。`vm init --extras`）は docs/mascot-poses-spec.md

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vm — video-mascot のスクリプトを video-scene と同じ専用の Python で動かす入口
 #   vm <コマンド> [引数...]    例: vm voice proj synth / vm render proj --mode alpha / vm overlay main.mp4 proj --out out.mp4
-#   コマンド: init gestures grid poses hands parts face views voice render overlay
+#   コマンド: init gestures grid poses hands parts face views voice render overlay mirror
 set -uo pipefail
 VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"
 PY="$VS_HOME/venv/bin/python"
