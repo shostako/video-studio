@@ -62,7 +62,7 @@ def frames_for(seconds):
     n = max(5, round(seconds * 24)); return n + (5 - n % 17) % 17
 
 
-def graph(prompt, first, last, w, h, length, steps, turbo, seed, prefix):
+def graph(prompt, first, last, w, h, length, steps, turbo, seed, prefix, audio=None):
     model = ["121", 0] if turbo else ["6", 0]
     g = {
         "1": {"class_type": "LoadImage", "inputs": {"image": first}},
@@ -88,6 +88,11 @@ def graph(prompt, first, last, w, h, length, steps, turbo, seed, prefix):
     if last:
         g["2"] = {"class_type": "LoadImage", "inputs": {"image": last}}
         g["104"]["inputs"]["last_frame"] = ["2", 0]
+    if audio:   # 声を固定して、絵だけを声に合わせて作る（音声を 0 コマ目から全長に当てる）
+        g["30"] = {"class_type": "LoadAudio", "inputs": {"audio": audio}}
+        g["31"] = {"class_type": "MiniMaxH3AddGuide", "inputs": {"positive": ["104", 0], "latent": ["104", 1], "audio_vae": ["24", 0],
+                   "audio": ["30", 0], "frame_idx": 0}}
+        g["16"]["inputs"]["conditioning"] = ["31", 0]
     return g
 
 
@@ -111,6 +116,7 @@ def main():
     ap.add_argument("--steps", type=int, help="ステップ数を直接指定（turbo は --quality が無いとき 8 が目安）")
     ap.add_argument("--seed", type=int, default=1); ap.add_argument("--name", default="h3"); ap.add_argument("--out")
     ap.add_argument("--timeout", type=int, default=3600)
+    ap.add_argument("--audio", help="声の音声ファイル。渡すと H3 は声を作らず、この声に合わせて口と体を動かす。動画の長さに満たない分は無音で埋める")
     ap.add_argument("--side-dir", help="控え（_first.png・_pad.json）の置き場。既定は指示文のフォルダ＝作業フォルダ")
     a = ap.parse_args()
 
@@ -142,8 +148,15 @@ def main():
         pad["last"] = fit_aspect(a.last, f"{w}:{h}", side + "_last.png")
         last_in = f"{job_id}_last.png"; open(os.path.join(inp, last_in), "wb").write(open(side + "_last.png", "rb").read())
     json.dump(pad, open(side + "_pad.json", "w"), indent=1)
+    audio_in = None
+    if a.audio:   # LoadAudio は input の直下しか見ないので、直下に置く。長さは動画にそろえる（足りない分は無音、はみ出す分は切る）
+        if not os.path.exists(a.audio): die(f"--audio が無い: {a.audio}", 2)
+        audio_in = f"vs_{job_id}_audio.wav"
+        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.audio, "-af", "apad", "-t", f"{length / 24:.3f}", "-ac", "1", "-ar", "48000",
+                            os.path.join(ROOT, "ComfyUI", "input", audio_in)], capture_output=True, text=True)
+        if r.returncode: die(f"--audio を読めない: {r.stderr[-500:]}", 2)
 
-    g = graph(prompt, "vs/" + first_in, "vs/" + last_in if last_in else None, w, h, length, steps, turbo, a.seed, job_id)
+    g = graph(prompt, "vs/" + first_in, "vs/" + last_in if last_in else None, w, h, length, steps, turbo, a.seed, job_id, audio_in)
     jobs = os.path.join(VS_DIR, "jobs"); os.makedirs(jobs, exist_ok=True)
     job_path = os.path.join(jobs, job_id + ".json"); res_path = os.path.join(jobs, job_id + "_result.json")
     json.dump({"graph": g, "timeout": a.timeout}, open(job_path, "w", encoding="utf-8"), ensure_ascii=False)
@@ -154,7 +167,8 @@ def main():
     if not os.path.exists(res_path):
         die("結果ファイルが出なかった（h3_client が途中で落ちた）", 6)
     res = json.load(open(res_path, encoding="utf-8"))
-    for f in (os.path.join(inp, first_in), os.path.join(inp, last_in) if last_in else None):
+    for f in (os.path.join(inp, first_in), os.path.join(inp, last_in) if last_in else None,
+              os.path.join(ROOT, "ComfyUI", "input", audio_in) if audio_in else None):
         if f and os.path.exists(f): os.remove(f)
 
     st = res.get("status")

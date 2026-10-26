@@ -42,7 +42,7 @@ Flow／Vids に渡すもの: 最初の絵（縦横比を合わせて白か背景
 2. **元の絵**を img スキルで作る（同じキャラは既存の絵を `-r` で渡す）。重ね表示の置き場所（右の余白など）を空けた構図にする。手足が崩れやすい姿勢は避ける
 3. **土台を作る**
    - veo: 指示文を references/veo.md の型で書き、`vs veo --prompt-file prompt.txt --first start.png --model lite --name <名前>`。生成の前に費用を伝え、何本も作るなら先に断る
-   - h3: 指示文は veo と同じ型に、references/h3.md の「演技の調子」を足す（足さないと顔が崩れるほど暴れる）。`vs h3 --prompt-file prompt.txt --first start.png --seconds 8 --name <名前>`。費用は0円、1本6分半。種（`--seed`）を変えて何本か引ける
+   - h3: 指示文は veo と同じ型に、references/h3.md の「演技の調子」を足す（足さないと顔が崩れるほど暴れる）。`vs h3 --prompt-file prompt.txt --first start.png --seconds 8 --name <名前>`。費用は0円、1本6分半。種（`--seed`）を変えて何本か引ける。声を揃えたい・アクセントを決めたいときは、読み上げソフトの声を `--audio voice.wav` で渡す（口と体だけを H3 が付ける）
    - flipbook: 差分を img の編集で作り（references/flipbook.md の決まり文句）、`vs flipbook flip.json --outdir states`。音は `vs sfx`
    - file: 受け取った動画をそのまま使う
 4. **時刻を拾う**（veo / h3 / file）: `vs analyze clip.mp4 --ask "key=質問" --out events.json`。下書きの時刻は `vs frames` でコマを見て確かめる
