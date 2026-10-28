@@ -29,7 +29,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 作業フォルダ `~/.local/share/video-scene/work/<名前>/` に、`mascot.png`（元の絵）と `config.json`（設定。references/config-spec.md、実例は assets/examples/icm_explainer/）を置く。配置と各コマンドの出力先は `vm` が作る（poses/ parts/ parts_<姿勢>/ ib/ voice/ out/）。
 
-1. **台本を決める**: 主動画の流れに合わせて、1行 6〜9 秒に区切る。**どの言葉で姿勢を変えるか**を決める（例:「そこで…」で右を指す、「バネが縮む」で合掌）。専門用語や読みが割れる漢字は、`say`（合成に渡す文）にひらがなを混ぜる。
+1. **台本を決める**: 主動画の流れに合わせて、1行 6〜9 秒に区切る。**どの言葉で姿勢を変えるか**を決める（例:「そこで…」で右を指す、「バネが縮む」で合掌）。各行を場面の型（導入・図を示す・問い・列挙など）に分けてから身振りを選び、1本の中で手の形と意味を固定する（references/roles.md、型の一覧は `vm gestures --roles`）。専門用語や読みが割れる漢字は、`say`（合成に渡す文）にひらがなを混ぜる。
 2. **声を決める**: `config.voice.candidates` に声の説明文を3〜6通り書き、`vm voice <作業フォルダ> candidates` → `voice/cand/聞き比べ.wav` をユーザーに聞いてもらう。決まった声の1本を `voice.ref` に指定して `vm voice <作業フォルダ> synth` で全行を同じ声で作る。**出力の「台本との一致」が 0.9 未満の行は読み違い**なので、`say` を直して作り直す。声を決める前に絵へ進まない（時刻が全部ここで決まる）。
 3. **姿勢を設計する**: 基本の構え（home）と、台詞に合う身振りを5〜6個。姿勢どうしの行き来（pairs）を決める。向きや大きさがそろうよう同じ絵を参照して描かせる（references/pose-design.md）。
 4. **姿勢の絵を描く**: `vm poses <作業フォルダ> poses`（home は元の絵そのままでもよい）。1枚ずつ見て、顔つき・服・指が崩れていないか確かめる。崩れた姿勢は絵を消して描き直す。
@@ -62,7 +62,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 ## 参照
 
 - `vm init <作業フォルダ> <元の絵> --desc "…"` — 新しいキャラの作業フォルダと config の雛形（向き・視線の姿勢つき）を作る。手順は references/new-character.md
-- `vm gestures [<作業フォルダ> --add 名前 ...]` — 身振りの辞書（数える・つまむ・幅を示す・腕組みなど、意味と描かせる文つき）の一覧と、config への追加。書き方は references/gestures.md
+- `vm gestures [<作業フォルダ> --add 名前 ...]` — 身振りの辞書（数える・つまむ・幅を示す・腕組みなど、意味と描かせる文つき）の一覧と、config への追加。書き方は references/gestures.md。場面の型ごとの一覧は `--roles`、H3 の指示文に入れる同じ身振りの英語の句は `--h3`
 - `vm hands <作業フォルダ> draw|check|place` — 指の形のような細かい所を、手のアップで一度だけ描いて元の姿勢の絵にはめ込む（opt-in、`config.hands`）。全身の絵で指の本数を描き分けさせると曲げた指が残って指が多くなりやすいので、数える手（`count_2`・`count_3`）はこちらで作る。描いたら `check` の絵で、**曲げた指まで数える**（親指を除いて合計4本）。書き方は references/gestures.md `draw --img qwen` で新PC の ComfyUI の Qwen-Image-Edit-2511 で描ける（Codex の枠を使わない。`skills/video-mascot/scripts/qwenimg/qwenimg.py` の先頭に、指の本数を合わせる描かせ方）。3本が4本に倒れるときは `config.hands.<名前>.refs` に正しい手の手本を足す
 - `vm pack <パック> --from <作業フォルダ> ...` / `vm pack <パック> --new <作業フォルダ>` — 1体のキャラの姿勢・部品・中割り・手の部品を、動画ごとの作業フォルダから1つのパックにまとめ（後の `--from` が勝つ）、新しい動画はパックから作業フォルダを作って始める（opt-in）。中割りは、端の絵がパックと同じ作業フォルダからだけ持ってくる。持ってこられなかった組は `vm poses <パック> inbetweens` で描き足す。台本・声・動きは持ってこない
 - `vm mirror <作業フォルダ> <右の姿勢>:<左の姿勢> ... [--check] [--force]` — 右の姿勢を左右反転して左の姿勢を作る（opt-in）。腕・手・指・体は反転、頭（髪の輪郭ごと）は home の絵に戻す（顔は左右対称に描かれていないので、丸ごと反転すると別の顔に見える）。home や反転する姿勢との中割りも反転し、顔の部品は home からずらさず写す。髪と肌の色は home の絵から測り、合わなければ `config.mirror`（`chin`・`neck_x`・`hair_tol`・`skin_tol`）で上書きする。`--check` の絵で頭の範囲と、髪の上に戻した手を確かめる
@@ -70,6 +70,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 - `vm views <作業フォルダ>` — 姿勢の絵の大きさ・足元・立ち位置・背の高さを home と比べた表と、立ち位置を揃える anchor の候補（向きの違う姿勢を描いたあとに）
 - references/config-spec.md — config.json の全項目と、events の書き方。顔・体の向きと視線（opt-in）は「向きと視線」、絵の決まりはリポの docs/mascot-views-spec.md。足すポーズ（考える・お辞儀・伸びなど。`vm init --extras`）は docs/mascot-poses-spec.md
 - references/new-character.md — 新しいキャラの絵から、雛形・姿勢・向き・部品・足元までを通す手順と、描かせる文の書き方で分かったこと
+- references/roles.md — 身振りの役割: 場面の型、1本の中で手の形と意味を固定する、量・時刻・つなぎ・目の決まり、H3 で同じ身振りを使う書き方
 - references/pose-design.md — 姿勢と pairs の決め方、描かせる時の注意、口・目の範囲の測り方
 - references/lessons.md — うまくいかなかった所と直し方（声・絵・切り抜き・足元・重ね）
 - assets/examples/icm_explainer/ — 実例（射出圧縮成形の解説、69秒、姿勢6・中割り30）
