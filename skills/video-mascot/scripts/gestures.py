@@ -1,6 +1,8 @@
 """身振りの辞書（data/gestures.yaml）を読み、作業フォルダの config に身振りの姿勢を足す。キャラに依らない（書き方は references/gestures.md）。
   vm gestures                                  辞書の一覧（名前・意味・確かめたか・どこから動くか）
   vm gestures --check [辞書.yaml]              辞書の形を検査する（崩れていれば理由を出して終了コード 1）
+  vm gestures --roles                          場面の型（roles）と、その型で使う身振りの一覧（決まりは references/roles.md）
+  vm gestures --h3 [名前 ...] [--pronoun she]   H3 の指示文に入れる身振りの英語の句（代名詞を差し替えて出す。名前を省くと全部）
   vm gestures <作業フォルダ> --add 名前 ... [--print]
                                                config.json の poses・pairs・ib_steps に足す。書く前の config.json は config.json.bak に残す
 足すのは、姿勢の描かせる文（mascot.pronoun で代名詞を差し替える）・参照・大きさの決まり（scale・expect_height）と、
@@ -13,7 +15,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import init
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "gestures.yaml"
-KEYS = {"name", "preset", "meaning", "lines", "checked", "from", "inbetween", "refs", "desc", "steps", "scale", "expect_height"}
+KEYS = {"name", "preset", "meaning", "lines", "checked", "from", "inbetween", "refs", "desc", "steps", "scale", "expect_height", "roles", "h3", "h3_checked"}
+ROLE_KEYS = {"id", "name", "use", "gaze"}
+GAZES = ("r/l", "c", "u", "none")
 PRESETS = ("gestures", "extras_a", "extras_b")
 PRONOUN = re.compile(r"\b(i|me|my|mine|myself|we|us|our|ours|ourselves|you|your|yours|yourself|yourselves|she|her|hers|herself|he|him|his|himself)\b", re.I)   # 人称代名詞は全部止める（{p} で書く）。it・its・they・them・their は手や指を指すのにも使うので見ない
 OWN = ("refs", "desc", "steps", "scale", "expect_height")   # preset の身振りでは書かない（雛形から取る）
@@ -33,8 +37,7 @@ def preset_entry(group, name):
     return poses[name], steps.get(f"home>{name}")
 
 
-def load(path=DEFAULT_PATH):
-    """辞書を読んで検査し、名前→身振りの辞書（読んだ順）を返す。preset の身振りは雛形の desc・refs・steps などを埋める。"""
+def _read(path):
     class Loader(yaml.SafeLoader): pass
     def no_dup(loader, node, deep=False):        # PyYAML は同じキーが2回あると黙って後ろを採るので止める（terms.py と同じ）
         seen = set()
@@ -46,6 +49,37 @@ def load(path=DEFAULT_PATH):
     Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_dup)
     with open(path, encoding="utf-8") as f: doc = yaml.load(f, Loader=Loader)
     if not isinstance(doc, dict) or not isinstance(doc.get("gestures"), list): raise GestureError("一番上に gestures: の並びが要る")
+    return doc
+
+
+def _roles(doc):
+    """一番上の roles（場面の型）を検査して、id→型の辞書（読んだ順）を返す。roles が無い辞書は空（前の書き方のまま読める）。"""
+    rs = doc.get("roles", [])
+    if not isinstance(rs, list): raise GestureError("roles は場面の型の並び")
+    out = {}
+    for i, r in enumerate(rs):
+        where = f"roles の {i + 1}番目"
+        if not isinstance(r, dict): raise GestureError(f"{where}: 表になっていない")
+        bad = set(r) - ROLE_KEYS
+        if bad: raise GestureError(f"{where}: 知らないキー {sorted(bad)}")
+        rid = r.get("id")
+        if not isinstance(rid, str) or not rid or not rid.replace("_", "").isalnum() or not rid.isascii(): raise GestureError(f"{where}: id は英数字と _ にする")
+        if rid in out: raise GestureError(f"roles: 同じ id が2回ある: {rid}")
+        for k in ("name", "use"):
+            if not isinstance(r.get(k), str) or not r[k].strip(): raise GestureError(f"roles {rid}: {k} が要る")
+        if r.get("gaze", "none") not in GAZES: raise GestureError(f"roles {rid}: gaze は {', '.join(GAZES)} のどれか")
+        out[rid] = {"id": rid, "name": r["name"], "use": r["use"], "gaze": r.get("gaze", "none")}
+    return out
+
+
+def load_roles(path=DEFAULT_PATH):
+    """場面の型（id→型の辞書）。身振りの roles も合わせて検査するので、load と同じ辞書を読む。"""
+    load(path); return _roles(_read(path))
+
+
+def load(path=DEFAULT_PATH):
+    """辞書を読んで検査し、名前→身振りの辞書（読んだ順）を返す。preset の身振りは雛形の desc・refs・steps などを埋める。"""
+    doc = _read(path); roles = _roles(doc)
     out = {}
     for i, g in enumerate(doc["gestures"]):
         where = f"{i + 1}番目"
@@ -63,6 +97,17 @@ def load(path=DEFAULT_PATH):
         if not isinstance(lines, list) or not all(isinstance(s, str) for s in lines): raise GestureError(f"{n}: lines は文字列の並び")
         e = {"name": n, "meaning": g["meaning"], "lines": lines, "checked": g["checked"], "from": g.get("from", "home")}
         if not isinstance(e["from"], str): raise GestureError(f"{n}: from は姿勢の名前")
+        rl = g.get("roles", [])
+        if not isinstance(rl, list) or not all(isinstance(x, str) for x in rl): raise GestureError(f"{n}: roles は場面の型の id の並び")
+        for x in rl:
+            if x not in roles: raise GestureError(f"{n}: roles の {x} は一番上の roles に無い")
+        e["roles"] = rl
+        h3 = g.get("h3")
+        if h3 is not None and (not isinstance(h3, str) or not h3.strip()): raise GestureError(f"{n}: h3 は H3 の指示文に入れる英語の句")
+        e["h3"] = " ".join(h3.split()) if h3 else None
+        e["h3_checked"] = g.get("h3_checked", False)
+        if not isinstance(e["h3_checked"], bool): raise GestureError(f"{n}: h3_checked は true か false")
+        if e["h3_checked"] and not e["h3"]: raise GestureError(f"{n}: h3 の句が無いのに h3_checked が true")
         e["inbetween"] = g.get("inbetween", True)
         if not isinstance(e["inbetween"], bool): raise GestureError(f"{n}: inbetween は true か false")
         if not e["inbetween"] and g.get("steps") is not None: raise GestureError(f"{n}: inbetween: false の身振りに steps は書かない")
@@ -91,7 +136,7 @@ def load(path=DEFAULT_PATH):
                 if not (isinstance(eh, list) and len(eh) == 2 and all(_num(v) for v in eh) and 0 < eh[0] < eh[1]):
                     raise GestureError(f"{n}: expect_height は [下限, 上限]（home を 1 とした背の比）")
                 e["expect_height"] = [float(v) for v in eh]
-        txt = " ".join([e["desc"], *(e["steps"] or [])])
+        txt = " ".join([e["desc"], *(e["steps"] or []), e["h3"] or ""])
         left = txt.replace("{p}", "").replace("{P}", "")
         if "{" in left or "}" in left: raise GestureError(f"{n}: 置き換えられない {{…}} がある（使えるのは {{p}} と {{P}}）")
         m = PRONOUN.search(left)
@@ -162,6 +207,21 @@ def has_assets(root, n):
     return False
 
 
+def h3_phrase(e, pronoun="she"):
+    """H3 の指示文に入れる身振りの句（{p} を所有格に、{P} はその頭を大文字に）。句が無ければ None。"""
+    if pronoun not in init.POSS: raise GestureError(f"代名詞が知らない値: {pronoun}（{', '.join(init.POSS)} のどれか）")
+    if not e.get("h3"): return None
+    p = init.POSS[pronoun]; return e["h3"].replace("{P}", p[0].upper() + p[1:]).replace("{p}", p)
+
+
+def roles_table(roles, d):
+    rows = []
+    for rid, r in roles.items():
+        names = [n for n, e in d.items() if rid in e["roles"]]
+        rows.append(f"{rid:<12}{r['name']}（目: {r['gaze']}）\n{'':<12}{r['use']}\n{'':<12}身振り: {', '.join(names) or '（無し）'}")
+    return "\n".join(rows)
+
+
 def table(d):
     rows = [f"{'名前':<14}{'確かめ':<6}{'from':<10}意味"]
     for n, e in d.items(): rows.append(f"{n:<14}{'済' if e['checked'] else '未':<6}{e['from']:<10}{e['meaning']}" + ("" if e["inbetween"] else "（中割りなし）"))
@@ -174,12 +234,24 @@ if __name__ == "__main__":
     ap.add_argument("--add", nargs="+", metavar="名前", help="config に足す身振り")
     ap.add_argument("--check", action="store_true", help="辞書の形を検査する")
     ap.add_argument("--print", action="store_true", help="書き込まずに、足したあとの config.json を出す")
+    ap.add_argument("--roles", action="store_true", help="場面の型と、その型で使う身振りの一覧")
+    ap.add_argument("--h3", nargs="*", metavar="名前", help="H3 の指示文に入れる身振りの句（名前を省くと全部）")
+    ap.add_argument("--pronoun", default="she", help="--h3 の句の代名詞（she・he・it・they。既定 she）")
     ap.add_argument("--dict", default=str(DEFAULT_PATH), help="辞書のファイル（既定 data/gestures.yaml）")
     a = ap.parse_args()
     try:
         if a.check:
             d = load(a.dir or a.dict); print(f"ok: {len(d)} の身振り（確かめ済み {sum(e['checked'] for e in d.values())}）"); sys.exit(0)
         d = load(a.dict)
+        if a.roles:
+            print(roles_table(load_roles(a.dict), d)); sys.exit(0)
+        if a.h3 is not None:
+            for n in (a.h3 or [n for n, e in d.items() if e["h3"]]):
+                if n not in d: raise GestureError(f"辞書に無い身振り: {n}（vm gestures で一覧）")
+                ph = h3_phrase(d[n], a.pronoun)
+                print(f"{n}: {ph}{'' if d[n]['h3_checked'] else '（H3 では未確認）'}" if ph else f"{n}: （h3 の句が無い）")
+            print(f'使い方: While {a.pronoun} says "語", {a.pronoun} <句>.  As {a.pronoun} says "語", {a.pronoun} <句>.（1行に身振りは2つまで。references/roles.md）', file=sys.stderr)
+            sys.exit(0)
         if not a.add:
             if a.dir: sys.exit("使い方: vm gestures <作業フォルダ> --add 名前 ...（一覧は vm gestures）")
             print(table(d)); sys.exit(0)

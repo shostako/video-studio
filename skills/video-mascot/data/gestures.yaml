@@ -8,58 +8,138 @@
 # from: どの姿勢から動き出すか（既定 home）。inbetween: false なら中割りの組を足さない（指だけ変える身振りなど）。
 # steps: 中割りの各枚の様子（config の ib_steps。書かなければ chain のまま）。
 # checked: この文で実物を描いて、見た目を確かめたか（true は手組み版などで確かめ済み。false は候補で、描いてみないと分からない）
+# roles: その身振りを使う場面の型（下の roles の id）。h3: H3（vs h3）の指示文に入れる、同じ身振りの英語の句（主語は書かず動詞から。
+# 例 `While she says "語", she <h3>.`）。h3_checked: その句を H3 で実際に回して、身振りが出たか。句の一覧は `vm gestures --h3`。
+
+# 場面の型（roles）: 台本の1行を、どの型の場面かに分けてから身振りを選ぶ。決まりと実例は references/roles.md。
+# 各身振りの roles はこの id を指す。gaze は、その場面で目をどこへ向けるかの目安（r/l: 指す側、c: 見る人、u: 上、none: 指定しない）。
+roles:
+  - id: greet
+    name: あいさつ・締め
+    use: 冒頭と最後。声の前後に置き、話しながらはしない
+    gaze: c
+  - id: open_topic
+    name: 話を広げる・導入
+    use: 話題を出す、流れを見せる、「ここからが本番」
+    gaze: c
+  - id: show
+    name: 図・画面を示す
+    use: 主動画の図・部品・動きを見せる所。パネルのある側を指す
+    gaze: r/l
+  - id: question
+    name: 問いを立てる
+    use: 「なぜだろう」「普通の〜だと」と疑問や前提を出す所
+    gaze: u
+  - id: key_point
+    name: 要点を挙げる
+    use: 「そこで」「ポイントは」と、話の要を出す所
+    gaze: c
+  - id: count
+    name: 数える・列挙
+    use: 「3つ」「1つ目」「2つ目」。数える前後はグー（手の部品）を通す
+    gaze: c
+  - id: size
+    name: 大きさ・量・薄さ
+    use: 幅・長さ・薄さ・わずかな隙間を手で見せる
+    gaze: c
+  - id: state
+    name: 状態・工程の記号
+    use: 開く・隙間・閉じきる、のように工程の状態を手の形で表す。1本の動画の中で形と意味を固定する
+    gaze: r/l
+  - id: caution
+    name: 注意・待った
+    use: 「ここで注意」「ちょっと待って」
+    gaze: c
+  - id: problem
+    name: 難所・考え込む
+    use: 「ここが難しい」「問題はここだ」
+    gaze: c
+  - id: pause
+    name: 区切り・ひと息
+    use: 「さて」「一段落」。解説の本筋ではあまり使わない
+    gaze: none
 
 gestures:
   # ---- vm init の雛形にあるもの ----
   - name: open
     preset: gestures
     meaning: 説明する・話を広げる
+    roles: [open_topic, state]
+    h3: "spreads both hands apart to the sides at chest height with the palms up"
+    h3_checked: true
     lines: ["ここからが本番", "流れを見ていこう"]
     checked: true
   - name: point_l
     preset: gestures
     meaning: 画面の左にあるものを示す
+    roles: [show]
+    h3: "extends {p} hand on the image-left side toward the image-left edge with an open palm, presenting something at that edge"
+    h3_checked: false
     lines: ["こっちの図を見て"]
     checked: true
   - name: point_r
     preset: gestures
     meaning: 画面の右にあるものを示す
+    roles: [show]
+    h3: "extends {p} hand on the image-right side toward the image-right edge with an open palm, presenting something at that edge"
+    h3_checked: true
     lines: ["右の金型を見て"]
     checked: true
   - name: think
     preset: extras_a
     meaning: 考える・問いを立てる
+    roles: [question, problem]
+    h3: "raises {p} hand on the image-right side so that {p} index finger lightly touches {p} chin, thinking"
+    h3_checked: true
     lines: ["なぜだろう", "ここで疑問が出る"]
     checked: true
   - name: bow
     preset: extras_a
     meaning: あいさつ・締め
+    roles: [greet]
+    h3: "gives a small polite bow from the waist and straightens up again"
+    h3_checked: false
     lines: ["よろしく", "以上です"]
     checked: true
   - name: raise_r
     preset: extras_a
     meaning: 1つ目・ポイントを挙げる（人差し指を1本立てる）
+    roles: [key_point, count]
+    h3: "raises {p} hand on the image-right side to face height with only the index finger pointing straight up"
+    h3_checked: true
     lines: ["ポイントは1つ", "まず1つ目"]
     checked: true
   - name: stretch
     preset: extras_a
     meaning: 区切り・ひと息
+    roles: [pause]
+    h3: "clasps both hands above {p} head and stretches lightly"
+    h3_checked: false
     lines: ["さて", "一段落"]
     checked: true
   - name: crouch
     preset: extras_b
     meaning: 下にあるものを示す
+    roles: [show]
+    h3: "crouches down slightly and points toward the lower image-right area"
+    h3_checked: false
     lines: ["下の部分に注目"]
     checked: false
   - name: knee_bend
     preset: extras_b
     meaning: 軽い弾み・相づち
+    roles: [pause]
+    h3: "bends {p} knees slightly and straightens up again"
+    h3_checked: false
     lines: ["そう"]
     checked: false
 
   # ---- 候補（解説で題材をまたいで使えるもの）----
   - name: count_2
     meaning: 2つ目（人差し指と中指を立てる）
+    roles: [count]
+    h3: "raises {p} hand on the image-right side to face height with the index and middle fingers pointing straight up"
+    h3_checked: false
     lines: ["2つ目", "理由は2つ"]
     checked: false
     from: raise_r           # 腕は raise_r のまま、指だけ変える。中割りは描かない（切り替えは一瞬か transition の溶かし）
@@ -71,6 +151,9 @@ gestures:
       standing on exactly the same spot as the reference, calm closed mouth
   - name: count_3
     meaning: 3つ目（指を3本立てる）
+    roles: [count]
+    h3: "raises {p} hand on the image-right side to face height with the index, middle and ring fingers pointing straight up"
+    h3_checked: false
     lines: ["3つ目", "ポイントは3つ"]
     checked: false
     from: raise_r
@@ -82,8 +165,11 @@ gestures:
       standing on exactly the same spot as the reference, calm closed mouth
   - name: pinch
     meaning: とても薄い・わずか（親指と人差し指の間を少しだけあける）
+    roles: [size]
+    h3: "raises {p} hand on the image-right side to chest height, holding the thumb and index finger almost touching with a tiny gap"
+    h3_checked: false
     lines: ["厚みは0.3ミリ", "ほんのわずか"]
-    checked: false
+    checked: true
     desc: >-
       facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised in front of
       {p} chest at shoulder height, the thumb and index finger held almost touching with a very small gap between them, the other
@@ -96,8 +182,11 @@ gestures:
       - "{p} hand on the image-right side is almost at shoulder height, the thumb and index finger almost touching, just short of the end pose"
   - name: span
     meaning: 大きさ・幅・長さを示す（両手の手のひらを向かい合わせて肩幅にあける）
+    roles: [size]
+    h3: "holds both hands up at chest height with the palms facing each other about shoulder width apart, showing a size"
+    h3_checked: false
     lines: ["このくらいの幅", "流れる長さ"]
-    checked: false
+    checked: true
     desc: >-
       facing the camera, standing on exactly the same spot as the reference, both hands raised in front of {p} body at chest height,
       palms vertical and facing each other about shoulder width apart, as if showing the size of something, elbows bent,
@@ -110,6 +199,9 @@ gestures:
       - "both hands are at chest height with palms facing each other almost shoulder width apart, just short of the end pose"
   - name: gap
     meaning: 隙間・まだ少し残っている（両手の手のひらを指1本ほどあけて向かい合わせる）
+    roles: [state, size]
+    h3: "lifts both hands to chest height with the palms facing each other and a narrow gap between them"
+    h3_checked: true
     lines: ["この隙間を覚えておいて", "残りがストローク"]
     checked: false          # 射出成形の解説では作業フォルダの config の文で描いた。この文では未確認
     desc: >-
@@ -123,8 +215,11 @@ gestures:
       - "both palms are at chest height facing each other with a gap only a little wider than one finger, just short of the end pose"
   - name: gassho
     meaning: 閉じきる・ぴたりと合う（両手の手のひらを胸の前で合わせる）
+    roles: [state]
+    h3: "presses {p} palms flat together in front of {p} chest"
+    h3_checked: true
     lines: ["ストロークがゼロになる", "ぴったり閉じる"]
-    checked: false
+    checked: true
     desc: >-
       facing the camera, standing on exactly the same spot as the reference, both palms pressed flat together in front of {p}
       chest with the fingers pointing up, elbows relaxed, {p} face fully visible, calm closed mouth
@@ -136,8 +231,11 @@ gestures:
       - "both palms at chest height are almost touching, fingers pointing up, just short of the end pose"
   - name: arms_crossed
     meaning: 問題はここ・腕を組んで考える
+    roles: [problem]
+    h3: "folds both arms across {p} chest"
+    h3_checked: false
     lines: ["ここが難しい", "問題はここだ"]
-    checked: false
+    checked: true
     desc: >-
       facing the camera, standing on exactly the same spot as the reference, both arms folded across {p} chest, each hand resting
       on the opposite upper arm, a calm and slightly serious expression, {p} face fully visible, calm closed mouth
@@ -149,8 +247,11 @@ gestures:
       - "both arms are almost fully folded across {p} chest, each hand nearly on the opposite upper arm, just short of the end pose"
   - name: palm_stop
     meaning: 注意・ここで止まって（片手の手のひらを前に向ける）
+    roles: [caution, key_point]
+    h3: "raises {p} hand on the image-right side to shoulder height with the open palm facing the viewer, like a gentle 'wait' sign"
+    h3_checked: false
     lines: ["ここで注意", "ちょっと待って"]
-    checked: false
+    checked: true
     desc: >-
       facing the camera, standing on exactly the same spot as the reference, {p} hand on the image-right side raised to shoulder
       height with the open palm facing the viewer and the fingers pointing up, elbow bent, like a gentle 'wait' sign, the other hand

@@ -10,6 +10,8 @@ vm gestures                                     # 一覧（名前・確かめた
 vm gestures <作業フォルダ> --add pinch span --print   # 足したあとの config.json を見るだけ
 vm gestures <作業フォルダ> --add pinch span           # config.json に足す（元は config.json.bak）
 vm gestures --check                             # 辞書の形の検査（CI でも回る）
+vm gestures --roles                             # 場面の型と、その型で使う身振り（決まりは references/roles.md）
+vm gestures --h3 point_r gap --pronoun she      # H3 の指示文に入れる身振りの句
 ```
 
 足したら、いつもの順に描く: `vm poses <作業フォルダ> poses --dry-run` → `poses` → `inbetweens` → `parts`。
@@ -31,6 +33,9 @@ gestures:
     inbetween: true             # false なら中割りの組を足さない（指だけ変える身振り。切り替えは一瞬か transition）
     scale: 1.0                  # 背が変わる身振りの大きさの固定（任意）
     expect_height: [0.85, 0.96] # 背の比の想定（任意。vm views が外れを知らせる）
+    roles: [size]               # 使う場面の型（一番上の roles の id。references/roles.md）
+    h3: "raises {p} hand ..."   # H3 の指示文に入れる同じ身振りの英語の句（主語は書かず動詞から。vm gestures --h3 で代名詞を差し替えて出す）
+    h3_checked: false           # その句を H3 で回して、身振りが出たか
 ```
 
 - `preset: gestures|extras_a|extras_b` と書いた身振りは、描かせる文・参照・中割りの段階・大きさを `vm init` の雛形（`scripts/init.py`）から取る。ここには `desc` などを書かない（同じ文を2か所に持たない）

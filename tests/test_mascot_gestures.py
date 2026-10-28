@@ -146,3 +146,71 @@ def test_has_assets_does_not_match_other_poses(tmp_path):
     (tmp_path / "ib").mkdir(); (tmp_path / "ib" / "ib_home_span_wide_3.png").write_bytes(b"x")
     (tmp_path / "parts").mkdir(); (tmp_path / "parts" / "span_wide_m1.png").write_bytes(b"x")
     assert not G.has_assets(tmp_path, "span") and G.has_assets(tmp_path, "span_wide")
+
+
+# ---- 場面の型（roles）と H3 の句（h3） ----
+
+def test_shipped_dictionary_has_roles_and_h3_for_every_gesture():
+    d = G.load(); roles = G.load_roles()
+    assert len(roles) >= 8
+    for n, e in d.items():
+        assert e["roles"] and all(r in roles for r in e["roles"]), n      # どの身振りも場面の型を持つ
+        assert e["h3"] and "{" not in G.h3_phrase(e, "she"), n           # H3 の句を持ち、代名詞が埋まる
+    for rid in roles: assert any(rid in e["roles"] for e in d.values()), rid   # 使う身振りの無い型は置かない
+
+
+def test_h3_phrase_fills_pronoun_and_rejects_unknown():
+    e = G.load()["think"]
+    assert "his index finger lightly touches his chin" in G.h3_phrase(e, "he")
+    with pytest.raises(G.GestureError, match="代名詞"): G.h3_phrase(e, "xyz")
+    assert G.h3_phrase({"h3": None}) is None
+
+
+GOOD = """roles:
+  - id: show
+    name: 図を示す
+    use: 図を指す
+    gaze: r/l
+gestures:
+  - name: wave
+    meaning: 手を振る
+    checked: false
+    desc: "facing the camera, {p} hand raised"
+"""
+
+
+def test_roles_are_optional_and_old_dictionaries_still_load(tmp_path):
+    old = tmp_path / "old.yaml"
+    old.write_text('gestures:\n  - name: wave\n    meaning: 手を振る\n    checked: false\n    desc: "{p} hand raised"\n', encoding="utf-8")
+    e = G.load(old)["wave"]
+    assert e["roles"] == [] and e["h3"] is None and e["h3_checked"] is False and G.load_roles(old) == {}
+
+
+@pytest.mark.parametrize("extra, msg", [
+    ("    roles: [nope]\n", "roles に無い"),
+    ('    h3: "raises her hand"\n', "代名詞"),
+    ('    h3: "raises {x} hand"\n', "置き換えられない"),
+    ("    h3_checked: true\n", "h3 の句が無い"),
+    ("    roles: show\n", "id の並び"),
+])
+def test_bad_roles_or_h3_are_rejected(tmp_path, extra, msg):
+    with pytest.raises(G.GestureError, match=msg): G.load(_dict(tmp_path, GOOD + extra))
+
+
+@pytest.mark.parametrize("roles, msg", [
+    ("  - id: a\n    name: x\n    use: y\n    gaze: left\n", "gaze"),
+    ("  - id: a\n    name: x\n    use: y\n  - id: a\n    name: x\n    use: y\n", "同じ id"),
+    ("  - id: a\n    name: x\n", "use が要る"),
+    ("  - id: a\n    name: x\n    use: y\n    color: red\n", "知らないキー"),
+])
+def test_bad_role_table_is_rejected(tmp_path, roles, msg):
+    with pytest.raises(G.GestureError, match=msg): G.load(_dict(tmp_path, "roles:\n" + roles + GOOD.split("gestures:\n", 1)[0].split("roles:\n")[0] + "gestures:\n" + GOOD.split("gestures:\n", 1)[1]))
+
+
+def test_cli_roles_and_h3():
+    run = lambda *a: subprocess.run([sys.executable, str(SCRIPTS / "gestures.py"), *a], capture_output=True, text=True)
+    r = run("--roles"); assert r.returncode == 0 and "count" in r.stdout and "raise_r" in r.stdout
+    r = run("--h3", "gassho", "count_3", "--pronoun", "they")
+    assert r.returncode == 0 and "presses their palms" in r.stdout and "count_3:" in r.stdout and "未確認" in r.stdout
+    r = run("--h3", "nope"); assert r.returncode == 1 and "辞書に無い" in r.stderr
+    r = run(); assert r.returncode == 0 and "h3" not in r.stdout                  # 引数なしの一覧は前のまま
