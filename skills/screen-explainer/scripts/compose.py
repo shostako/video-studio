@@ -18,7 +18,8 @@ add(imgs=[(割合, 画像名)], cam=[(割合, 枠)], cur=[(割合, (x, y))], hl=
     click=[割合], key=[(割合, "文字")], film=[(割合の始め, 割合の終わり, "名前")])
   1 行の台詞に 1 回 add する。割合は、その行の声の長さに対する位置（0〜1、1 を超えると次の行の頭まで残る）。
   film は web_capture.py の drag_film / wheel_film で撮った連番（<名前>_000.png…）を、その間に重ねずに順に流す。
-  カーソルも film.json の位置をたどる。流し終えた後は imgs の絵に戻るので、終わりの割合で imgs を動きの後の撮影に切り替える。
+  カーソルも film.json の位置をたどる。流し終えた後は imgs の絵に戻るので、film の始めから終わりまでのどこかで imgs を動きの後の撮影に
+  切り替える（その切り替えは重ねない）。
 """
 import argparse, array, json, math, os, subprocess, sys, wave
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -210,6 +211,7 @@ def frame(t):
     base = img(names[k][1])
     if k > 0:                                                        # 場面の中の切り替えは 0.25 秒で重ねる
         a = (u - names[k][0]) * s["d"] / 0.25
+        if any(fa <= names[k][0] <= fb for fa, fb, _ in s["film"]): a = 1   # 連番の間か終わりでの切り替えは重ねない（動きの前の絵に戻らない）
         if a < 1: base = Image.blend(img(names[k - 1][1]), base, max(0, a))
     else:
         si = S.index(s)

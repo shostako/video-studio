@@ -156,3 +156,16 @@ def test_compose_wipe_home_corner(tmp_path):
     a = np.asarray(Image.open(next(tmp_path.glob("out_t*.png"))).convert("RGB"), np.int16)
     ring = lambda y0, y1, x0, x1: int(((a[y0:y1, x0:x1, 0] > 230) & (a[y0:y1, x0:x1, 1] < 120) & (a[y0:y1, x0:x1, 2] < 40)).sum())
     assert ring(660, 1020, 0, 380) > 500 and ring(660, 1020, 1540, 1920) < 50
+
+
+@needs_font
+def test_compose_film_end_switch_does_not_rewind(tmp_path):
+    shots = tmp_path / "shots"; shots.mkdir(); _film(shots)
+    sc = tmp_path / "film.py"                                          # 連番の終わり（.5）で動きの後の撮影 s02 に切り替える
+    sc.write_text('add(imgs=[(0, "s01"), (.5, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))], film=[(0, .5, "rot")])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n', encoding="utf-8")
+    r, _ = _run(tmp_path, "--preview", "1.05", scenes=sc)              # 切り替えの 0.05 秒後（重ねると s01 が混ざる）
+    assert r.returncode == 0, r.stderr
+    got = Image.open(next(tmp_path.glob("out_t*.png"))).getpixel((410, 545))
+    assert got == (200, 230, 200)                                     # s02 にだけある欄の色そのまま（s01 は地の色）
