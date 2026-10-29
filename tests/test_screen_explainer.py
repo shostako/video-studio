@@ -128,3 +128,60 @@ def test_compose_writes_mp4_atomically(tmp_path):
     d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
                              capture_output=True, text=True).stdout)
     assert 0.8 < d < 1.3
+
+
+def _film(shots, n=5):
+    for i in range(n):
+        Image.new("RGB", (1920, 1020), (10 + 40 * i, 200, 30)).save(shots / f"rot_{i:03d}.png")
+    (shots / "film.json").write_text(json.dumps({"rot": [[600 + 50 * i, 500] for i in range(n)]}))
+
+
+@needs_font
+def test_compose_plays_film_frames_in_order(tmp_path):
+    shots = tmp_path / "shots"; shots.mkdir(); _film(shots)
+    sc = tmp_path / "film.py"
+    sc.write_text('add(imgs=[(0, "s01")], cam=[(0, FULL)], cur=[(0, (10, 10))], film=[(0, 1, "rot")])\n'
+                  'add(imgs=[(0, "s01")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n', encoding="utf-8")
+    r, _ = _run(tmp_path, "--preview", "0.1,1.0,1.9", scenes=sc)        # 行 1 は 0〜2.0 秒、連番 5 枚
+    assert r.returncode == 0, r.stderr
+    reds = [Image.open(p).getpixel((1500, 700))[0] for p in sorted(tmp_path.glob("out_t*.png"))]
+    assert reds[0] < reds[1] < reds[2]                                # 重ねずに、順に進む
+
+
+@needs_font
+def test_compose_wipe_home_corner(tmp_path):
+    r, _ = _run(tmp_path, "--preview", "0.5", "--wipe-home", "BL")    # 行 1 の強調とカーソルは画面の上半分だけ
+    assert r.returncode == 0, r.stderr
+    a = np.asarray(Image.open(next(tmp_path.glob("out_t*.png"))).convert("RGB"), np.int16)
+    ring = lambda y0, y1, x0, x1: int(((a[y0:y1, x0:x1, 0] > 230) & (a[y0:y1, x0:x1, 1] < 120) & (a[y0:y1, x0:x1, 2] < 40)).sum())
+    assert ring(660, 1020, 0, 380) > 500 and ring(660, 1020, 1540, 1920) < 50
+
+
+@needs_font
+def test_compose_film_end_switch_does_not_rewind(tmp_path):
+    shots = tmp_path / "shots"; shots.mkdir(); _film(shots)
+    sc = tmp_path / "film.py"                                          # 連番の終わり（.5）で動きの後の撮影 s02 に切り替える
+    sc.write_text('add(imgs=[(0, "s01"), (.5, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))], film=[(0, .5, "rot")])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (10, 10))])\n', encoding="utf-8")
+    r, _ = _run(tmp_path, "--preview", "1.05", scenes=sc)              # 切り替えの 0.05 秒後（重ねると s01 が混ざる）
+    assert r.returncode == 0, r.stderr
+    got = Image.open(next(tmp_path.glob("out_t*.png"))).getpixel((410, 545))
+    assert got == (200, 230, 200)                                     # s02 にだけある欄の色そのまま（s01 は地の色）
+
+
+@needs_font
+def test_compose_wipe_avoids_film_cursor(tmp_path):
+    shots = tmp_path / "shots"; shots.mkdir()
+    for i in range(4): Image.new("RGB", (1920, 1020), (90, 90, 90)).save(shots / f"drag_{i:03d}.png")
+    (shots / "film.json").write_text(json.dumps({"drag": [[1700 + 20 * i, 850] for i in range(4)]}))   # 右下で動かす
+    sc = tmp_path / "film.py"
+    sc.write_text('add(imgs=[(0, "s01")], cam=[(0, FULL)], cur=[(0, (500, 300)), (.5, (500, 300))], film=[(.1, .9, "drag")])\n'
+                  'add(imgs=[(0, "s01")], cam=[(0, FULL)], cur=[(0, (500, 300))])\n'
+                  'add(imgs=[(0, "s02")], cam=[(0, FULL)], cur=[(0, (500, 300))])\n', encoding="utf-8")
+    r, _ = _run(tmp_path, "--preview", "0.1", scenes=sc)
+    assert r.returncode == 0, r.stderr
+    a = np.asarray(Image.open(next(tmp_path.glob("out_t*.png"))).convert("RGB"), np.int16)
+    ring = lambda y0, y1, x0, x1: int(((a[y0:y1, x0:x1, 0] > 230) & (a[y0:y1, x0:x1, 1] < 120) & (a[y0:y1, x0:x1, 2] < 40)).sum())
+    assert ring(660, 1020, 1540, 1920) < 50 and ring(0, 360, 1540, 1920) > 500     # 右下を避けて右上へ

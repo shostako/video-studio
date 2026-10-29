@@ -3,18 +3,23 @@
 
 usage:
   python3 compose.py --shots <撮影フォルダ> --voice <声の作業フォルダ> --scenes <scenes.py> --out <出力.mp4>
-                     [--wipe <口の絵のフォルダ>] [--clip-bottom 948] [--clip-right 1895]
+                     [--wipe <口の絵のフォルダ>] [--wipe-home BR] [--clip-bottom 948] [--clip-right 1895]
                      [--from 秒 --to 秒] [--preview 秒,秒,...]
   撮影フォルダ : <名前>.png（1920×1020 か、それ以上の高さ。上 1020 を使う）と rects.json（{名前: {キー: [x0,y0,x1,y1]}}）
   声の作業フォルダ: config.json（voice.lines[].text が字幕）、voice/master.wav、voice/timing.json（vm voice master の出力）
   --wipe        : mouth0.png〜mouth3.png（440×440、円 (220,238) 半径 200 に顔と肩）。閉じ→小→中→大の順。無ければワイプを出さない
+  --wipe-home   : ワイプを置く角の第一候補（BR・BL・TR・TL、既定 BR）。右に操作パネルのあるアプリは BL にする。
+                  強調の枠・カーソル・キーの札に重なる場面だけ、ほかの角へ移る
   --clip-bottom : 強調の枠の下端をここで切る（Excel はシート見出しの上 948、ブラウザは 1016）
   --preview     : 指定の時刻のコマを <出力>_t<秒>.png に書くだけ（動画は作らない）
 
 scenes.py の中で使える名前: R（rects.json）, rc(画像, キー), ctr(画像, キー), box(*枠, pad=), FULL, W, VIEW_H, add(...)
 add(imgs=[(割合, 画像名)], cam=[(割合, 枠)], cur=[(割合, (x, y))], hl=[(割合の始め, 割合の終わり, 枠)],
-    click=[割合], key=[(割合, "文字")])
+    click=[割合], key=[(割合, "文字")], film=[(割合の始め, 割合の終わり, "名前")])
   1 行の台詞に 1 回 add する。割合は、その行の声の長さに対する位置（0〜1、1 を超えると次の行の頭まで残る）。
+  film は web_capture.py の drag_film / wheel_film で撮った連番（<名前>_000.png…）を、その間に重ねずに順に流す。
+  カーソルも film.json の位置をたどる。流し終えた後は imgs の絵に戻るので、film の始めから終わりまでのどこかで imgs を動きの後の撮影に
+  切り替える（その切り替えは重ねない）。
 """
 import argparse, array, json, math, os, subprocess, sys, wave
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -22,7 +27,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ap = argparse.ArgumentParser()
 ap.add_argument("--shots", required=True); ap.add_argument("--voice", required=True)
 ap.add_argument("--scenes", required=True); ap.add_argument("--out", required=True)
-ap.add_argument("--wipe"); ap.add_argument("--clip-bottom", type=float, default=1016); ap.add_argument("--clip-right", type=float, default=1920)
+ap.add_argument("--wipe"); ap.add_argument("--wipe-home", default="BR", choices=["BR", "BL", "TR", "TL"]); ap.add_argument("--clip-bottom", type=float, default=1016); ap.add_argument("--clip-right", type=float, default=1920)
 ap.add_argument("--from", dest="t_from", type=float, default=0.0); ap.add_argument("--to", dest="t_to", type=float)
 ap.add_argument("--preview", default="")
 A = ap.parse_args()
@@ -56,7 +61,7 @@ S = []
 def add(**k):
     for key in ("imgs", "cam", "cur"):
         if not k.get(key): sys.exit(f"ERROR: 場面 {len(S) + 1} に {key} が無い")
-    k.setdefault("hl", []); k.setdefault("click", []); k.setdefault("key", []); S.append(k)
+    k.setdefault("hl", []); k.setdefault("click", []); k.setdefault("key", []); k.setdefault("film", []); S.append(k)
 ns = dict(R=R, rc=rc, ctr=ctr, box=box, FULL=FULL, W=W, VIEW_H=VIEW_H, add=add)
 exec(compile(open(A.scenes, encoding="utf-8").read(), A.scenes, "exec"), ns)
 if len(S) != len(LINES): sys.exit(f"ERROR: 場面の数 {len(S)} と台詞の行の数 {len(LINES)} が合わない")
@@ -80,6 +85,22 @@ def track(keys, u, mv=0.18, d=1.0):
         e = ease((u - a) / dur)
         cur = tuple(c + (n - c) * e for c, n in zip(cur, v))
     return cur
+
+FILM = json.load(open(os.path.join(A.shots, "film.json"), encoding="utf-8")) if os.path.exists(os.path.join(A.shots, "film.json")) else {}
+for s in S:
+    for a, b, name in s["film"]:
+        if name not in FILM: sys.exit(f"ERROR: film {name} が film.json に無い（web_capture.py の drag_film / wheel_film で撮る）")
+
+def film_at(s, u):
+    """その場面で流している連番の (コマの絵の名前, カーソルの位置)。流していなければ None"""
+    for a, b, name in s["film"]:
+        if a <= u < b:
+            n = len(FILM[name]); k = min(n - 1, int((u - a) / (b - a) * n))
+            return f"{name}_{k:03d}", FILM[name][k]
+    return None
+
+def film_img(n):                                                     # 連番は枚数が多いので覚えておかない
+    return Image.open(os.path.join(A.shots, n + ".png")).convert("RGB").crop((0, 0, W, VIEW_H))
 
 def scene_at(t):
     for s in S:
@@ -161,15 +182,17 @@ def view_of(cam):
 def cur_screen(t):
     s = scene_at(t); u = (t - s["t0"]) / s["d"]
     vx, vy, vw, vh = view_of(track(s["cam"], u, mv=0.9, d=s["d"])); z = W / vw
-    x, y = track(s["cur"], u, mv=0.55, d=s["d"]); return ((x - vx) * z, (y - vy) * z)
+    fm = film_at(s, u)
+    x, y = fm[1] if fm else track(s["cur"], u, mv=0.55, d=s["d"]); return ((x - vx) * z, (y - vy) * z)
 
 def _corner(s):
     vx, vy, vw, vh = view_of(s["cam"][-1][1]); z = W / vw
     rs = [[(r[0] - vx) * z, (r[1] - vy) * z, (r[2] - vx) * z, (r[3] - vy) * z] for a, b, r in s["hl"] if b > 0.5]
     if s["key"]: rs.append([W - 600, 60, W - 80, 160])                  # キーの札（右上）の所にはワイプを置かない
     pts = [((x - vx) * z, (y - vy) * z) for a, (x, y) in s["cur"] if a >= 0.3]
+    pts += [((x - vx) * z, (y - vy) * z) for _, _, name in s["film"] for x, y in FILM[name][::3]]   # 連番を流す間のカーソル
     best = None
-    for name in ("BR", "TR", "BL", "TL"):
+    for name in [A.wipe_home] + [c for c in ("BR", "TR", "BL", "TL") if c != A.wipe_home]:
         x0, y0 = CORNERS[name]; x1, y1 = x0 + WWD, y0 + WHT
         ov = sum(max(0, min(x1, r[2]) - max(x0, r[0])) * max(0, min(y1, r[3]) - max(y0, r[1])) for r in rs)
         ov += sum(4e4 for px, py in pts if x0 - 60 < px < x1 + 20 and y0 - 60 < py < y1 + 20)
@@ -189,11 +212,14 @@ def frame(t):
     base = img(names[k][1])
     if k > 0:                                                        # 場面の中の切り替えは 0.25 秒で重ねる
         a = (u - names[k][0]) * s["d"] / 0.25
+        if any(fa <= names[k][0] <= fb for fa, fb, _ in s["film"]): a = 1   # 連番の間か終わりでの切り替えは重ねない（動きの前の絵に戻らない）
         if a < 1: base = Image.blend(img(names[k - 1][1]), base, max(0, a))
     else:
         si = S.index(s)
         if si > 0 and (t - s["t0"]) < 0.25 and S[si - 1]["imgs"][-1][1] != names[0][1]:
             base = Image.blend(img(S[si - 1]["imgs"][-1][1]), base, (t - s["t0"]) / 0.25)
+    fm = film_at(s, u)
+    if fm: base = film_img(fm[0])                                    # 連番は重ねずにそのまま流す
     vx, vy, vw, vh = view_of(track(s["cam"], u, mv=0.9, d=s["d"])); z = W / vw
     fr = base.crop((int(vx), int(vy), int(vx + vw), int(vy + vh))).resize((W, VIEW_H), Image.BILINEAR).convert("RGBA")
     tr = lambda x, y: ((x - vx) * z, (y - vy) * z)
