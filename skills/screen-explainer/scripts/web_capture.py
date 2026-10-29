@@ -26,6 +26,8 @@ do の種類:
   hover [セレクタ]、click_xy [x, y]、drag [[x0, y0], [x1, y1], "left"|"right"|"middle"]、wheel [[x, y], 縦の量]、
   wait_for [JS の式, 打ち切りミリ秒]（式が真になるまで待つ）、js [JS の式]、
   call [関数名, 引数...]（hooks の関数を fn(page, *引数) で呼ぶ。dict を返すと、その場面の rects に足す）
+  drag_film [名前, [x0, y0], [x1, y1], 枚数, "left"|"right"]、wheel_film [名前, [x, y], 縦の量の合計, 枚数]
+    （動きを細かく刻み、1 刻みごとに <名前>_000.png… を撮る。カーソルの位置は film.json に書く。compose.py の film で流す）
 キャンバス（3D の画面など）のように要素で指せない所は、click_xy・drag・wheel か hooks で動かし、カーソルを置く点は
 rects の js か hooks の戻り値で残す（compose.py の ctr で使う）。
 押してはいけないボタン（取り込み・削除・送信など）は do に書かない。Enter も送らない。
@@ -78,6 +80,27 @@ def mouse_drag(page, a, b, button="left", steps=24):
     page.mouse.move(*a); page.mouse.down(button=button)
     page.mouse.move(*b, steps=steps); page.mouse.up(button=button)
 
+FILMS = {}
+
+def next_frame(page):
+    page.evaluate("new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+
+def film_shot(page, name, i, pos):
+    next_frame(page); page.wait_for_timeout(40); style(page)
+    page.screenshot(path=os.path.join(OUT, f"{name}_{i:03d}.png")); FILMS.setdefault(name, []).append([round(pos[0]), round(pos[1])])
+
+def drag_film(page, name, a, b, n, button="left"):
+    FILMS[name] = []; page.mouse.move(*a); page.mouse.down(button=button); film_shot(page, name, 0, a)
+    for i in range(1, n + 1):
+        x, y = a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n
+        page.mouse.move(x, y); film_shot(page, name, i, (x, y))
+    page.mouse.up(button=button)
+
+def wheel_film(page, name, at, total, n):
+    FILMS[name] = []; page.mouse.move(*at); film_shot(page, name, 0, at)
+    for i in range(1, n + 1):
+        page.mouse.wheel(0, total / n); film_shot(page, name, i, at)
+
 def act(page, a, got):
     kind, args = a[0], a[1:]
     arg = args[0] if args else None
@@ -99,6 +122,8 @@ def act(page, a, got):
     elif kind == "click_xy": page.mouse.click(*args[:2])
     elif kind == "drag": mouse_drag(page, args[0], args[1], args[2] if len(args) > 2 else "left")
     elif kind == "wheel": page.mouse.move(*args[0]); page.mouse.wheel(0, args[1])
+    elif kind == "drag_film": drag_film(page, arg, args[1], args[2], int(args[3]), args[4] if len(args) > 4 else "left")
+    elif kind == "wheel_film": wheel_film(page, arg, args[1], args[2], int(args[3]))
     elif kind == "wait_for": page.wait_for_function(arg, timeout=int(args[1]) if len(args) > 1 else 30000)
     elif kind == "js": page.evaluate(arg)
     elif kind == "call":
@@ -137,5 +162,8 @@ with sync_playwright() as p:
         rects[st["name"]] = d; print(st["name"], "ok", ("見つからない: " + ", ".join(missing)) if missing else "", flush=True)
         with open(tmp, "w", encoding="utf-8") as fo: json.dump(rects, fo, ensure_ascii=False, indent=1)
         os.replace(tmp, os.path.join(OUT, "rects.json"))         # 場面ごとに書く（途中で止まっても撮れた分の座標は残る）
+        if FILMS:
+            with open(tmp, "w", encoding="utf-8") as fo: json.dump(FILMS, fo)
+            os.replace(tmp, os.path.join(OUT, "film.json"))
     b.close()
 print("done", OUT)
