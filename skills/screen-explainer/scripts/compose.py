@@ -190,6 +190,7 @@ def _corner(s):
     rs = [[(r[0] - vx) * z, (r[1] - vy) * z, (r[2] - vx) * z, (r[3] - vy) * z] for a, b, r in s["hl"] if b > 0.5]
     if s["key"]: rs.append([W - 600, 60, W - 80, 160])                  # キーの札（右上）の所にはワイプを置かない
     pts = [((x - vx) * z, (y - vy) * z) for a, (x, y) in s["cur"] if a >= 0.3]
+    pts += [((x - vx) * z, (y - vy) * z) for _, _, name in s["film"] for x, y in FILM[name][::3]]   # 連番を流す間のカーソル
     best = None
     for name in [A.wipe_home] + [c for c in ("BR", "TR", "BL", "TL") if c != A.wipe_home]:
         x0, y0 = CORNERS[name]; x1, y1 = x0 + WWD, y0 + WHT
