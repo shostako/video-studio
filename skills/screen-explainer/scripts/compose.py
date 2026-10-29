@@ -166,6 +166,7 @@ def cur_screen(t):
 def _corner(s):
     vx, vy, vw, vh = view_of(s["cam"][-1][1]); z = W / vw
     rs = [[(r[0] - vx) * z, (r[1] - vy) * z, (r[2] - vx) * z, (r[3] - vy) * z] for a, b, r in s["hl"] if b > 0.5]
+    if s["key"]: rs.append([W - 600, 60, W - 80, 160])                  # キーの札（右上）の所にはワイプを置かない
     pts = [((x - vx) * z, (y - vy) * z) for a, (x, y) in s["cur"] if a >= 0.3]
     best = None
     for name in ("BR", "TR", "BL", "TL"):
