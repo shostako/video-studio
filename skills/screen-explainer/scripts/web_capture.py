@@ -10,20 +10,33 @@ states.json:
   "frame_match": "8767",                             （任意。iframe の URL の一部）
   "block_websocket": true,                           （任意。WebSocket をつながない＝本物の端末・会話に触らない）
   "init_script": "localStorage.setItem('k','v');",   （任意）
+  "browser_args": ["--use-angle=swiftshader"],       （任意。Chromium の起動の引数）
+  "hooks": "hooks.py",                               （任意。states.json からの相対。アプリに固有の操作を Python の関数で書く）
   "states": [ {"name": "c01",
                "do": [ ["scroll", "#s2"], ["click", "nav a[href='#s6']"], ["open", "#s1 details"], ["close", "#s1 details"],
                        ["fill_frame", "#in", ""], ["wait", 800] ],
-               "rects": {"キー": "CSS セレクタ", "列": ["CSS セレクタ", true]},     （true は「見えている全部を囲む」）
+               "rects": {"キー": "CSS セレクタ", "列": ["CSS セレクタ", true],      （true は「見えている全部を囲む」）
+                         "点": {"js": "[x0, y0, x1, y1] を返す式"}},
                "frame_rects": {"キー": "iframe の中の CSS セレクタ"} }, ... ] }
 
-do の種類: scroll（要素の頭を上から 70px の所へ。null で先頭へ）、click、open / close（details の開閉）、fill_frame（iframe の欄に文字を入れる）、wait（ミリ秒）
+do の種類:
+  scroll（要素の頭を上から 70px の所へ。null で先頭へ）、click（セレクタ）、open / close（details の開閉）、
+  fill_frame（iframe の欄に文字を入れる）、wait（ミリ秒）、
+  upload [セレクタ, ファイル]（input[type=file] に渡す）、select [セレクタ, 値か表示名]、fill [セレクタ, 文字]、press [キー]、
+  hover [セレクタ]、click_xy [x, y]、drag [[x0, y0], [x1, y1], "left"|"right"|"middle"]、wheel [[x, y], 縦の量]、
+  wait_for [JS の式, 打ち切りミリ秒]（式が真になるまで待つ）、js [JS の式]、
+  call [関数名, 引数...]（hooks の関数を fn(page, *引数) で呼ぶ。dict を返すと、その場面の rects に足す）
+キャンバス（3D の画面など）のように要素で指せない所は、click_xy・drag・wheel か hooks で動かし、カーソルを置く点は
+rects の js か hooks の戻り値で残す（compose.py の ctr で使う）。
 押してはいけないボタン（取り込み・削除・送信など）は do に書かない。Enter も送らない。
 ページが scroll-behavior: smooth でも、ここでは瞬時に動かす（滑らかなスクロールの途中で撮らない）。
 """
-import json, os, sys
+import json, os, runpy, sys
 from playwright.sync_api import sync_playwright
 
 spec = json.load(open(sys.argv[1], encoding="utf-8")); OUT = sys.argv[2]; os.makedirs(OUT, exist_ok=True)
+BASE = os.path.dirname(os.path.abspath(sys.argv[1]))
+HOOKS = runpy.run_path(os.path.join(BASE, spec["hooks"])) if spec.get("hooks") else {}
 W, H = 1920, 1020
 RECT_JS = """([s, all_]) => { const es = [...document.querySelectorAll(s)].filter(e => { const r = e.getBoundingClientRect();
   return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight; });
@@ -61,30 +74,56 @@ def scroll(page, sel):
         scrollTo({top: Math.max(0, e.getBoundingClientRect().top + scrollY - 70), behavior: 'instant'}); }""", sel)
     page.wait_for_timeout(300)
 
+def mouse_drag(page, a, b, button="left", steps=24):
+    page.mouse.move(*a); page.mouse.down(button=button)
+    page.mouse.move(*b, steps=steps); page.mouse.up(button=button)
+
+def act(page, a, got):
+    kind, args = a[0], a[1:]
+    arg = args[0] if args else None
+    if kind == "scroll": scroll(page, arg)
+    elif kind == "click": page.click(arg); page.wait_for_timeout(800)
+    elif kind in ("open", "close"):
+        page.evaluate("([s, o]) => { const d = document.querySelector(s); if (d) d.open = o; }", [arg, kind == "open"])
+    elif kind == "fill_frame":
+        f = frame_of(page)
+        if f: f.fill(arg, args[1])
+    elif kind == "wait": page.wait_for_timeout(int(arg))
+    elif kind == "upload": page.set_input_files(arg, os.path.join(BASE, args[1]))
+    elif kind == "select":
+        try: page.select_option(arg, value=args[1], timeout=3000)
+        except Exception: page.select_option(arg, label=args[1])
+    elif kind == "fill": page.fill(arg, args[1])
+    elif kind == "press": page.keyboard.press(arg)
+    elif kind == "hover": page.hover(arg)
+    elif kind == "click_xy": page.mouse.click(*args[:2])
+    elif kind == "drag": mouse_drag(page, args[0], args[1], args[2] if len(args) > 2 else "left")
+    elif kind == "wheel": page.mouse.move(*args[0]); page.mouse.wheel(0, args[1])
+    elif kind == "wait_for": page.wait_for_function(arg, timeout=int(args[1]) if len(args) > 1 else 30000)
+    elif kind == "js": page.evaluate(arg)
+    elif kind == "call":
+        if arg not in HOOKS: sys.exit(f"ERROR: hooks に関数 {arg} が無い")
+        r = HOOKS[arg](page, *args[1:])
+        if isinstance(r, dict): got.update({k: [round(x) for x in v] for k, v in r.items()})
+    else: sys.exit(f"ERROR: 知らない do: {kind}")
+
 rects = {}
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = p.chromium.launch(args=spec.get("browser_args", []))
     ctx = b.new_context(viewport={"width": W, "height": H}, device_scale_factor=1, locale="ja-JP")
     if spec.get("block_websocket"): ctx.route_web_socket("**", lambda ws: None)
     if spec.get("init_script"): ctx.add_init_script(spec["init_script"])
     page = ctx.new_page(); page.goto(spec["url"]); page.wait_for_timeout(2500)
     for st in spec["states"]:
-        for act in st.get("do", []):
-            kind, arg = act[0], (act[1] if len(act) > 1 else None)
-            if kind == "scroll": scroll(page, arg)
-            elif kind == "click": page.click(arg); page.wait_for_timeout(800)
-            elif kind in ("open", "close"):
-                page.evaluate("([s, o]) => { const d = document.querySelector(s); if (d) d.open = o; }", [arg, kind == "open"])
-            elif kind == "fill_frame":
-                f = frame_of(page)
-                if f: f.fill(arg, act[2])
-            elif kind == "wait": page.wait_for_timeout(int(arg))
-        page.wait_for_timeout(700); style(page)
-        page.screenshot(path=os.path.join(OUT, st["name"] + ".png"))
         d = {}
+        for a in st.get("do", []): act(page, a, d)
+        page.wait_for_timeout(int(st.get("settle", 700))); style(page)
+        page.screenshot(path=os.path.join(OUT, st["name"] + ".png"))
         for k, v in st.get("rects", {}).items():
-            sel, all_ = (v, False) if isinstance(v, str) else (v[0], bool(v[1]))
-            r = page.evaluate(RECT_JS, [sel, all_])
+            if isinstance(v, dict): r = page.evaluate(v["js"])
+            else:
+                sel, all_ = (v, False) if isinstance(v, str) else (v[0], bool(v[1]))
+                r = page.evaluate(RECT_JS, [sel, all_])
             if r: d[k] = [round(x) for x in r]
         f = frame_of(page)
         if f:
@@ -94,7 +133,9 @@ with sync_playwright() as p:
                 r = f.evaluate(RECT_JS, [sel, False])
                 if r: d[k] = [round(r[0] + fx), round(r[1] + fy), round(r[2] + fx), round(r[3] + fy)]
         missing = sorted((set(st.get("rects", {})) | set(st.get("frame_rects", {}))) - set(d))
+        tmp = os.path.join(OUT, ".rects.json.tmp")
         rects[st["name"]] = d; print(st["name"], "ok", ("見つからない: " + ", ".join(missing)) if missing else "", flush=True)
-    json.dump(rects, open(os.path.join(OUT, "rects.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        with open(tmp, "w", encoding="utf-8") as fo: json.dump(rects, fo, ensure_ascii=False, indent=1)
+        os.replace(tmp, os.path.join(OUT, "rects.json"))         # 場面ごとに書く（途中で止まっても撮れた分の座標は残る）
     b.close()
 print("done", OUT)
