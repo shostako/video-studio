@@ -1,8 +1,8 @@
 # video-studio
 
-Claude Code の動画生成スキル（video-scene / video-mascot）を改善していく開発リポ。
+Claude Code の動画生成スキル（video-scene / video-mascot / screen-explainer）を改善していく開発リポ。
 
-- スキルの正本: `skills/video-scene`、`skills/video-mascot`
+- スキルの正本: `skills/video-scene`、`skills/video-mascot`、`skills/screen-explainer`（画面を撮って操作を説明する動画）
 - 経緯と現状: `docs/handoff-2026-10-15.md`
 - 作業ログ: `logs/`
 
@@ -13,7 +13,7 @@ Claude Code が読むのは `~/.claude/skills/<名前>/`。そこにはこのリ
 
 - `~/ClaudeCode/video-studio` は **常に main をチェックアウトしておく**。symlink はチェックアウト中の中身を指すので、ここでブランチを切ると動いているスキルもそのブランチに変わる。
 - 機能の作業は worktree で行う（例: `git worktree add ../.wt-video-studio-<名前> -b <ブランチ>`）。
-- `~/.claude/.gitignore` には `skills/video-scene` と `skills/video-mascot` を **末尾の `/` 無しで**書く。`/` 付きのパターンはディレクトリにしか効かず、symlink に置き換えると外れて、git-sync がリンクを自動でコミットしてしまう。
+- `~/.claude/.gitignore` には `skills/video-scene`・`skills/video-mascot`・`skills/screen-explainer` を **末尾の `/` 無しで**書く。`/` 付きのパターンはディレクトリにしか効かず、symlink に置き換えると外れて、git-sync がリンクを自動でコミットしてしまう。
 
 ### リンクを張る・確かめる
 

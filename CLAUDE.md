@@ -1,13 +1,13 @@
 # video-studio
 
-動画生成スキル（video-scene / video-mascot）を改善していく開発リポ。
+動画生成スキル（video-scene / video-mascot / screen-explainer）を改善していく開発リポ。
 
 ## 最初に読むもの
 - `docs/handoff-2026-10-15.md` — このリポを作るまでの経緯、決めたこと、声のこもりの調査結果、次にやること
 - `logs/yyyy-MM.md` — 作業ログ（進捗の正本は logs と git log）
 
 ## 置き場所の決まり（手元の話。クラウドのスレッドには関係しない）
-- スキルの正本: `skills/video-scene`、`skills/video-mascot`。`~/.claude/skills/` からは symlink で指す（張り方と注意は README の「スキルの置き方」）
+- スキルの正本: `skills/video-scene`、`skills/video-mascot`、`skills/screen-explainer`。`~/.claude/skills/` からは symlink で指す（張り方と注意は README の「スキルの置き方」）
 - `~/ClaudeCode/video-studio` は main のままにする。動いているスキルはここの中身なので、ブランチを切るのは worktree で
 - コード・手順書・ログ: このリポ（パブリック）
 - 素材・作業フォルダ: `~/.local/share/video-scene/work/<名前>/`（各PCのローカル、git に入れない）
