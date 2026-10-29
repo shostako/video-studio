@@ -17,6 +17,7 @@ states.json: [ {"name": "s01", "sheet": "シート名", "row": 1, "col": 1, "sel
   - 入力規則のリストは Alt+↓ では開かないことがある。マウスで▼を押す（セルの右端の外側）
   - ウィンドウ枠の固定がある所は、セルが属する区画（Panes(1..4)）で座標を変換しないとずれる
   - 撮った後は写しを保存せずに閉じる。もともと開いていたブックは前に戻す
+  - 撮るのは Excel の窓が載っているモニタだけ。rects.json の座標もそのモニタの左上を原点にする（左や上に別のモニタがあってもずれない）
 """
 import ctypes, json, os, sys, time
 import win32api, win32com.client, win32con, win32gui
@@ -50,6 +51,11 @@ def rect(win, ws, addr):
     return [p0.PointsToScreenPixelsX(a.Left), p0.PointsToScreenPixelsY(a.Top),
             p1.PointsToScreenPixelsX(b.Left + b.Width), p1.PointsToScreenPixelsY(b.Top + b.Height)]
 
+def monitor_of(hwnd):
+    """Excel の窓がいちばん多く載っているモニタの範囲（仮想デスクトップの座標）。撮影と枠はこの範囲の左上を原点にそろえる。"""
+    l, t, r, b = win32api.GetMonitorInfo(win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST))["Monitor"]
+    return l, t, r, b
+
 def click(x, y):
     win32api.SetCursorPos((int(x), int(y))); time.sleep(0.2)
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0); time.sleep(0.05)
@@ -63,14 +69,16 @@ try:
         ws = wb.Worksheets(st["sheet"]); ws.Activate(); front(); win = xl.ActiveWindow
         win.ScrollRow = st.get("row", 1); win.ScrollColumn = st.get("col", 1)
         ws.Range(st.get("sel", "A1")).Select(); time.sleep(0.4)
-        rects[st["name"]] = {k: rect(win, ws, a) for k, a in st.get("rects", {}).items()}
+        ml, mt, mr, mb = monitor_of(hwnd)
+        rel = lambda q: [q[0] - ml, q[1] - mt, q[2] - ml, q[3] - mt]
+        rects[st["name"]] = {k: rel(rect(win, ws, a)) for k, a in st.get("rects", {}).items()}
         if st.get("dropdown"):
             r = rect(win, ws, st.get("sel", "A1")); click(r[2] + 12, (r[1] + r[3]) / 2); time.sleep(0.8)
-            rects[st["name"]]["_arrow"] = [r[2] + 2, r[1], r[2] + 22, r[3]]
+            rects[st["name"]]["_arrow"] = rel([r[2] + 2, r[1], r[2] + 22, r[3]])
         if st.get("type") is not None:
             sh.SendKeys(st["type"]); time.sleep(0.6)
         time.sleep(0.8)
-        ImageGrab.grab(all_screens=True).save(os.path.join(out, st["name"] + ".png"))
+        ImageGrab.grab(bbox=(ml, mt, mr, mb), all_screens=True).save(os.path.join(out, st["name"] + ".png"))
         if st.get("dropdown"): sh.SendKeys("{ESC}"); time.sleep(0.4)
         if st.get("type") is not None: sh.SendKeys("{ENTER}"); time.sleep(1.0)
         print(st["name"], "ok", flush=True)

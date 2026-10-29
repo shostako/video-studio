@@ -34,12 +34,25 @@ def frame_of(page):
     m = spec.get("frame_match")
     return next((f for f in page.frames if m and m in f.url), None)
 
+INJECT_JS = """css => { let s = document.getElementById('se-redact');
+  if (!s) { s = document.createElement('style'); s.id = 'se-redact'; (document.head || document.documentElement).appendChild(s); }
+  s.textContent = css; return document.getElementById('se-redact').textContent === css; }"""
+
 def style(page):
-    if spec.get("blur_css"): page.add_style_tag(content=spec["blur_css"])
-    f = frame_of(page)
-    if f and spec.get("frame_css"):
-        try: f.add_style_tag(content=spec["frame_css"])
-        except Exception as e: print("frame css:", e)
+    """ぼかしの CSS を入れる。撮る直前に毎回呼ぶ。入らなければ撮らずに止める（ぼかしていない画面を残さない）。"""
+    for target, css, what in ((lambda: page.main_frame, spec.get("blur_css"), "blur_css"), (lambda: frame_of(page), spec.get("frame_css"), "frame_css")):
+        if not css: continue
+        err = None
+        for _ in range(5):
+            try:
+                f = target()
+                if f is None: err = f"iframe（{spec.get('frame_match')}）が見つからない"
+                elif f.evaluate(INJECT_JS, css): err = None; break
+                else: err = "CSS が入ったことを確かめられない"
+            except Exception as e:
+                err = str(e)
+            page.wait_for_timeout(500)
+        if err: sys.exit(f"ERROR: {what} を入れられないので撮影を止めた: {err}")
 
 def scroll(page, sel):
     page.evaluate("""s => { document.documentElement.style.scrollBehavior = 'auto';
@@ -54,19 +67,19 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={"width": W, "height": H}, device_scale_factor=1, locale="ja-JP")
     if spec.get("block_websocket"): ctx.route_web_socket("**", lambda ws: None)
     if spec.get("init_script"): ctx.add_init_script(spec["init_script"])
-    page = ctx.new_page(); page.goto(spec["url"]); page.wait_for_timeout(2500); style(page)
+    page = ctx.new_page(); page.goto(spec["url"]); page.wait_for_timeout(2500)
     for st in spec["states"]:
         for act in st.get("do", []):
             kind, arg = act[0], (act[1] if len(act) > 1 else None)
             if kind == "scroll": scroll(page, arg)
-            elif kind == "click": page.click(arg); page.wait_for_timeout(800); style(page)
+            elif kind == "click": page.click(arg); page.wait_for_timeout(800)
             elif kind in ("open", "close"):
                 page.evaluate("([s, o]) => { const d = document.querySelector(s); if (d) d.open = o; }", [arg, kind == "open"])
             elif kind == "fill_frame":
                 f = frame_of(page)
                 if f: f.fill(arg, act[2])
             elif kind == "wait": page.wait_for_timeout(int(arg))
-        page.wait_for_timeout(700)
+        page.wait_for_timeout(700); style(page)
         page.screenshot(path=os.path.join(OUT, st["name"] + ".png"))
         d = {}
         for k, v in st.get("rects", {}).items():
