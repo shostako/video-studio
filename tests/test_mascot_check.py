@@ -169,14 +169,15 @@ def test_render_check_only_makes_no_video_and_calls_no_rife(tmp_path, env):
 FPS = 30
 
 
-def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0):
+def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0, start=0.0):
     """白地に「腕」（1.0〜1.3 秒に横へ動く）と「顔」（口は毎コマでたらめに変わる、目は 0.2 秒と 3.2 秒で開き 2.6 秒で閉じる）。
-    2.5 秒の切り替えでは顔（目）しか変わらない＝身振りが消えた切り替え。lead 秒の無地を頭に足せる。"""
+    2.5 秒の切り替えでは顔（目）しか変わらない＝身振りが消えた切り替え。lead 秒の無地を頭に足せる。
+    start 秒より前は書かない（vm render --from start で書き出した動画と同じく、動画の 0 秒が start 秒）。"""
     rng = np.random.default_rng(7); W, H = canvas or size; ox, oy = offset
     p = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
                           "-c:v", "libx264", "-crf", "10", "-pix_fmt", "yuv420p", str(path)], stdin=subprocess.PIPE, env=env)
-    for f in range(int((4.0 + lead) * FPS)):
-        t = f / FPS - lead; im = np.full((H, W), 250, np.uint8)
+    for f in range(int(round((4.0 + lead - start) * FPS))):
+        t = f / FPS - lead + start; im = np.full((H, W), 250, np.uint8)
         if t >= 0:
             v = im[oy:oy + size[1], ox:ox + size[0]]
             u = min(1.0, max(0.0, (t - 1.0) / 0.3)); x = int(40 + 100 * u)
@@ -187,9 +188,9 @@ def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0
     p.stdin.close(); assert p.wait() == 0
 
 
-def switches_json(path):
-    sws = [{**SW1, "status": "ok"}, {"at": 2.5, "dur": 0.3, "from": "point", "to": "home", "kind": "ib", "engine": "drawn", "status": "ok"}]
-    json.dump({"fps": FPS, "from": 0.0, "to": 4.0, "problems": 0, "head_spans": [], "switches": sws}, open(path, "w"))
+def switches_json(path, start=0.0, sws=None):
+    sws = sws or [{**SW1, "status": "ok"}, {"at": 2.5, "dur": 0.3, "from": "point", "to": "home", "kind": "ib", "engine": "drawn", "status": "ok"}]
+    json.dump({"fps": FPS, "from": start, "to": 4.0, "problems": 0, "head_spans": [], "switches": sws}, open(path, "w"))
 
 
 def check(video, env, *extra):
@@ -214,6 +215,34 @@ def test_check_on_composited_video_with_crop_and_shift(tmp_path, env):
     r = check(v, env, "--switches", str(j), "--crop", "300,100,240,320", "--shift", "0.5")
     assert r.returncode == 0, r.stderr[-2000:]
     assert [s["verdict"] for s in json.load(open(tmp_path / "full.motion.json"))["switches"]] == ["moved", "still"]
+
+
+def test_check_video_rendered_with_from(tmp_path, env):
+    """vm render --from 0.5 の動画（動画の 0 秒が 0.5 秒）。一覧の時刻から 0.5 秒を引いて読む（引かないと全部範囲外で、--strict が何も測らずに通った）。"""
+    v = tmp_path / "m.mp4"; synth_video(v, env, start=0.5); switches_json(tmp_path / "m.check.json", start=0.5)
+    r = check(v, env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert [s["verdict"] for s in json.load(open(tmp_path / "m.motion.json"))["switches"]] == ["moved", "still"]
+
+
+def test_check_without_rest_pairs_is_unknown_and_strict_fails(tmp_path, env):
+    """切り替えが詰まっていて話しているだけの区間が取れない: 顔を外せないので「測れない」。画面全体で「動いた」と言わない。"""
+    v = tmp_path / "m.mp4"; synth_video(v, env)
+    sws = [{"at": 0.2 + 0.5 * i, "dur": 0.3, "from": "home" if i % 2 == 0 else "point", "to": "point" if i % 2 == 0 else "home",
+            "kind": "ib", "engine": "drawn", "status": "ok"} for i in range(8)]
+    switches_json(tmp_path / "m.check.json", sws=sws)
+    r = check(v, env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    j = json.load(open(tmp_path / "m.motion.json"))
+    assert j["face_mask"] is None and {s["verdict"] for s in j["switches"]} <= {"unknown", "skip"} and "測れない" in r.stdout
+    assert check(v, env, "--strict").returncode == 3
+
+
+def test_check_strict_fails_when_nothing_was_measured(tmp_path, env):
+    """切り替えがあるのに 1 件も測れない（--shift の取り違えなど）は --strict で失敗。"""
+    v = tmp_path / "m.mp4"; synth_video(v, env); switches_json(tmp_path / "m.check.json")
+    r = check(v, env, "--shift", "10", "--strict")
+    assert r.returncode == 3 and "1 件も測れなかった" in r.stdout
 
 
 def test_check_reports_render_problems_and_needs_switches(tmp_path, env):
