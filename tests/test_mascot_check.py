@@ -105,6 +105,9 @@ def test_rest_pairs_avoid_switches_and_head():
     assert pr and all(not (p < b1 + 0.15 and q > b0 - 0.15) for p, q in pr for b0, b1 in busy)
     assert all(q - p == pytest.approx(0.4) for p, q in pr)
     assert len(lib.rest_pairs(sws, [], 0.1, 0.0, 1000.0, limit=50)) == 50
+    far = [SW1, {"at": 10.0, "dur": 0.3, "from": "point", "to": "home", "kind": "ib"}]   # 範囲（4 秒まで）の後の切り替え
+    pr = lib.rest_pairs(far, [], 0.4, 0.0, 4.0)
+    assert pr and all(0.0 <= p and q < 4.0 for p, q in pr)
 
 
 # ---------- vm render の表と .check.json ----------

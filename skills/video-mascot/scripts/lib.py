@@ -1098,8 +1098,9 @@ def rest_pairs(switches, busy, span, t_lo, t_hi, margin=0.15, step=0.5, limit=20
     """切り替えも頭の動き（busy [(始め, 終わり), ...]）も無い区間から、間隔 span の時刻の組 [(t, t + span), ...]（多すぎれば間引く）。"""
     spans = sorted([(float(s["at"]), float(s["at"]) + (float(s["dur"]) if s["kind"] != "instant" else 0.0)) for s in switches] + [tuple(b) for b in busy])
     free, cur = [], t_lo
-    for s0, s1 in spans:
-        if s0 - margin > cur: free.append((cur, s0 - margin))
+    for s0, s1 in spans:                            # 区間は [t_lo, t_hi) の中だけ（一部だけ書き出したとき、範囲の後の切り替えで外へはみ出さない）
+        if cur >= t_hi: break
+        if s0 - margin > cur: free.append((cur, min(s0 - margin, t_hi)))
         cur = max(cur, s1 + margin)
     if t_hi > cur: free.append((cur, t_hi))
     out = []
