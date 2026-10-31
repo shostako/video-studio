@@ -190,3 +190,24 @@ def test_smooth_mouth_r2_drops_runs_up_to_r():
 def test_smooth_mouth_r2_keeps_last_run_and_first_frame():
     assert lib.smooth_mouth(["m3", "m1", "m1", "m1", "m4"], 2) == ["m3", "m1", "m1", "m1", "m4"]
     assert lib.smooth_mouth([], 2) == [] and lib.smooth_mouth(["m1"], 1) == ["m1"]
+
+
+# ---------- frame_levels ----------
+@pytest.mark.parametrize("sr, fps", [(16000, 60), (16000, 30), (44100, 60), (48000, 24)])
+def test_frame_levels_stays_on_time_at_the_end(sr, fps):
+    """280 秒の無音の終わり近く（277.4 秒）に 0.5 秒の音を置き、音が鳴っているコマがその時刻に来る（sr // fps の歩幅だとずれた）。"""
+    import numpy as np
+    dur, t0, t1 = 280.0, 277.4, 277.9
+    x = np.zeros(int(dur * sr), np.float32); x[int(t0 * sr):int(t1 * sr)] = 0.5
+    nall = int(dur * fps); win = sr * 2 // 30
+    lv = lib.frame_levels(x, sr, fps, nall, win)
+    on = np.nonzero(lv > 0.25)[0]
+    w = win / sr                                                     # 窓（約 0.067 秒）が音にかかっているコマだけが鳴る
+    assert t0 - w - 1 / fps <= on[0] / fps <= t0 and t1 - w <= on[-1] / fps <= t1   # sr // fps の歩幅だと 16000 Hz・60fps で 0.69 秒早くずれた
+    assert lv[-1] == 0 and len(lv) == nall
+
+
+def test_frame_levels_outside_the_wave_is_zero():
+    import numpy as np
+    lv = lib.frame_levels(np.ones(1000, np.float32), 16000, 60, 10, 533)
+    assert lv[0] == pytest.approx(1.0) and lv[4] == 0 and lv[9] == 0     # 1000 サンプルの外のコマ（4 は 1067 から）は 0

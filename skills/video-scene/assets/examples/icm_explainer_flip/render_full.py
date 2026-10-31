@@ -18,8 +18,8 @@ LDUR = {n: probe(f"../tts/out/irodori_final_v2/l{n}.wav") for n in L}
 def load_audio(p, sr=16000):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", p, "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"], capture_output=True).stdout
     return np.frombuffer(raw, np.int16).astype(np.float32) / 32768, sr
-x, SR = load_audio("master.wav"); NALL = int(math.ceil(END * FPS)); hop = SR // FPS
-rms = np.array([np.sqrt(np.mean(x[i * hop: i * hop + hop * 2] ** 2)) if i * hop < len(x) else 0 for i in range(NALL)])
+x, SR = load_audio("master.wav"); NALL = int(math.ceil(END * FPS)); hop = SR / FPS   # コマの頭は round(i * hop)（SR // FPS だと後ろほど声とずれる）
+rms = np.array([np.sqrt(np.mean(x[round(i * hop): round(i * hop) + round(hop * 2)] ** 2)) if round(i * hop) < len(x) else 0 for i in range(NALL)])
 lvl = np.clip(rms / (np.percentile(rms[rms > 0], 95) + 1e-6), 0, 1.5)
 if not os.path.exists("master.words.json"):
     from faster_whisper import WhisperModel

@@ -319,6 +319,17 @@ def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None, ib_d
 
 
 # ---------- 口の形（純関数）----------
+def frame_levels(x, sr, fps, nall, win):
+    """声の波形 x（sr Hz）から、コマごとの大きさ（コマ f の頭 f/fps 秒から win サンプルの RMS。波形の外は 0）。
+    コマの頭は round(f * sr / fps) で求める。sr // fps の整数の歩幅で進めると、割り切れないとき（16000 Hz・60fps は
+    266.67→266）後ろのコマほど早い時刻の声を読み、280 秒の動画の終わりで 0.69 秒ずれて口が声より先に動いた。"""
+    out = np.zeros(nall, np.float32)
+    for f in range(nall):
+        i = int(round(f * sr / fps))
+        if i < len(x): out[f] = np.sqrt(np.mean(x[i:i + win] ** 2))
+    return out
+
+
 def choose_mouth(Lv, v):
     """声の大きさと母音から口の形。小さい声は小さく、いちばん大きい開き(m3)は強い「あ」の山だけ。"""
     if Lv < 0.15 or v in (None, "-"): return None
