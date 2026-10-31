@@ -24,7 +24,7 @@ from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
-from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route
+from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -42,6 +42,8 @@ except ValueError as e_: die(str(e_))
 try: INTERP = interp_config(C.get("interp"), opt("--interp"))   # 中割りのコマ補間（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
 try: VH = via_home_config(C.get("via_home"))   # 中割りの無い組を home 経由でつなぐ（None は使わない＝今までどおり）
+except ValueError as e_: die(str(e_))
+try: HEADC = head_config(C.get("head"), C["poses"])   # 頭の向きの列（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
@@ -326,6 +328,38 @@ def compose(pl, mth, blk, look=None):
     k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
     return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k], rig)
 
+# ---------- 頭の向きの列（config.head、opt-in）----------
+# 描いた向きの絵（head.chain）の隣どうしの間を RIFE で直に細かくして 1 本の列にし、頭の動きはその列の上を行き来させる。
+# 列の各コマは中割りと同じ形で書き出す（口・目・視線の部品は一番近い向きの絵から顔に合わせて写す）。Wan は使わない
+HEAD_KEYS, HEAD_IDX, HEAD_ITEMS = [], {}, None
+if HEADC and HEADC["events"]:
+    for p_ in HEADC["chain"]:
+        if RAW[p_].shape != RAW[HEADC["chain"][0]].shape: die(f"head.chain の姿勢の絵の大きさがそろっていない: {p_}")
+    _hk = resolve_events(HEADC["events"], HEADC["chain"][0], L, LDUR, 0.0, hira_stream, WH, log=lambda m: print("頭: " + m, file=sys.stderr), dur_of=lambda a_, b_, v_: 0.0)
+    HEAD_KEYS = [(e_[0], e_[2]) for e_ in _hk]
+    _hm = HEADC["mult"] * DIV
+    for i_, p_ in enumerate(HEADC["chain"]): HEAD_IDX[p_] = i_ * _hm
+    print("頭の動きの要所:", [(round(t_, 2), p_) for t_, p_ in HEAD_KEYS], file=sys.stderr)
+def head_items():
+    """列の各コマ [(絵のパス, 前の向き, 次の向き, k), ...]（向きの絵そのものも含む）。最初に使う時に RIFE で作る。"""
+    global HEAD_ITEMS
+    if HEAD_ITEMS is None:
+        from interp import dense_paths
+        cfg = dict(INTERP or INTERP_DEFAULTS); cfg["mult"] = HEADC["mult"]
+        ch = HEADC["chain"]; items = [(P.pose_path(ch[0]), ch[0], ch[0], 0)]
+        for pa_, pb_ in zip(ch, ch[1:]):
+            paths = dense_paths(P, pa_, pb_, DIV, cfg, log=lambda m: print(m, file=sys.stderr), direct=True)
+            items += [(pth, pa_, pb_, k_) for pth, k_ in zip(paths, dense_ks(DIV, HEADC["mult"]))] + [(P.pose_path(pb_), pb_, pb_, 0)]
+        HEAD_ITEMS = items
+    return HEAD_ITEMS
+def head_plan(f):
+    """f が頭の動きの中なら、列のコマを中割りと同じ形で ("ib", item, 部品を写す向き)。外なら None"""
+    pos = head_pos(f / FPS, HEAD_KEYS, HEAD_IDX) if HEAD_KEYS else None
+    if pos is None: return None
+    items = head_items(); j = min(len(items) - 1, max(0, int(round(pos))))
+    src = min(HEADC["chain"], key=lambda p_: abs(HEAD_IDX[p_] - pos))
+    return ("ib", items[j], src)
+
 SWITCHES = [(s_, d_) for s_, d_, _, _ in SW]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
 
 def body(pl, f):
@@ -382,7 +416,7 @@ def finish(img, sh, boxes, sdd):
     return matte(img, sh, keep)
 
 for f in range(f0, min(f1, NALL)):
-    pl = plan(f); tt = f / FPS
+    pl = head_plan(f) or plan(f); tt = f / FPS   # 頭の動きの中は、頭の向きの列が姿勢の時間割より優先
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0
     elif MOT is None:

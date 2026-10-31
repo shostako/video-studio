@@ -50,10 +50,24 @@ class Parts:
             core = (a[:, :, 0] > 0.05).astype(np.uint8)
             ring = cv2.dilate(core, np.ones((7, 7), np.uint8)).astype(bool) & ~core.astype(bool)
             self.p[k] = (round(x * sc), round(y * sc), np.clip(im[:, :, :3], 0, 255), a, ring)
+        # 切り替え中に使う絞ったアルファ: 口の部品は唇と口の中（暗い所・囲まれた歯）だけ。肌まで貼ると、向きの変わる途中で四角く浮いた
+        self.tight = {}
+        for k, (x, y, rgb, a, ring) in self.p.items():
+            if not k.startswith("m"): continue
+            u8 = rgb.astype(np.uint8); b_, g_, r_ = [u8[:, :, i].astype(np.int16) for i in range(3)]
+            m = (((r_ - g_ > 40) & (r_ > 110) & (r_ - b_ > 30)) | (u8.max(2) < 110)) & (a[:, :, 0] > 0.3)
+            m = m.astype(np.uint8)
+            if m.sum() < 4: continue
+            kk = max(3, round(7 * sc)) | 1
+            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk, kk)))   # 歯（唇に囲まれた白）も入れる
+            m = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(3, round(3 * sc)) | 1,) * 2))
+            t = cv2.GaussianBlur(m.astype(np.float32), (0, 0), max(0.8, 1.2 * sc))[:, :, None]
+            self.tight[k] = np.minimum(a, t)
 
-    def paste(self, fr, key, dx=0, dy=0, ref=None):
+    def paste(self, fr, key, dx=0, dy=0, ref=None, tight=False):
         if key not in self.p: return False
         x, y, rgb, a, ring = self.p[key]; x += dx; y += dy; h, w = rgb.shape[:2]
+        if tight and key in self.tight: a = self.tight[key]
         if x < 0 or y < 0 or x + w > fr.shape[1] or y + h > fr.shape[0]: return False
         reg = fr[y:y + h, x:x + w].astype(np.float32)
         if ref is not None and ring.any():               # Wan のコマの上: 部品の周りの肌の平均の差だけ色を合わせる
@@ -114,7 +128,7 @@ def plan(seq, pose_ok, idur, dur):
         if a == b: continue
         d = float(durs.get(f"{a}>{b}", durs.get(f"{b}>{a}", dflt)))
         nxt = seq[i + 1][1] if i + 1 < len(seq) else dur
-        sw.append([t, max(0.2, min(d, nxt - t - 0.05)), a, b, f"{a}__{b}"])
+        sw.append([t, min(max(0.2, min(d, nxt - t - 0.05)), max(0.05, nxt - t)), a, b, f"{a}__{b}"])   # 次の切り替えに重ねない（重なると、前が終わった瞬間に次の途中へ飛んだ）
     out = []; i = 0
     while i < len(sw):
         s = sw[i]
@@ -207,6 +221,37 @@ def main():
 
     DIRECT = ("nod",)    # 頭が少し動くだけの姿勢: Wan を通さず、描いた 2 枚の間を RIFE で直に補間する（Wan だと動きが後ろに詰まってかくついた）
 
+    def eye_patches(p, size):
+        """姿勢 p の目のあたり（開いた目・閉じた目）の灰色の絵。閉じた目は parts_<p>/e2.png を姿勢の絵に重ねて作る。無ければ None"""
+        pj = f"{W}/parts_{p}/parts.json"
+        if not pose_ok(p) or not os.path.exists(pj): return None
+        pos = json.load(open(pj))
+        if "e2" not in pos: return None
+        base = cv2.imread(f"{W}/poses/pose_{p}.png"); closed = base.copy()
+        e2 = cv2.imread(f"{W}/parts_{p}/e2.png", cv2.IMREAD_UNCHANGED); x, y = pos["e2"]; h, w = e2.shape[:2]
+        al = e2[:, :, 3:] / 255.0; closed[y:y + h, x:x + w] = (e2[:, :, :3] * al + closed[y:y + h, x:x + w] * (1 - al)).astype(np.uint8)
+        fc = C["poses"].get(p, {}).get("face"); er = (fc if isinstance(fc, dict) else C.get("face", {})).get("eye_roi")
+        if not er: return None
+        k = size[0] / base.shape[1]; X0, Y0, X1, Y1 = [round(v * k) for v in er]
+        g = lambda im: cv2.cvtColor(cv2.resize(im, size, interpolation=cv2.INTER_AREA)[Y0:Y1, X0:X1], cv2.COLOR_BGR2GRAY)
+        return g(base), g(closed), (Y0, Y1)
+
+    def blink_frames(paths, ends, thr=0.05):
+        """Wan のコマのうち、目を閉じているコマの番号（1 コマ目は始点の絵なので除く）。
+        目のあたりが、前後の姿勢の閉じた目の絵に、開いた目の絵より thr 以上よく合うコマ"""
+        if len(paths) < 3: return set()
+        im0 = cv2.imread(paths[0]); size = (im0.shape[1], im0.shape[0])
+        pats = [x for x in (eye_patches(p, size) for p in ends) if x]
+        if not pats: return set()
+        y0 = max(0, min(p[2][0] for p in pats) - 80); y1 = min(size[1], max(p[2][1] for p in pats) + 80)
+        out = set()
+        for i, pth in enumerate(paths[1:], 1):
+            g = cv2.cvtColor(cv2.imread(pth), cv2.COLOR_BGR2GRAY)[y0:y1]
+            so = max(cv2.minMaxLoc(cv2.matchTemplate(g, o, cv2.TM_CCOEFF_NORMED))[1] for o, _, _ in pats)
+            sc_ = max(cv2.minMaxLoc(cv2.matchTemplate(g, c, cv2.TM_CCOEFF_NORMED))[1] for _, c, _ in pats)
+            if sc_ - so > thr: out.add(i)
+        return out
+
     def dense(a, b, key):
         if key not in cache and any(p in DIRECT for p in (a, b)) and pose_ok(a) and pose_ok(b):
             ends = []                                   # 止まった絵そのもの（出力と同じ大きさ）を補間する。縮めた絵だと入った瞬間に柔らかくなって跳ねた
@@ -226,7 +271,9 @@ def main():
             lv = [bglv(p) for p in fs]
             cut = next((i for i in range(1, len(fs)) if abs(lv[i] - lv[0]) > 5), len(fs))
             end_img = f"{CIN}/{prefix}_{b}.png"
-            seq_f = fs[:cut] + ([end_img] if os.path.exists(end_img) else [])
+            blinks = blink_frames(fs[:cut], [a, b])                          # Wan が勝手に入れる瞬き（首振りで振るたびに目を閉じた）は捨てる
+            if blinks: print(f"  {key}: 瞬きのコマを捨てる {[i + 1 for i in blinks]}", flush=True)
+            seq_f = [f for i, f in enumerate(fs[:cut]) if i not in blinks] + ([end_img] if os.path.exists(end_img) else [])
             raw = rife(seq_f, f"{prefix}_{key}", (FW, FH)); n = len(raw)
             frs = [legs(match(x, cv2.addWeighted(hold[a], 1 - i / (n - 1), hold[b], i / (n - 1), 0))) for i, x in enumerate(raw)]
             cache[key] = (frs, motion_curve(frs))
@@ -245,12 +292,109 @@ def main():
     ff = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", pf, "-s", f"{CW}x{OH}", "-r", str(mv.FPS), "-i", "-",
                            "-ss", f"{t0:.3f}", "-t", f"{t1 - t0:.3f}", "-i", mv.VOICE, "-map", "0:v", "-map", "1:a"] + enc + ["-shortest", outp], stdin=subprocess.PIPE)
     PX = (CW - OW) // 2
-    st = {"hold_mouth": 0, "tr_mouth": 0, "tr_skip": 0}
+    st = {"hold_mouth": 0, "tr_mouth": 0, "tr_skip": 0, "lip_found": 0}
+    LIP_R = round(45 * SC)                                          # 唇を探す半径（出力の画素）
+
+    def lip_pixels(bgr):
+        b_, g_, r_ = [bgr[:, :, i].astype(np.int16) for i in range(3)]
+        return (r_ - g_ > 48) & (r_ > 110) & (r_ < 252) & (r_ - b_ > 35)   # 周りの肌より赤い所（唇。頬の赤みは拾わない程度に）
+
+    lip_cache = {}
+
+    def lip_ref(p):
+        """姿勢 p の閉じた口の部品（m1）の唇の中心（出力の座標、ずらす前）。部品が無ければ None"""
+        if p in lip_cache: return lip_cache[p]
+        r = None
+        if p in parts and "m1" in parts[p].p:
+            x, y, rgb, al, _ = parts[p].p["m1"]
+            m = lip_pixels(np.clip(rgb, 0, 255).astype(np.uint8)) & (al[:, :, 0] > 0.5)
+            if m.sum() >= 4:
+                ys, xs = np.nonzero(m); r = (x + xs.mean(), y + ys.mean())
+        lip_cache[p] = r; return r
+
+    def lip_in_frame(fr, cx, cy, rad):
+        """(cx, cy) の周り rad の中で、Wan のコマの唇の塊。期待の位置に一番近い塊の (中心, (x0, y0, その塊の 0/1 の絵))。無ければ None"""
+        x0, y0 = max(0, int(cx - rad)), max(0, int(cy - rad)); x1, y1 = min(fr.shape[1], int(cx + rad)), min(fr.shape[0], int(cy + rad))
+        if x1 <= x0 or y1 <= y0: return None
+        m = lip_pixels(fr[y0:y1, x0:x1]).astype(np.uint8)
+        n, lab, sts, cen = cv2.connectedComponentsWithStats(m)
+        best, bd = None, None
+        win = fr[y0:y1, x0:x1].astype(np.int16)
+        skin = (win.min(2) > 150) & (win[:, :, 2] >= win[:, :, 1]) & (win[:, :, 2] - win[:, :, 0] < 70)   # 明るい肌
+        kr = max(3, round(5 * SC)) | 1
+        for i in range(1, n):
+            if sts[i, cv2.CC_STAT_AREA] < max(4, round(6 * SC * SC)): continue
+            l_, t_, w_, h_, ar_ = sts[i]
+            if l_ == 0 or t_ == 0 or l_ + w_ >= m.shape[1] or t_ + h_ >= m.shape[0]: continue   # 探す枠の端に触れる塊（頬の赤み・顔の輪郭が切れた物）は唇でない
+            if ar_ > 0.12 * m.size or w_ > 0.8 * m.shape[1] or h_ > 0.5 * m.shape[0]: continue   # 大きすぎる塊も
+            comp = (lab == i).astype(np.uint8)
+            ring = (cv2.dilate(comp, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kr, kr))) > 0) & (comp == 0)
+            if ring.sum() == 0 or skin[ring].mean() < 0.7: continue      # 周りが肌に囲まれていない塊（顔の輪郭・髪の境）は唇でない
+            gx, gy = cen[i][0] + x0, cen[i][1] + y0; dd = (gx - cx) ** 2 + (gy - cy) ** 2
+            if bd is None or dd < bd: best, bd = ((gx, gy), (x0, y0, comp)), dd
+        return best
+
+    def erase_lips(fr, blob):
+        """Wan のコマの唇の塊を少し広げて、周りの肌で埋める（部品の唇より広い唇の端が残って口が二重に見えないように）"""
+        x0, y0, m = blob
+        k = max(3, round(5 * SC)) | 1
+        m = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+        roi = np.ascontiguousarray(fr[y0:y0 + m.shape[0], x0:x0 + m.shape[1]])
+        fr[y0:y0 + m.shape[0], x0:x0 + m.shape[1]] = cv2.inpaint(roi, m * 255, 3, cv2.INPAINT_TELEA)
     SEARCH = round(40 * SC)
+    # ---------- 頭の向きの列（events.json の "head"、opt-in）----------
+    # 描いた角度の絵（右から左へ並べた head_chain）を RIFE で 1 本の列につなぎ、頭の動きはその列の上を行き来させる。
+    # Wan を使わない（勝手な瞬きが無い）。口・目は隣り合う角度の部品を、その間の位置に置く（唇を探さない）
+    HEAD = EV.get("head") or []
+    chain_frames, chain_idx = None, {}
+    if HEAD:
+        chain = EV.get("head_chain", ["shake_r", "look_r", "home", "look_l", "shake_l"])
+        for p in chain:
+            if p not in hold:
+                img = cv2.resize(cv2.imread(f"{W}/poses/pose_{p}.png"), (FW, FH), interpolation=cv2.INTER_AREA if SC < 1 else cv2.INTER_LANCZOS4)
+                hold[p] = img if p == "home" else legs(img); parts[p] = Parts(f"{W}/parts_{p}/", SC)
+        chain_frames = [hold[chain[0]]]; chain_idx[chain[0]] = 0
+        for p0, p1 in zip(chain, chain[1:]):
+            ends = []
+            for p in (p0, p1):
+                dst = f"{mv.RTMP}_head_{prefix}_{p}.png"; cv2.imwrite(dst, hold[p]); ends.append(dst)
+            seg = rife(ends, f"{prefix}_head_{p0}__{p1}", (FW, FH), mult=int(EV.get("head_mult", 32)))
+            chain_frames += seg[1:-1] + [hold[p1]]; chain_idx[p1] = len(chain_frames) - 1
+        print(f"頭の向きの列: {chain} → {len(chain_frames)} 枚", flush=True)
+        HEAD = sorted((float(t_), p_) for t_, p_ in HEAD)
+
+    def head_at(t):
+        """t が頭の動きの中なら (列の位置)。外なら None"""
+        if not HEAD or t < HEAD[0][0] or t >= HEAD[-1][0]: return None
+        for (t0_, p0_), (t1_, p1_) in zip(HEAD, HEAD[1:]):
+            if t0_ <= t < t1_:
+                u_ = (t - t0_) / (t1_ - t0_); uu_ = u_ * u_ * (3 - 2 * u_)
+                return chain_idx[p0_] + (chain_idx[p1_] - chain_idx[p0_]) * uu_
+        return None
+
+    def head_frame(pos, f):
+        i0 = min(len(chain_frames) - 2, int(pos)); w_ = pos - i0
+        fr = cv2.addWeighted(chain_frames[i0], 1 - w_, chain_frames[i0 + 1], w_, 0)
+        drawn = sorted(chain_idx.items(), key=lambda kv: kv[1])          # 隣り合う角度の絵
+        for (pa_, ia_), (pb_, ib_) in zip(drawn, drawn[1:]):
+            if ia_ <= pos <= ib_: break
+        k_ = (pos - ia_) / max(1e-6, ib_ - ia_); src = pa_ if k_ < 0.5 else pb_
+        FB = {"m7": "m1", "m3": "m2", "m6": "m1"}                       # 無い形は近い形で（vm render と同じ）
+        for key in [x for x in (mouth[f], eyes[f]) if x]:
+            while key and not all(key in parts[q].p for q in (src, pa_, pb_)): key = FB.get(key)
+            if not key: continue
+            xa, ya = parts[pa_].p[key][:2]; xb, yb = parts[pb_].p[key][:2]; xs, ys = parts[src].p[key][:2]
+            tx, ty = xa + (xb - xa) * k_, ya + (yb - ya) * k_                 # 部品の置き場所を角度の間で取る
+            parts[src].paste(fr, key, round(tx - xs), round(ty - ys))
+        return fr
+
     for f in range(f0, f1):
         t = f / mv.FPS
-        cur = next((s for s in sw if s[0] <= t < s[0] + s[1]), None)
-        if cur is None:
+        hp = head_at(t)
+        cur = None if hp is not None else next((s for s in sw if s[0] <= t < s[0] + s[1]), None)
+        if hp is not None:
+            fr = head_frame(hp, f); st["hold_mouth"] += bool(mouth[f])
+        elif cur is None:
             p = max((x for x in seq if x[1] <= t + 1e-9 and pose_ok(x[0])), key=lambda x: x[1])[0]
             fr = hold[p].copy()
             if mouth[f] and parts[p].paste(fr, mouth[f]): st["hold_mouth"] += 1
@@ -271,11 +415,27 @@ def main():
                 fr = cv2.addWeighted(fr, 1 - k, hold[a], k, 0)
             if mouth[f]:
                 p = b if u >= 0.5 else a
-                sx0, sy0 = max(0, fx0 - SEARCH), max(0, fy0 - SEARCH)
-                win = cv2.cvtColor(fr[sy0:fy1 + SEARCH, sx0:fx1 + SEARCH], cv2.COLOR_BGR2GRAY)
-                res = cv2.matchTemplate(win, face_t[p], cv2.TM_CCOEFF_NORMED); _, sc_, _, loc = cv2.minMaxLoc(res)
-                if sc_ >= 0.6 and parts[p].paste(fr, mouth[f], loc[0] + sx0 - fx0, loc[1] + sy0 - fy0, ref=hold[p]): st["tr_mouth"] += 1
-                else: st["tr_skip"] += 1
+                if not parts[p].p: p = a if p == b else b
+                la, lb, lp = lip_ref(a), lip_ref(b), lip_ref(p)
+                if lp is not None:
+                    # 口は唇に合わせる: 前後の姿勢の唇の位置を動きの進み具合で間に取り、その周りで Wan のコマの唇を探す
+                    #（目と眉の型で顔を追うと、首が回る途中で目の見え方が変わって口がずれた）
+                    ex, ey = lp
+                    if la is not None and lb is not None: ex, ey = la[0] + (lb[0] - la[0]) * uu, la[1] + (lb[1] - la[1]) * uu
+                    found = lip_in_frame(fr, ex, ey, LIP_R)
+                    if found is not None and not os.environ.get("NOERASE"): erase_lips(fr, found[1])
+                    if found is not None: found = found[0]
+                    if os.environ.get("NOPASTE"): continue_paste = False
+                    else: continue_paste = True
+                    tx, ty = found if found is not None else (ex, ey)
+                    if continue_paste and parts[p].paste(fr, mouth[f], round(tx - lp[0]), round(ty - lp[1]), ref=hold[p], tight=True): st["tr_mouth"] += 1; st["lip_found"] += found is not None
+                    else: st["tr_skip"] += 1
+                else:
+                    sx0, sy0 = max(0, fx0 - SEARCH), max(0, fy0 - SEARCH)
+                    win = cv2.cvtColor(fr[sy0:fy1 + SEARCH, sx0:fx1 + SEARCH], cv2.COLOR_BGR2GRAY)
+                    res = cv2.matchTemplate(win, face_t[p], cv2.TM_CCOEFF_NORMED); _, sc_, _, loc = cv2.minMaxLoc(res)
+                    if sc_ >= 0.6 and parts[p].paste(fr, mouth[f], loc[0] + sx0 - fx0, loc[1] + sy0 - fy0, ref=hold[p]): st["tr_mouth"] += 1
+                    else: st["tr_skip"] += 1
         fr = fr[cy0:cy0 + OH, cx0:cx0 + OW]
         if ALPHA:
             canvas[:, PX:PX + OW, :3] = fr; canvas[:, PX:PX + OW, 3] = matte(fr)

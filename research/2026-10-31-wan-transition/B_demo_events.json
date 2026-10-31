@@ -22,39 +22,39 @@
   },
   {
    "pose": "shake_l",
-   "at": 38.6
+   "at": 38.55
   },
   {
    "pose": "shake_r",
-   "at": 38.9
+   "at": 39.1
   },
   {
    "pose": "shake_l",
-   "at": 39.2
+   "at": 39.6
   },
   {
    "pose": "home",
-   "at": 39.5
-  },
-  {
-   "pose": "wag_r",
    "at": 40.1
   },
   {
+   "pose": "wag_r",
+   "at": 40.6
+  },
+  {
    "pose": "wag_l",
-   "at": 40.5
+   "at": 41.0
   },
   {
    "pose": "wag_r",
-   "at": 40.8
+   "at": 41.3
   },
   {
    "pose": "wag_l",
-   "at": 41.1
+   "at": 41.6
   },
   {
    "pose": "home",
-   "at": 41.5
+   "at": 42.0
   },
   {
    "pose": "point_r",
@@ -88,10 +88,10 @@
  "interp": {
   "dur": 0.6,
   "durs": {
-   "home>shake_l": 0.3,
-   "shake_l>shake_r": 0.3,
-   "shake_r>shake_l": 0.3,
-   "shake_l>home": 0.3,
+   "home>shake_l": 0.5,
+   "shake_l>shake_r": 0.45,
+   "shake_r>shake_l": 0.45,
+   "shake_l>home": 0.45,
    "home>wag_r": 0.5,
    "wag_r>wag_l": 0.3,
    "wag_l>wag_r": 0.3,

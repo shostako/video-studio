@@ -1,0 +1,133 @@
+{
+ "events": [
+  {
+   "pose": "home",
+   "at": 34.4
+  },
+  {
+   "pose": "think",
+   "at": 34.9
+  },
+  {
+   "pose": "home",
+   "at": 36.2
+  },
+  {
+   "pose": "count_5",
+   "at": 36.9
+  },
+  {
+   "pose": "home",
+   "at": 38.2
+  },
+  {
+   "pose": "home",
+   "at": 40.1
+  },
+  {
+   "pose": "wag_r",
+   "at": 40.6
+  },
+  {
+   "pose": "wag_l",
+   "at": 41.0
+  },
+  {
+   "pose": "wag_r",
+   "at": 41.3
+  },
+  {
+   "pose": "wag_l",
+   "at": 41.6
+  },
+  {
+   "pose": "home",
+   "at": 42.0
+  },
+  {
+   "pose": "point_r",
+   "at": 42.5
+  },
+  {
+   "pose": "point_l",
+   "at": 44.6
+  },
+  {
+   "pose": "home",
+   "at": 46.4
+  },
+  {
+   "pose": "look_r",
+   "at": 47.4
+  },
+  {
+   "pose": "home",
+   "at": 48.6
+  },
+  {
+   "pose": "thumb_r",
+   "at": 49.6
+  },
+  {
+   "pose": "home",
+   "at": 51.7
+  }
+ ],
+ "interp": {
+  "dur": 0.6,
+  "durs": {
+   "home>shake_l": 0.5,
+   "shake_l>shake_r": 0.45,
+   "shake_r>shake_l": 0.45,
+   "shake_l>home": 0.45,
+   "home>wag_r": 0.5,
+   "wag_r>wag_l": 0.3,
+   "wag_l>wag_r": 0.3,
+   "wag_l>home": 0.5
+  }
+ },
+ "poses": {},
+ "gaze": [
+  {
+   "at": 46.6,
+   "until": 47.4,
+   "look": "r"
+  },
+  {
+   "at": 51.9,
+   "until": 52.6,
+   "look": "u"
+  }
+ ],
+ "head": [
+  [
+   38.55,
+   "home"
+  ],
+  [
+   38.95,
+   "shake_l"
+  ],
+  [
+   39.5,
+   "shake_r"
+  ],
+  [
+   40.05,
+   "shake_l"
+  ],
+  [
+   40.45,
+   "home"
+  ]
+ ],
+ "head_chain": [
+  "shake_r",
+  "look_r",
+  "half_r",
+  "home",
+  "half_l",
+  "look_l",
+  "shake_l"
+ ]
+}
