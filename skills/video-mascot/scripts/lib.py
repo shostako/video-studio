@@ -1124,6 +1124,36 @@ def rest_pairs(switches, busy, span, t_lo, t_hi, margin=0.15, step=0.5, limit=20
     return out
 
 
+MOUTH_OFF_LONG = 0.2                     # 口の部品の無い姿勢で、これ以上の秒を話していたら問題（短いものは知らせるだけ）。会釈しながら「…方を説明する」が 0.42 秒
+
+
+def mouth_off_spans(speak, face, fps, f0, long_s=MOUTH_OFF_LONG):
+    """口の部品の無い姿勢（config の face: false）で話している所。口が動かないので、話しているのに口が止まって見える。
+    speak[i]: そのコマで声が出ているか（口の形が閉じ以外）。face[i]: (口の部品があるか, 姿勢の名前)。どちらも f0 コマ目から書き出した順。
+    口の部品の無いコマが続く区間ごとに、話している秒を数える。戻り値 [{"from", "to", "pose", "talk", "long"}, ...]（話していない区間は入れない）。"""
+    out, i, n = [], 0, len(face)
+    while i < n:
+        if face[i][0]: i += 1; continue
+        j = i
+        while j < n and not face[j][0]: j += 1
+        talk = sum(1 for k in range(i, j) if speak[k]) / fps
+        if talk > 0:
+            poses = sorted({face[k][1] for k in range(i, j)})
+            out.append({"from": round((i + f0) / fps, 3), "to": round((j + f0) / fps, 3), "pose": "・".join(poses), "talk": round(talk, 3), "long": talk >= long_s})
+        i = j
+    return out
+
+
+def mouth_report(spans, long_s=MOUTH_OFF_LONG):
+    """mouth_off_spans の結果を人が読む行のリストに。無ければ空。"""
+    if not spans: return []
+    nl = sum(s["long"] for s in spans)
+    lines = [f"口の検査: 口の部品の無い姿勢で話している所 {len(spans)} か所（{long_s} 秒以上は問題: {nl} か所）"]
+    for s in spans:
+        lines.append(f"  {'✗' if s['long'] else '△'} {s['from']:.2f}〜{s['to']:.2f} 秒 {s['pose']}: 話している {s['talk']:.2f} 秒（口が動かない）")
+    return lines
+
+
 def switch_report(results):
     """switch_check の結果を、人が読む行のリストに。1 行目は件数のまとめ、問題があれば 1 件 1 行で続ける。"""
     bad = [r for r in results if r["status"] not in ("ok", "skip")]
