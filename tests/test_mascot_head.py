@@ -76,6 +76,16 @@ def test_blink_frames_finds_closed_eyes(proj):
     assert wanflf.blink_frames(frames, [], 0.05) == []
 
 
+def test_blink_frames_with_a_different_aspect_ratio(proj):
+    """Wan の大きさが姿勢の絵と縦横比が違っても（縦横を別々に縮める）、目の範囲が合って閉じた目を見つける。"""
+    size = (240, 300)                                                           # 姿勢の絵は 470x768（縦長）。横より縦を強く縮める
+    pats = [wanflf.eye_patches(proj, "home", size)]
+    assert pats[0] is not None
+    op = cv2.resize(proj.read_pose("home"), size, interpolation=cv2.INTER_AREA)
+    cl = cv2.resize(with_part(proj, "home", "e2"), size, interpolation=cv2.INTER_AREA)
+    assert wanflf.blink_frames([op, op, cl, op], pats, 0.05) == [2]
+
+
 def test_eye_patches_none_without_parts(proj):
     shutil.rmtree(proj.p("parts_point"))
     assert wanflf.eye_patches(proj, "point", (240, 384)) is None
@@ -104,6 +114,28 @@ def test_dense_paths_drops_blink_frames(proj):
     pats = [wanflf.eye_patches(proj, "home", (proj.read_pose("home").shape[1], proj.read_pose("home").shape[0]))]
     assert all(wanflf.blink_score(cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2GRAY), pats) <= 0.05 for p in paths)   # 閉じた目が混ざらない
     assert any("瞬き [4, 5, 6]" in m for m in logs)
+
+
+def test_dense_paths_rechecks_blinks_when_eye_parts_change(proj):
+    """目の部品（e2.png・parts.json）や目の範囲を直したら、書き出しに渡す列を作り直す。Wan の生成はやり直さない。"""
+    icfg = lib.interp_config({"engine": "wan", "wan": {"width": 240, "height": 384, "rife_mult": 1, "edge": 0.0}})
+    gens, rifes = [], []
+
+    def gen(P, a, b, wan, raw_dir, log=None):
+        gens.append(1); A = cv2.resize(P.read_pose(a), (wan["width"], wan["height"])); os.makedirs(raw_dir, exist_ok=True)
+        for i in range(wan["length"]): cv2.imwrite(os.path.join(raw_dir, f"w{i + 1:04d}.png"), A)
+
+    def rife(frames, mult, cfg, tag): rifes.append(1); return list(frames)
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=gen, rife=rife)
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=gen, rife=rife)
+    assert (len(gens), len(rifes)) == (1, 1)                                     # 何も変わらなければ使い回す
+    pj = proj.p("parts_point", "parts.json"); meta = json.load(open(pj)); meta["e2"] = [meta["e2"][0] + 2, meta["e2"][1]]
+    json.dump(meta, open(pj, "w")); st = os.stat(pj); os.utime(pj, (st.st_atime + 5, st.st_mtime + 5))
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=gen, rife=rife)
+    assert (len(gens), len(rifes)) == (1, 2)                                     # 目の部品の置き場所が変われば作り直す（生成はそのまま）
+    proj.cfg["face"]["eye_roi"] = [v + 1 for v in proj.cfg["face"]["eye_roi"]]
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=gen, rife=rife)
+    assert (len(gens), len(rifes)) == (1, 3)                                     # 目の範囲が変わっても
 
 
 # ---------- vm render の書き出し ----------

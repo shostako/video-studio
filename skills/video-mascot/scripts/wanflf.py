@@ -110,10 +110,22 @@ def eye_patches(P, pose, size):
     al = e2[:, :, 3:] / 255.0; closed[y:y + h, x:x + w] = (e2[:, :, :3] * al + closed[y:y + h, x:x + w] * (1 - al)).astype(np.uint8)
     fc = P.cfg["poses"].get(pose, {}).get("face"); er = (fc if isinstance(fc, dict) else P.cfg.get("face", {})).get("eye_roi")
     if not er: return None
-    k = size[0] / base.shape[1]; X0, Y0, X1, Y1 = [round(v * k) for v in er]
+    kx, ky = size[0] / base.shape[1], size[1] / base.shape[0]     # Wan の大きさへは縦横を別々の倍率で縮めている
+    X0, X1 = [min(size[0], max(0, round(v * kx))) for v in (er[0], er[2])]
+    Y0, Y1 = [min(size[1], max(0, round(v * ky))) for v in (er[1], er[3])]
     if X1 - X0 < 4 or Y1 - Y0 < 4: return None
     g = lambda im: cv2.cvtColor(cv2.resize(im, size, interpolation=cv2.INTER_AREA)[Y0:Y1, X0:X1], cv2.COLOR_BGR2GRAY)
     return g(base), g(closed), (Y0, Y1)
+
+
+def blink_stamp(P, poses):
+    """瞬きの照合に使うもの（目の部品・置き場所・目の範囲）。変われば書き出しに渡す列を作り直す（Wan の生成はやり直さない）。"""
+    out = []
+    for p in poses:
+        fs = [P.p(f"parts_{p}", n) for n in ("e2.png", "parts.json")]
+        fc = P.cfg["poses"].get(p, {}).get("face"); er = (fc if isinstance(fc, dict) else P.cfg.get("face", {})).get("eye_roi")
+        out.append([p, _file_stamp([f for f in fs if os.path.exists(f)]), er])
+    return out
 
 
 def blink_score(gray, pats):
@@ -184,7 +196,8 @@ def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
     out_dir = os.path.join(base, f"n{n}")
     want = [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)]
     rp = raw_frames(raw)
-    st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"]}
+    st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
+          "blink": blink_stamp(P, (a, b)) if wan["blink_tol"] is not None else None}
     if _read_stamp(os.path.join(out_dir, "stamp.json")) == json.loads(json.dumps(st)) and all(os.path.exists(p) for p in want): return want
     img_a, img_b = P.read_pose(a), P.read_pose(b)
     H, W = img_a.shape[:2]

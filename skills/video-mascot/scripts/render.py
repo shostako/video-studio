@@ -176,9 +176,9 @@ def face_affine(src, dst, roi):
     except cv2.error: pass
     return cv2.invertAffineTransform(M), cc
 IBCACHE = {}; IBCACHE_MAX = 48   # 中割りの絵の控え。補間で枚数が増えるとメモリを食い潰すので、古いものから捨てる
-def ib_item(item, src_pose):
+def ib_item(item, src_pose, lerp_parts=False):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
-    path, a_, b_, k_ = item; key = (path, src_pose)
+    path, a_, b_, k_ = item; key = (path, src_pose, lerp_parts)
     if key in IBCACHE: IBCACHE[key] = IBCACHE.pop(key); return IBCACHE[key]   # 使った順に並べ直す
     while len(IBCACHE) >= IBCACHE_MAX: IBCACHE.pop(next(iter(IBCACHE)))
     img = cv2.imread(path)
@@ -192,6 +192,14 @@ def ib_item(item, src_pose):
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
     anc = lanc if lanc is not None else (DETECT(clean) if DETECT and not own else None)
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
+    if lerp_parts:                                # 頭の向きの列: 部品は一番近い向きの絵の物を、隣どうしの向きの置き場所の間に置く
+        w_ = k_ / DIV if a_ != b_ else 0.0          #（顔の合わせで写すと、首が回る途中で合わせがずれて口が顔に遅れた）
+        parts = {}
+        for k, (im, px, py) in PARTS[src_pose].items():
+            if k not in PARTS[a_] or k not in PARTS[b_]: continue
+            (_, ax, ay), (_, bx, by) = PARTS[a_][k], PARTS[b_][k]
+            parts[k] = (im, int(round(ax + (bx - ax) * w_)), int(round(ay + (by - ay) * w_)))
+        IBCACHE[key] = (clean, shadow, parts, anc, sc, HEAD[src_pose]); return IBCACHE[key]
     allp = list(PARTS[src_pose].values())
     if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
     xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
@@ -315,7 +323,7 @@ def paste(img, part):
     al = im[:, :, 3:4].astype(np.float32) / 255; roi = img[py:py + h, px:px + w].astype(np.float32); img[py:py + h, px:px + w] = (roi * (1 - al) + im[:, :, :3] * al).astype(np.uint8)
 def compose(pl, mth, blk, look=None):
     if pl[0] == "ib":
-        clean, shadow, parts, anc, sc, rig = ib_item(pl[1], pl[2]); img = clean.copy()
+        clean, shadow, parts, anc, sc, rig = ib_item(pl[1], pl[2], len(pl) > 3 and pl[3] == "head"); img = clean.copy()
     else:
         img = PB[pl[1]].copy(); shadow = SH[pl[1]]; parts = PARTS[pl[1]]; anc = ANCH[pl[1]]; sc = SCALE[pl[1]]; rig = HEAD[pl[1]]
     paste(img, part_of(parts, mth))
@@ -358,7 +366,7 @@ def head_plan(f):
     if pos is None: return None
     items = head_items(); j = min(len(items) - 1, max(0, int(round(pos))))
     src = min(HEADC["chain"], key=lambda p_: abs(HEAD_IDX[p_] - pos))
-    return ("ib", items[j], src)
+    return ("ib", items[j], src, "head")
 
 SWITCHES = [(s_, d_) for s_, d_, _, _ in SW]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
 
