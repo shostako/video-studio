@@ -152,6 +152,13 @@ def test_dense_paths_regenerates_when_the_mascot_description_changes(proj):
     assert len(calls) == 2
 
 
+def test_raw_frames_sorts_by_number(tmp_path):
+    """length を 101 以上にしても、w100 が w11 より前に来ない（文字の順でなく番号の順）。"""
+    for i in (9, 10, 11, 100, 101): (tmp_path / f"w{i:02d}.png").write_bytes(b"")
+    (tmp_path / "wx.png").write_bytes(b""); (tmp_path / "stamp.json").write_text("{}")
+    assert [os.path.basename(p) for p in wanflf.raw_frames(str(tmp_path))] == ["w09.png", "w10.png", "w11.png", "w100.png", "w101.png"]
+
+
 def test_prompt_of_head_poses():
     cfg = {"mascot": {"description": "a mascot"}, "poses": {"home": {"desc": "standing"}, "look_l": {"desc": "looks left"}}}
     wan = lib.wan_config({"head_poses": ["look_l"]})

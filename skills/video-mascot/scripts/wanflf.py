@@ -83,8 +83,17 @@ def generate(P, a, b, wan, raw_dir, log=None):
     outs = sorted(glob.glob(os.path.join(tmp, f"{a}__{b}_[0-9][0-9][0-9][0-9][0-9]_.png")))
     if len(outs) < 2: die(f"Wan のコマが出てこない（{a}→{b}、{len(outs)} 枚）")
     shutil.rmtree(raw_dir, ignore_errors=True); os.makedirs(raw_dir)
-    for i, f in enumerate(outs, 1): shutil.move(f, os.path.join(raw_dir, f"w{i:02d}.png"))
+    for i, f in enumerate(outs, 1): shutil.move(f, os.path.join(raw_dir, f"w{i:04d}.png"))
     if log: log(f"Wan: {a}→{b} {len(outs)} コマ（{r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ''}）")
+
+
+def raw_frames(raw_dir):
+    """raw_dir の Wan のコマ（w<番号>.png）を番号の順に。名前の桁が揃っていなくても時刻の順に並べる。"""
+    fs = []
+    for p in glob.glob(os.path.join(raw_dir, "w*.png")):
+        stem = os.path.splitext(os.path.basename(p))[0][1:]
+        if stem.isdigit(): fs.append((int(stem), p))
+    return [p for _, p in sorted(fs)]
 
 
 def rife_frames(frames, mult, icfg, tag):
@@ -134,7 +143,7 @@ def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
         os.makedirs(base, exist_ok=True); json.dump(st_gen, open(os.path.join(base, "raw_stamp.json"), "w"))
     out_dir = os.path.join(base, f"n{n}")
     want = [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)]
-    rp = sorted(glob.glob(os.path.join(raw, "w*.png")))
+    rp = raw_frames(raw)
     st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"]}
     if _read_stamp(os.path.join(out_dir, "stamp.json")) == json.loads(json.dumps(st)) and all(os.path.exists(p) for p in want): return want
     img_a, img_b = P.read_pose(a), P.read_pose(b)
