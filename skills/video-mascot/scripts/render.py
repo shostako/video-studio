@@ -29,7 +29,7 @@ from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
-from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report
+from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report, speech_loud
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -441,7 +441,7 @@ def face_of(pl):
     p_ = pl[2] if pl[0] == "ib" else pl[1]; return (FACE_ON[p_], p_)
 for f in range(f0, min(f1, NALL)):
     hp = head_plan(f); pl = hp or plan(f); tt = f / FPS   # 頭の動きの中は、頭の向きの列が姿勢の時間割より優先
-    TAGS.append(frame_tag(pl, hp is not None)); SPEAK.append(mouth[f] is not None); FACEP.append(face_of(pl)); LOUD.append(bool(lvl_s[f] >= 0.15))
+    TAGS.append(frame_tag(pl, hp is not None)); SPEAK.append(mouth[f] is not None); FACEP.append(face_of(pl)); LOUD.append(speech_loud(lvl_s[f], vowel_at[f] if LIPSYNC == "amp" else None))   # 「っ」の閉じは数えない
     if DRY: continue
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0

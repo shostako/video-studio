@@ -357,6 +357,12 @@ def fill_vowel_gaps(vowel_at, loud, fps, max_gap=0.4):
     return out
 
 
+def speech_loud(level, vowel, thr=0.15):
+    """口の検査で「声が出ている」とみなすコマか。声の大きさが thr（choose_mouth の閉じの境）以上で、母音が「っ」（"-"）でないこと。
+    「っ」は口を閉じる音として choose_mouth が閉じるので、閉じていても不具合ではない。"""
+    return bool(level >= thr) and vowel != "-"
+
+
 def mouth_shut_spans(loud, speak, fps, f0, long_s=0.2):
     """声が出ている（loud）のに口が閉じている（speak が偽）コマが long_s 秒以上続く所。[{"from", "to", "dur"}, ...]。
     loud・speak は f0 コマ目から書き出した順。母音の取れない語や、声と口の時刻のずれで起きる。"""
