@@ -288,3 +288,36 @@ def test_check_reports_render_problems_and_needs_switches(tmp_path, env):
     json.dump(j, open(tmp_path / "m.check.json", "w"))
     r = check(v, env, "--strict")
     assert r.returncode == 3 and "問題が 2 件" in r.stdout
+
+
+# ---------- 口の検査（口の部品の無い姿勢で話している）----------
+def test_mouth_off_spans():
+    on, off = (True, "home"), (False, "nod")
+    face = [on] * 5 + [off] * 6 + [on] * 4 + [(False, "wag_l")] * 2 + [on] * 3
+    speak = [True] * 7 + [False] * 2 + [True] * 2 + [True] * 4 + [True, False] + [True] * 3
+    sp = lib.mouth_off_spans(speak, face, 10, 0, long_s=0.2)
+    assert [(s["from"], s["to"], s["pose"], s["talk"], s["long"]) for s in sp] == [(0.5, 1.1, "nod", 0.4, True), (1.5, 1.7, "wag_l", 0.1, False)]
+    assert lib.mouth_off_spans([False] * 4, [off] * 4, 10, 0) == []                     # 話していなければ入れない
+    assert lib.mouth_off_spans([True] * 3, [on] * 3, 10, 0) == []
+    assert lib.mouth_off_spans([True] * 3, [off] * 3, 10, 20)[0]["from"] == 2.0         # f0 コマ目から
+
+
+def test_mouth_report():
+    assert lib.mouth_report([]) == []
+    ln = lib.mouth_report([{"from": 149.9, "to": 152.2, "pose": "nod", "talk": 1.13, "long": True}, {"from": 50.7, "to": 51.1, "pose": "wag_l", "talk": 0.1, "long": False}])
+    assert "2 か所" in ln[0] and "1 か所" in ln[0] and ln[1].startswith("  ✗ 149.90") and ln[2].startswith("  △ 50.70")
+
+
+def test_render_reports_talking_in_a_pose_without_mouth_parts(tmp_path, env):
+    """口の部品の無い姿勢（face: false）で話していると、口が止まって見える。下見で問題にし、--strict で止める。"""
+    pytest.importorskip("pykakasi")
+    root = sm.make(str(tmp_path / "proj"))
+    cfgp = os.path.join(root, "config.json"); cfg = json.load(open(cfgp)); cfg["poses"]["point"]["face"] = False; json.dump(cfg, open(cfgp, "w"))
+    out = tmp_path / "f.mp4"
+    r = render(root, out, env, "--check-only", "--strict")
+    assert r.returncode == 3, r.stderr[-2000:]
+    assert "口の検査" in r.stderr and "point: 話している" in r.stderr
+    j = json.load(open(tmp_path / "f.precheck.json"))
+    assert j["mouth_off"] and all(s["pose"] == "point" for s in j["mouth_off"]) and j["problems"] >= 1
+    cfg["poses"]["point"].pop("face"); json.dump(cfg, open(cfgp, "w"))          # face を戻すと通る（比べ）
+    assert render(root, tmp_path / "h.mp4", env, "--check-only", "--strict").returncode == 0
