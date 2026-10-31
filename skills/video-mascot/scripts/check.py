@@ -103,7 +103,7 @@ def main():
     off = float(J["from"])                             # vm render --from で書き出した動画は、その時刻が動画の 0 秒
     t_lo, t_hi = off, min(float(J["to"]), off + vdur - shift)
     gap = max(2 / vfps, 2 / float(J["fps"]))
-    spans = switch_spans(sws, gap, t_lo, t_hi)
+    spans = switch_spans(sws, gap, t_lo, t_hi, J.get("head_spans", []))
     pairs = [s for s in spans if isinstance(s, tuple)]
     widths = sorted(s[1] - s[0] for s in pairs)
     rest = rest_pairs(sws, J.get("head_spans", []), widths[len(widths) // 2] if widths else 0.5, t_lo, t_hi)
@@ -117,7 +117,7 @@ def main():
     res = []
     for sw, sp in zip(sws, spans):
         r = {"at": sw["at"], "from": sw["from"], "to": sw["to"], "engine": sw.get("engine"), "render": sw.get("status")}
-        if sp == "unclean": r["verdict"] = "unknown"; r["note"] = "前後の切り替えと重なっていて、混ざらない直前・直後のコマが取れない"
+        if sp == "unclean": r["verdict"] = "unknown"; r["note"] = "前後の切り替えか頭の動きと重なっていて、混ざらない直前・直後のコマが取れない"
         elif sp is None or fi(sp[0]) not in fr or fi(sp[1]) not in fr: r["verdict"] = "skip"
         else:
             A, B = fr[fi(sp[0])], fr[fi(sp[1])]; r["change_face"] = round(change(A, B), 5)

@@ -103,6 +103,9 @@ def test_switch_spans():
     assert sp[0] == pytest.approx((1.0 - 2 / 30, 1.3)) and sp[1] == pytest.approx((1.3, 1.6 + 2 / 30))   # 前の終わり・次の始まりで止める
     ovl = [SW1, {"at": 1.2, "dur": 0.3, "from": "point", "to": "home", "kind": "ib"}]   # 前の終わりより先に次が始まる
     assert lib.switch_spans(ovl, 2 / 30, 0.0, 5.0) == ["unclean", "unclean"]
+    sp = lib.switch_spans([SW1], 2 / 30, 0.0, 5.0, busy=[(0.5, 0.97), (1.35, 2.0)])   # 頭の動きの外に収める
+    assert sp[0] == pytest.approx((0.97, 1.35))
+    assert lib.switch_spans([SW1], 2 / 30, 0.0, 5.0, busy=[(1.1, 1.5)]) == ["unclean"]   # 頭の動きが切り替えに重なる
 
 
 def test_rest_pairs_avoid_switches_and_head():
@@ -179,7 +182,7 @@ def test_render_check_only_makes_no_video_and_calls_no_rife(tmp_path, env):
 FPS = 30
 
 
-def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0, start=0.0):
+def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0, start=0.0, head_from=None):
     """白地に「腕」（1.0〜1.3 秒に横へ動く）と「顔」（口は毎コマでたらめに変わる、目は 0.2 秒と 3.2 秒で開き 2.6 秒で閉じる）。
     2.5 秒の切り替えでは顔（目）しか変わらない＝身振りが消えた切り替え。lead 秒の無地を頭に足せる。
     start 秒より前は書かない（vm render --from start で書き出した動画と同じく、動画の 0 秒が start 秒）。"""
@@ -194,6 +197,7 @@ def synth_video(path, env, size=(240, 320), offset=(0, 0), canvas=None, lead=0.0
             v[200:260, x:x + 40] = 40                                                   # 腕
             v[60:70, 100:140] = int(rng.integers(0, 4)) * 60                          # 口
             if (0.2 <= t < 2.6) or t >= 3.2: v[30:40, 100:110] = 20; v[30:40, 130:140] = 20   # 目
+            if head_from is not None and head_from <= t < head_from + 0.3: v[5:25, 150:200] = 0   # 頭の動き（顔の外の髪が動く）
         p.stdin.write(im.tobytes())
     p.stdin.close(); assert p.wait() == 0
 
@@ -258,6 +262,16 @@ def test_check_back_to_back_missing_gesture_is_still(tmp_path, env):
     r = check(v, env)
     assert r.returncode == 0, r.stderr[-2000:]
     assert [s["verdict"] for s in json.load(open(tmp_path / "m.motion.json"))["switches"]] == ["moved", "still", "still"]
+
+
+def test_check_head_motion_right_after_missing_gesture_is_still(tmp_path, env):
+    """2.5〜2.8 秒の消えた身振りのすぐ後（2.82 秒〜）に頭の動き。直後のコマを頭の動きの中から取ると、頭の動きで「動いた」に見えた。"""
+    v = tmp_path / "m.mp4"; synth_video(v, env, head_from=2.85)
+    switches_json(tmp_path / "m.check.json")
+    j = json.load(open(tmp_path / "m.check.json")); j["head_spans"] = [[2.82, 3.15]]; json.dump(j, open(tmp_path / "m.check.json", "w"))
+    r = check(v, env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert [s["verdict"] for s in json.load(open(tmp_path / "m.motion.json"))["switches"]] == ["moved", "still"]
 
 
 def test_check_strict_fails_when_nothing_was_measured(tmp_path, env):

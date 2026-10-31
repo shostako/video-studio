@@ -1083,19 +1083,26 @@ def motion_verdict(change, noise, strong=2.0, weak=1.2):
     return "still"
 
 
-def switch_spans(switches, gap, t_lo, t_hi):
-    """各切り替えの (直前の時刻, 直後の時刻)、"unclean"、None のどれか。直前は開始の gap 秒前で、前の切り替えの終わりより後に収める。
-    直後は終わりの gap 秒後で、次の切り替えの開始より後にしない（続けて並ぶ切り替えの動きの残りを、こちらの動きと取り違えないため）。
-    収まらない（前後の切り替えと重なっている）ものは "unclean"（測れない）。前後が同じ姿勢・書き出した範囲 [t_lo, t_hi) の外は None。"""
+def switch_spans(switches, gap, t_lo, t_hi, busy=()):
+    """各切り替えの (直前の時刻, 直後の時刻)、"unclean"、None のどれか。直前は開始の gap 秒前で、前の切り替えと頭の動き（busy
+    [(始め, 終わり), ...]）の終わりより後に収める。直後は終わりの gap 秒後で、次の切り替えと頭の動きの始まりより後にしない
+    （ほかの動きを、こちらの動きと取り違えないため）。収まらない（重なっている）ものは "unclean"（測れない）。
+    前後が同じ姿勢・書き出した範囲 [t_lo, t_hi) の外は None。"""
     def end_of(sw): return float(sw["at"]) + (float(sw["dur"]) if sw["kind"] != "instant" else 0.0)
     out = []
     for i, sw in enumerate(switches):
         s = float(sw["at"]); e = end_of(sw)
         prv = end_of(switches[i - 1]) if i > 0 else -math.inf
         nxt = float(switches[i + 1]["at"]) if i + 1 < len(switches) else math.inf
+        hit = False
+        for h0, h1 in busy:
+            h0, h1 = float(h0), float(h1)
+            if h1 <= s: prv = max(prv, h1)
+            elif h0 >= e: nxt = min(nxt, h0)
+            else: hit = True                                       # 頭の動きが切り替えに重なっている
         tb, ta = max(s - gap, prv), min(e + gap, nxt)
         if sw["from"] == sw["to"] or s - gap < t_lo or e + gap >= t_hi: out.append(None)
-        elif tb > s + 1e-9 or ta < e - 1e-9 or ta <= tb: out.append("unclean")
+        elif hit or tb > s + 1e-9 or ta < e - 1e-9 or ta <= tb: out.append("unclean")
         else: out.append((tb, ta))
     return out
 
