@@ -1006,6 +1006,125 @@ def head_pos(t, keys, index, rest=None):
     return None
 
 
+# ---------- 切り替えの検査（書き出しの後に、各切り替えが実際に動いたか。純関数）----------
+def frame_tag(pl, head=False):
+    """1 コマで出した絵の種類。("head",) / ("ib", 前, 次, 出どころ) / ("mix", 前, 次) / ("pose", 姿勢)。
+    出どころは列のパスで決める: ib_wan/ の下は "wan"、ib_interp/ の下は "interp"、ほかは "drawn"（描いた中割り）。"""
+    if head: return ("head",)
+    if pl[0] == "ib":
+        p = str(pl[1][0]).replace(os.sep, "/")
+        return ("ib", pl[1][1], pl[1][2], "wan" if "/ib_wan/" in p else ("interp" if "/ib_interp/" in p else "drawn"))
+    if pl[0] == "mix": return ("mix", pl[1], pl[2])
+    return ("pose", pl[1])
+
+
+SWITCH_PROBLEMS = {
+    "head": "頭の動きに隠れて、体の切り替えが出ていない",
+    "missing": "切り替えの列（中割り・補間・Wan）が一度も出ていない",
+    "not_wan": "Wan で動かす組なのに、Wan の列が出ていない",
+    "not_reached": "切り替えの後に、次の姿勢になっていない",
+}
+
+
+def switch_check(tags, f0, fps, switches):
+    """書き出した各コマの種類 tags（frame_tag、f0 コマ目から順に）と、切り替えの一覧 switches
+    [{"at": 開始秒, "dur": 秒, "from": 前, "to": 次, "kind": "ib"|"mix"|"instant", "engine": ...}, ...]（時刻の順）から、
+    切り替えごとの結果。switches の各要素に "status" と "frames"（区間のコマの内訳）を足した新しいリストを返す。
+    kind: "ib" は中割り・補間・Wan の列で動かす、"mix" は溶かす・回る、"instant" は一瞬。engine が "wan" なら Wan の列が出たかも見る。
+    status: "ok" / "skip"（書き出した範囲の外）/ SWITCH_PROBLEMS のどれか。"""
+    n = len(tags); out = []
+    def fi(t): return int(math.ceil(t * fps - 1e-6)) - f0     # 時刻 t 以降の最初のコマ（tags の位置）
+    for i, sw in enumerate(switches):
+        r = dict(sw); s = float(sw["at"]); d = float(sw["dur"]) if sw["kind"] != "instant" else 0.0
+        a, b = sw["from"], sw["to"]; nxt = float(switches[i + 1]["at"]) if i + 1 < len(switches) else math.inf
+        w0, w1, aft = fi(s), fi(min(s + d, nxt)), fi(s + d)
+        if fi(s + d) < 0 or w0 >= n:
+            r["status"] = "skip"; r["frames"] = {}; out.append(r); continue
+        cnt = {"own": 0, "head": 0, "from": 0, "to": 0, "other": 0, "wan": 0}
+        for t_ in tags[max(0, w0):max(0, min(n, w1))]:
+            if t_[0] == "head": cnt["head"] += 1
+            elif t_[0] in ("ib", "mix") and {t_[1], t_[2]} == {a, b}:
+                cnt["own"] += 1; cnt["wan"] += t_[0] == "ib" and t_[3] == "wan"
+            elif t_ == ("pose", a): cnt["from"] += 1
+            elif t_ == ("pose", b): cnt["to"] += 1
+            else: cnt["other"] += 1
+        st = "ok"
+        whole = w0 >= 0 and w1 <= n                                # 区間が全部、書き出した範囲に入っている
+        if cnt["head"]: st = "head"
+        elif sw["kind"] != "instant" and whole and w1 > w0 and cnt["own"] == 0: st = "missing"
+        elif sw.get("engine") == "wan" and cnt["own"] and not cnt["wan"]: st = "not_wan"
+        else:                                                      # 切り替えの後（終わりのコマは丸めで列の最後の 1 枚のことがあるので 2 コマ先まで見る。次の切り替えの前だけ）
+            js = [j for j in range(aft, aft + 3) if 0 <= j < n and (j + f0) / fps < nxt - 1e-9]
+            if js and tags[js[-1]] == ("head",): st = "head"
+            elif js and tags[js[-1]] != ("pose", b): st = "not_reached"
+        r["status"] = st; r["frames"] = {k: v for k, v in cnt.items() if v}; out.append(r)
+    return out
+
+
+def head_spans(keys, rest=None):
+    """頭の動きの要所 keys [(秒, 姿勢), ...] から、頭が動いている（か rest 以外の向きで止まっている）区間 [(始め, 終わり), ...]。
+    head_pos が None でない区間と同じ（rest から rest への区間は外）。続いている区間はつなげる。"""
+    out = []
+    for (t0, p0), (t1, p1) in zip(keys, keys[1:]):
+        if t1 <= t0 or (rest is not None and p0 == rest and p1 == rest): continue
+        if out and abs(out[-1][1] - t0) < 1e-9: out[-1] = (out[-1][0], t1)
+        else: out.append((t0, t1))
+    return out
+
+
+def motion_verdict(change, noise, strong=2.0, weak=1.2):
+    """切り替えの直前と直後のコマで変わった画素の割合 change を、切り替えの無い区間（話しているだけ）の同じ間隔の変化 noise と比べる。
+    "moved"（noise の strong 倍を超える）/ "weak"（weak 倍を超える。目で確かめる）/ "still"（動いていない）/ "unknown"（noise が無い）。"""
+    if noise is None: return "unknown"
+    base = max(float(noise), 1e-4)
+    if change > strong * base: return "moved"
+    if change > weak * base: return "weak"
+    return "still"
+
+
+def switch_spans(switches, gap, t_lo, t_hi):
+    """各切り替えの (直前の時刻, 直後の時刻) か None。直前は開始の gap 秒前、直後は終わりの gap 秒後で、次の切り替えの開始より前に収める。
+    前後が同じ姿勢・書き出した範囲 [t_lo, t_hi) の外・幅が無いものは None。"""
+    out = []
+    for i, sw in enumerate(switches):
+        s = float(sw["at"]); d = float(sw["dur"]) if sw["kind"] != "instant" else 0.0
+        nxt = float(switches[i + 1]["at"]) if i + 1 < len(switches) else math.inf
+        tb, ta = s - gap, min(s + d + gap, nxt - gap)
+        out.append(None if sw["from"] == sw["to"] or tb < t_lo or ta >= t_hi or ta <= tb else (tb, ta))
+    return out
+
+
+def rest_pairs(switches, busy, span, t_lo, t_hi, margin=0.15, step=0.5, limit=200):
+    """切り替えも頭の動き（busy [(始め, 終わり), ...]）も無い区間から、間隔 span の時刻の組 [(t, t + span), ...]（多すぎれば間引く）。"""
+    spans = sorted([(float(s["at"]), float(s["at"]) + (float(s["dur"]) if s["kind"] != "instant" else 0.0)) for s in switches] + [tuple(b) for b in busy])
+    free, cur = [], t_lo
+    for s0, s1 in spans:
+        if s0 - margin > cur: free.append((cur, s0 - margin))
+        cur = max(cur, s1 + margin)
+    if t_hi > cur: free.append((cur, t_hi))
+    out = []
+    for a, b in free:
+        t = a
+        while t + span < b - 1e-9: out.append((round(t, 4), round(t + span, 4))); t += step
+    if len(out) > limit: out = [out[int(i * len(out) / limit)] for i in range(limit)]
+    return out
+
+
+def switch_report(results):
+    """switch_check の結果を、人が読む行のリストに。1 行目は件数のまとめ、問題があれば 1 件 1 行で続ける。"""
+    bad = [r for r in results if r["status"] not in ("ok", "skip")]
+    n_in = sum(r["status"] != "skip" for r in results)
+    eng = {}
+    for r in results:
+        if r["status"] != "skip": eng[r.get("engine") or r["kind"]] = eng.get(r.get("engine") or r["kind"], 0) + 1
+    head = f"切り替えの検査: {n_in} 件（{'、'.join(f'{k} {v}' for k, v in sorted(eng.items()))}）"
+    if not bad: return [head + " — 全部動いた"]
+    lines = [head + f" — 問題 {len(bad)} 件"]
+    for r in bad:
+        lines.append(f"  ✗ {r['at']:.2f} 秒 {r['from']}→{r['to']}（{r.get('engine') or r['kind']}）: {SWITCH_PROBLEMS[r['status']]}  内訳 {r['frames']}")
+    return lines
+
+
 # ---------- home 経由の切り替え（config.via_home、opt-in。純関数）----------
 VIA_HOME_DEFAULTS = {"hold": 0.0}       # hold: home に着いてから次へ動き出すまでの秒
 

@@ -3,6 +3,10 @@
     alpha（既定）: 背景を透明にした webm（out/mascot.webm、声は入れない）。どんな主動画にも重ねられる
     white       : 背景が白の mp4（声入り、out/mascot_white.mp4）。白っぽい主動画に「乗算」で重ねる用
   --mouth-scale  口の開きを全体に小さく(0.8)・大きく(1.2)する。--from/--to は一部だけ書き出して確かめる用
+  切り替えの検査（毎回）: events の各切り替えが書き出したコマで実際に動いたか（頭の動きに隠れていないか、中割り・補間・Wan の列が出たか、
+                 次の姿勢に着いたか）を最後に表で出し、<出力>.check.json に書く。書き出した動画の画素での確認は vm check
+  --check-only   下見。絵を作らず（RIFE・Wan を呼ばず）時間割だけを回して同じ検査をし、Wan で新しく作る組を出す（<出力>.precheck.json）
+  --strict       切り替えの検査で問題があれば終了コード 3（動画は書き出したまま残る）
   --lipsync amp|mora  口パクの母音の決め方（既定は config.lipsync、無ければ amp）。amp: 聞き取りの語を音の数で等分（今まで）。
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
@@ -25,6 +29,7 @@ from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
+from lib import frame_tag, switch_check, switch_report, head_spans
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -217,12 +222,15 @@ def ib_item(item, src_pose, lerp_parts=False):
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
+DRY = "--check-only" in sys.argv                  # 下見: 絵を作らず時間割だけを回して、切り替えの検査をする（RIFE・Wan を呼ばない）
 class LazySeq:
-    """補間した列。長さは先に分かり、絵（RIFE）は最初に中身を引いた時に作る（--from/--to の範囲外の切り替えでは作らない）。"""
-    def __init__(self, n, make, rev): self.n, self.make, self.rev, self.items = n, make, rev, None
+    """補間した列。長さは先に分かり、絵（RIFE）は最初に中身を引いた時に作る（--from/--to の範囲外の切り替えでは作らない）。
+    dry(i) は下見（--check-only）のときに作らずに返す項目（パスは置き場の名前だけ。検査は置き場の名前で出どころを見る）。"""
+    def __init__(self, n, make, rev, dry=None): self.n, self.make, self.rev, self.items, self.dry = n, make, rev, None, dry
     def __len__(self): return self.n
     def __bool__(self): return self.n > 0
     def __getitem__(self, i):
+        if DRY and self.dry: return self.dry()
         if self.items is None: self.items = self.make()
         return self.items[self.n - 1 - i] if self.rev else self.items[i]
 def dense_seq(pa, pb, rev, direct):
@@ -230,7 +238,7 @@ def dense_seq(pa, pb, rev, direct):
         from interp import dense_paths
         paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
         return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
-    return LazySeq(DIV * INTERP["mult"] - 1, make, rev)
+    return LazySeq(DIV * INTERP["mult"] - 1, make, rev, dry=lambda: (P.p("ib_interp", "_dry"), pa, pb, 0))
 def wan_seq(a_, b_):
     """Wan の First-Last-Frame で a→b を動かした列（engine: wan）。長さと k の位置は RIFE の直の補間と同じ（端の姿勢の間を div 等分した単位）。"""
     n = DIV * INTERP["mult"] - 1
@@ -238,7 +246,7 @@ def wan_seq(a_, b_):
         from wanflf import dense_paths as wan_paths
         paths = wan_paths(P, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
         return [(pth, a_, b_, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
-    return LazySeq(n, make, False)
+    return LazySeq(n, make, False, dry=lambda: (P.p("ib_wan", f"{a_}__{b_}", "_dry"), a_, b_, 0))
 def wan_ok(a_, b_):                               # Wan で動かす組か（engine: wan、向きの同じ組、interp.pairs で絞れる）
     return bool(INTERP) and INTERP["engine"] == "wan" and a_ != b_ and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
 IBSEQ = {}
@@ -364,8 +372,9 @@ def head_plan(f):
     """f が頭の動きの中なら、列のコマを中割りと同じ形で ("ib", item, 部品を写す向き)。外なら None"""
     pos = head_pos(f / FPS, HEAD_KEYS, HEAD_IDX, rest=P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else None
     if pos is None: return None
-    items = head_items(); j = min(len(items) - 1, max(0, int(round(pos))))
     src = min(HEADC["chain"], key=lambda p_: abs(HEAD_IDX[p_] - pos))
+    if DRY: return ("ib", (P.p("ib_interp", "_dry"), src, src, 0), src, "head")
+    items = head_items(); j = min(len(items) - 1, max(0, int(round(pos))))
     return ("ib", items[j], src, "head")
 
 SWITCHES = [(s_, d_) for s_, d_, _, _ in SW]      # 二次運動: 予備動作とオーバーシュートを足す切り替え（開始, 長さ）
@@ -395,7 +404,8 @@ def body(pl, f):
 W1 = W0 + 2 * PAD; OW = 2 * round(OH * W1 / H0 / 2)
 f0, f1 = int(T0 * FPS), int(math.ceil(T1 * FPS))
 if min(f1, NALL) <= f0: die(f"書き出すコマが無い（{T0}〜{T1} 秒、声は {NALL / FPS:.2f} 秒まで。--from / --to を見直す）")
-if MODE == "alpha":
+if DRY: enc = None
+elif MODE == "alpha":
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
                             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "20", "-auto-alt-ref", "0", OUTF], stdin=subprocess.PIPE)
 else:
@@ -423,8 +433,11 @@ def finish(img, sh, boxes, sdd):
         keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
     return matte(img, sh, keep)
 
+TAGS = []                                         # 切り替えの検査: 各コマで何を出したか（frame_tag）
 for f in range(f0, min(f1, NALL)):
-    pl = head_plan(f) or plan(f); tt = f / FPS   # 頭の動きの中は、頭の向きの列が姿勢の時間割より優先
+    hp = head_plan(f); pl = hp or plan(f); tt = f / FPS   # 頭の動きの中は、頭の向きの列が姿勢の時間割より優先
+    TAGS.append(frame_tag(pl, hp is not None))
+    if DRY: continue
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0
     elif MOT is None:
@@ -450,9 +463,41 @@ for f in range(f0, min(f1, NALL)):
         out = finish(*body(pl, f), M)
     enc.stdin.write(out.tobytes())
     if f % 300 == 0: print(f"  {f}/{NALL}", file=sys.stderr, flush=True)
-enc.stdin.close(); rc_enc = enc.wait()
-if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
-if MODE != "alpha":
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{T0}", "-t", f"{T1 - T0}", "-i", VOICE, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", OUTF], check=True)
-    os.remove(tmp)
-print(OUTF)
+if not DRY:
+    enc.stdin.close(); rc_enc = enc.wait()
+    if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
+    if MODE != "alpha":
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{T0}", "-t", f"{T1 - T0}", "-i", VOICE, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", OUTF], check=True)
+        os.remove(tmp)
+
+# ---------- 切り替えの検査 ----------
+# events の各切り替えが、書き出したコマで実際に動いたか（頭の動きに隠れていないか、中割り・補間・Wan の列が出たか、次の姿勢に着いたか）。
+# 結果は <出力>.check.json（下見は .precheck.json）に書き、vm check（書き出した動画の画素で確かめる）が読む。--strict なら問題があれば終了コード 3
+def sw_kind(e_):
+    k_ = trans_of(e_[1], e_[2], e_[3] if len(e_) > 3 else None) if USE_VIA else None
+    if k_ is not None: return "instant" if k_[0] == "cut" else "mix"
+    return "ib" if ib_seq(e_[1], e_[2]) else "instant"
+def sw_engine(a_, b_, kind):
+    if kind != "ib": return kind
+    if wan_ok(a_, b_):
+        rp = INTERP["wan"]["rife_pairs"]; return "rife" if (f"{a_}>{b_}" in rp or f"{b_}>{a_}" in rp) else "wan"
+    return "rife" if interp_pair(a_, b_) else "drawn"
+SWL = []
+for sw, e_ in zip(SW, ev):
+    k_ = sw_kind(e_); item = {"at": round(sw[0], 4), "dur": round(sw[1], 4), "from": e_[1], "to": e_[2], "kind": k_, "engine": sw_engine(e_[1], e_[2], k_)}
+    if item["engine"] == "wan":
+        wd = P.p("ib_wan", f"{e_[1]}__{e_[2]}", f"n{DIV * INTERP['mult'] - 1}")
+        item["wan_dir"] = wd; item["wan_ready"] = os.path.exists(os.path.join(wd, "stamp.json"))
+    SWL.append(item)
+CHK = switch_check(TAGS, f0, FPS, SWL)
+for ln in switch_report(CHK): print(ln, file=sys.stderr)
+if DRY:                                           # 下見: これから Wan で作る組（置き場にまだ無い組）
+    todo = sorted({f"{r['from']}→{r['to']}" for r in CHK if r["status"] != "skip" and r.get("engine") == "wan" and not r.get("wan_ready")})
+    print(f"Wan で新しく作る組: {len(todo)}{'（' + '、'.join(todo) + '）' if todo else ''}", file=sys.stderr)
+NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK)
+HSP = head_spans(HEAD_KEYS, P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else []
+CHKF = os.path.splitext(OUTF)[0] + (".precheck.json" if DRY else ".check.json")
+json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP},
+          open(CHKF, "w"), ensure_ascii=False, indent=1)
+print(CHKF if DRY else OUTF)
+if NBAD and "--strict" in sys.argv: die(f"切り替えの検査で問題が {NBAD} 件（{CHKF}）", 3)
