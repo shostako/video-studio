@@ -142,6 +142,16 @@ def test_dense_paths_reuses_the_cache(proj):
     assert len(calls) == 2                                                      # 生成に効く値が変われば作り直す
 
 
+def test_dense_paths_regenerates_when_the_mascot_description_changes(proj):
+    """interp.wan.style を書かない時は config.mascot.description が描かせる文に入る。説明を直したら作り直す。"""
+    icfg = lib.interp_config({"engine": "wan", "wan": {"width": 240, "height": 384, "rife_mult": 2}})
+    calls = []
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=fake_gen(calls), rife=fake_rife)
+    proj.cfg["mascot"] = {"description": "a different mascot with a red scarf"}
+    wanflf.dense_paths(proj, "home", "point", 11, icfg, gen=fake_gen(calls), rife=fake_rife)
+    assert len(calls) == 2
+
+
 def test_prompt_of_head_poses():
     cfg = {"mascot": {"description": "a mascot"}, "poses": {"home": {"desc": "standing"}, "look_l": {"desc": "looks left"}}}
     wan = lib.wan_config({"head_poses": ["look_l"]})
@@ -160,6 +170,61 @@ def env(tmp_path_factory):
         b = tmp_path_factory.mktemp("bin"); (b / "ffmpeg").symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
         e["PATH"] = f"{b}{os.pathsep}{e['PATH']}"
     return e
+
+
+MAGENTA = (255, 0, 255)
+
+
+def marked_gen(P, a, b, wan, raw_dir, log=None):
+    """姿勢の間を溶かしたコマの胴に、マゼンタの印を描く（書き出しに Wan の列が使われたかを見分ける）。"""
+    A = cv2.resize(P.read_pose(a), (wan["width"], wan["height"])); B = cv2.resize(P.read_pose(b), (wan["width"], wan["height"]))
+    os.makedirs(raw_dir, exist_ok=True)
+    for i in range(wan["length"]):
+        u = i / (wan["length"] - 1); im = cv2.addWeighted(A, 1 - u, B, u, 0)
+        if 0 < i < wan["length"] - 1:
+            h, w = im.shape[:2]; cv2.rectangle(im, (int(w * 0.40), int(h * 0.45)), (int(w * 0.58), int(h * 0.58)), MAGENTA, -1)
+        cv2.imwrite(os.path.join(raw_dir, f"w{i + 1:02d}.png"), im)
+
+
+def read_frames(path):
+    cap = cv2.VideoCapture(str(path)); out = []
+    while True:
+        ok, f = cap.read()
+        if not ok: break
+        out.append(f)
+    return out
+
+
+def magenta_px(f):
+    b, g, r = f[:, :, 0].astype(int), f[:, :, 1].astype(int), f[:, :, 2].astype(int)
+    return int(((r > 150) & (b > 150) & (g < 110)).sum())
+
+
+def test_render_engine_wan_wins_over_transition_fade(tmp_path, env):
+    """config.transition（中割りの無い組を溶かす）を書いていても、engine: wan の組は Wan の列で動く。events の via は優先のまま。"""
+    pytest.importorskip("pykakasi")
+    root = sm.make(str(tmp_path / "proj"))
+    cfgp = os.path.join(root, "config.json"); cfg = json.load(open(cfgp))
+    cfg["pairs"] = []                                                           # 中割りを描いていない組
+    cfg["transition"] = {"mode": "fade", "dur": 0.5}
+    cfg["interp"] = {"engine": "wan", "mult": 4, "wan": {"width": 240, "height": 384, "rife_mult": 1, "edge": 0.05}}
+    json.dump(cfg, open(cfgp, "w"))
+    P = lib.Proj(root); icfg = lib.interp_config(cfg["interp"])
+    n = P.ib_div * icfg["mult"] - 1
+    for a, b in (("home", "point"), ("point", "home")):
+        wanflf.dense_paths(P, a, b, n, icfg, gen=marked_gen, rife=fake_rife)
+    out = tmp_path / "w.mp4"
+    r = subprocess.run([sys.executable, "-B", str(RENDER), root, "--mode", "white", "--out", str(out)], env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert max(magenta_px(f) for f in read_frames(out)) > 30                    # 溶かしでなく Wan の列が出た
+
+    cfg["events"][0]["via"] = "cut"                                             # via を書いた切り替えは via が優先
+    cfg["events"] = cfg["events"][:1]
+    json.dump(cfg, open(cfgp, "w"))
+    out2 = tmp_path / "w2.mp4"
+    r = subprocess.run([sys.executable, "-B", str(RENDER), root, "--mode", "white", "--out", str(out2)], env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert max(magenta_px(f) for f in read_frames(out2)) <= 30
 
 
 def test_render_with_engine_wan(tmp_path, env):

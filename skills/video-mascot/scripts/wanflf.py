@@ -128,7 +128,7 @@ def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
     wan = icfg["wan"]; gen = gen or generate; rife = rife or rife_frames
     base = P.p("ib_wan", f"{a}__{b}"); raw = os.path.join(base, "raw")
     src = [P.pose_path(a), P.pose_path(b)]
-    st_gen = {"src": _file_stamp(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "desc": P.cfg["poses"].get(b, {}).get("desc")}
+    st_gen = {"src": _file_stamp(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "prompt": prompt_of(P.cfg, wan, a, b)}   # 描かせる文そのもの（キャラの説明・姿勢の desc・head_poses が変われば作り直す）
     if _read_stamp(os.path.join(base, "raw_stamp.json")) != json.loads(json.dumps(st_gen)) or not glob.glob(os.path.join(raw, "w*.png")):
         gen(P, a, b, wan, raw, log=log)
         os.makedirs(base, exist_ok=True); json.dump(st_gen, open(os.path.join(base, "raw_stamp.json"), "w"))

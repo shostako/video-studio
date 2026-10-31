@@ -259,7 +259,7 @@ def interp_pair(a_, b_):                          # コマ補間する組か（�
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
 EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
 def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
-def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_), via, TRANS, ib_d(a_, b_))
+def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_) or wan_ok(a_, b_), via, TRANS, ib_d(a_, b_))   # Wan で動かす組も「中割りあり」（events の via は優先）
 def sw_dur(a_, b_, via):
     k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
 def route(a_, b_, via):                           # home 経由でつなぐ切り替えの (前→home の秒, hold, home→次 の秒)（via_home。via を書いた切り替えは via が優先）
