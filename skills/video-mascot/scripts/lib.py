@@ -710,13 +710,15 @@ def gaze_track(nall, fps, spans, switches=(), yaw_of=None, lead=0.15):
 
 
 # ---------- 下半身の差し替え（config.legs_lock。opt-in）----------
-LEGS_DEFAULTS = {"from": None, "cut": 0.38, "feather": 0.03, "hand_zone": 0.45, "poses": None}
+LEGS_DEFAULTS = {"from": None, "cut": 0.38, "feather": 0.03, "hand_zone": 0.45, "poses": None, "fix_x": False}
 
 
 def legs_config(value, poses_cfg, home):
     """config.legs_lock を辞書か None（今までどおり）に。from は下半身を写す元の姿勢（既定 home）、
     poses は差し替える姿勢（既定は正面の姿勢＝ yaw が無いか 0。元の姿勢は除く）。cut は切れ目の高さ（背の割合、足元から）、
-    feather は切れ目の上で溶かす帯（背の割合）、hand_zone は切れ目から足元までのうち、元の絵の手を残す上の割合。"""
+    feather は切れ目の上で溶かす帯（背の割合）、hand_zone は切れ目から足元までのうち、元の絵の手を残す上の割合。
+    fix_x: 下半身を横にずらして腰に合わせるのをやめる（true）。カメラ固定で描いた絵（Wan の切り替え）を毎コマ通すと、
+    ずらしの量がコマごとに変わって足元が数 px 揺れる。"""
     if value is None or value is False: return None
     if value is True: value = {}
     if not isinstance(value, dict): raise ValueError(f"legs_lock は true/false か辞書: {value!r}")
@@ -728,6 +730,7 @@ def legs_config(value, poses_cfg, home):
     if not 0.1 <= out["cut"] <= 0.7: raise ValueError(f"legs_lock.cut は 0.1〜0.7: {out['cut']}")
     if not 0 < out["feather"] < out["cut"]: raise ValueError(f"legs_lock.feather は 0 より大きく cut より小さく: {out['feather']}")
     if not 0 <= out["hand_zone"] <= 1: raise ValueError(f"legs_lock.hand_zone は 0〜1: {out['hand_zone']}")
+    if not isinstance(out["fix_x"], bool): raise ValueError(f"legs_lock.fix_x は true か false: {out['fix_x']!r}")
     if out["poses"] is None:
         out["poses"] = [p for p, c in poses_cfg.items() if not c.get("yaw")]
     else:
@@ -767,13 +770,14 @@ def _main_blob(m):
     return lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
 
 
-def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0):
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None):
     """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
     切れ目の高さは canon の背で測る。canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
     切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
     元の絵の手（肌の色）と、腰・脚の外にある腕・手は、切れ目から足元までの上 hand_zone までは元のまま残す（足首の肌は canon）。
     canon_scale: 先に canon をその足元を中心にこの倍率にする（書き出しで img が canon と違う倍率で拡大縮小される時、出来上がりの脚の大きさを揃える）。
-    辞書の M は canon の座標を出来上がりの絵の座標へ写す 2x3 の行列（canon の足元の点を写せば、差し替えた絵の足元になる）。"""
+    辞書の M は canon の座標を出来上がりの絵の座標へ写す 2x3 の行列（canon の足元の点を写せば、差し替えた絵の足元になる）。
+    dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。"""
     H, W = img.shape[:2]
     if canon.shape != img.shape: raise ValueError(f"legs_lock: 絵の大きさが基準と違う（{img.shape[1]}x{img.shape[0]} と {canon.shape[1]}x{canon.shape[0]}）")
     pv = feet_anchor(canon) or (W / 2.0, float(H))
@@ -790,7 +794,8 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     a = mi0[y0:cy].sum(0).astype(np.float32)
     cs = cv2.warpAffine(canon, np.float32([[1, 0, 0], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     b = fg_mask(cs)[y0:cy].sum(0).astype(np.float32)
-    dx = max(range(-40, 41), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
+    if dx is None: dx = max(range(-40, 41), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
+    else: dx = int(dx)                                # 横のずらしを決め打ち（legs_lock.fix_x。カメラ固定の絵で足元を揺らさない）
     c = cv2.warpAffine(canon, np.float32([[1, 0, dx], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     wr = np.clip((np.arange(H) - y0) / fb, 0, 1).astype(np.float32)
     imgW, cW, mc = img.copy(), c.copy(), fg_mask(c); cx = W / 2.0; X = np.arange(W, dtype=np.float32)
@@ -831,7 +836,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
 
 # ---------- 中割りのコマ補間（config.interp、opt-in）----------
 INTERP_DEFAULTS = {
-    "engine": "rife",       # 今は RIFE（rife-ncnn-vulkan）だけ
+    "engine": "rife",       # rife: 描いた絵の間を RIFE で細かくする。wan: 姿勢の切り替えを Wan2.2 の First-Last-Frame で動かす（interp.wan）
     "mult": 8,              # 描いた絵（端の姿勢と中割り）の間を何倍に細かくするか
     "dur": 0.6,             # 中割りのある組の切り替えの秒（描いた枚数によらない）
     "ease": "in_out",       # 何枚目を出すかのイージング（linear / in / out / in_out / sine）
@@ -841,7 +846,75 @@ INTERP_DEFAULTS = {
     "model": "rife-v4.6",
     "exe": "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe",
     "tmp": "/mnt/c/Users/shost/AppData/Local/Temp/vm_rife",   # Windows の exe が読み書きできる所
+    "wan": None,            # engine: wan の設定（WAN_DEFAULTS を上書きする辞書）
 }
+
+# engine: wan の既定。新PC の ComfyUI（portable）と、その models に置いた Wan2.2 I2V-A14B（GGUF）・Lightning の LoRA を使う
+WAN_DEFAULTS = {
+    "comfy": "/mnt/c/ComfyUI/ComfyUI_windows_portable",   # ComfyUI portable の場所（python_embeded と ComfyUI/ がある所）
+    "url": "http://127.0.0.1:8188",
+    "width": 704, "height": 1248,   # Wan に渡す大きさ（16 の倍数。縦横比は姿勢の絵に近く）
+    "length": 13,           # Wan のコマ数（4n+1）。16fps で 0.75 秒分。再生の秒は interp.dur / durs で決まる
+    "seed": 400,
+    "rife_mult": 16,        # Wan のコマの間を RIFE で何倍に細かくするか
+    "cut_tol": 5.0,         # 背景の明るさが 1 コマ目からこれ以上ずれたコマから後ろを捨てる（Wan の FLF は最後のまとまりで崩れる）
+    "edge": 0.15,           # 切り替えの始まりと終わりの何割を、止まった絵と重ねるか
+    "rife_pairs": [],       # Wan を通さず、描いた 2 枚の間を RIFE で直に補間する組（会釈など頭が少し動くだけの組）["home>nod", ...]
+    "head_poses": [],       # 頭だけが動く姿勢（横を見る・首振り）。その組は「頭だけを回す」と描かせ、「頭を動かさない」を外す
+    "style": None,          # 描かせる文のキャラの説明（None は config.mascot.description）
+    "unet_high": "Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf", "unet_low": "Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf",
+    "lora_high": "wan22_i2v_high_lightning.safetensors", "lora_low": "wan22_i2v_low_lightning.safetensors",
+    "clip": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "vae": "wan_2.1_vae.safetensors",
+    "clip_vision": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+}
+
+
+def wan_config(value):
+    """interp.wan（辞書か None）を、既定を埋めた辞書に。知らない項目・おかしな値は ValueError。"""
+    v = {} if value is None else value
+    if not isinstance(v, dict): raise ValueError(f"interp.wan は辞書: {value!r}")
+    bad = sorted(set(v) - set(WAN_DEFAULTS))
+    if bad: raise ValueError(f"interp.wan に知らない項目: {bad}")
+    out = dict(WAN_DEFAULTS); out.update(v)
+    for k in ("width", "height"):
+        if not isinstance(out[k], int) or isinstance(out[k], bool) or out[k] < 64 or out[k] % 16: raise ValueError(f"interp.wan.{k} は 64 以上の 16 の倍数: {out[k]!r}")
+    if not isinstance(out["length"], int) or isinstance(out["length"], bool) or out["length"] < 5 or (out["length"] - 1) % 4: raise ValueError(f"interp.wan.length は 5 以上の 4n+1: {out['length']!r}")
+    if not isinstance(out["rife_mult"], int) or isinstance(out["rife_mult"], bool) or out["rife_mult"] < 1: raise ValueError(f"interp.wan.rife_mult は 1 以上の整数: {out['rife_mult']!r}")
+    for k in ("cut_tol", "edge"):
+        if isinstance(out[k], bool) or not isinstance(out[k], (int, float)) or out[k] < 0: raise ValueError(f"interp.wan.{k} は 0 以上の数: {out[k]!r}")
+    if out["edge"] >= 0.5: raise ValueError(f"interp.wan.edge は 0.5 未満: {out['edge']!r}")
+    if not isinstance(out["rife_pairs"], list): raise ValueError("interp.wan.rife_pairs は [\"前>次\", ...]")
+    out["rife_pairs"] = [_pair_key(k) for k in out["rife_pairs"]]
+    if not isinstance(out["head_poses"], list) or not all(isinstance(p, str) for p in out["head_poses"]): raise ValueError("interp.wan.head_poses は [\"姿勢\", ...]")
+    return out
+
+
+def wan_cut(levels, tol):
+    """Wan のコマの背景の明るさの列から、使うコマの数（1 コマ目から tol を超えてずれたコマの手前まで。最低 1）。"""
+    for i in range(1, len(levels)):
+        if abs(levels[i] - levels[0]) > tol: return i
+    return len(levels)
+
+
+def motion_positions(steps, n_out):
+    """コマの間の変化の大きさの列 steps（コマ数 - 1 個）から、動きが等しい割合で進む n_out 個の位置（小数のコマ番号、0〜コマ数-1）。
+    Wan は動きを後ろに寄せがちで、時刻の割合でコマを選ぶと、前半は止まって最後に跳ぶ。止まったコマも少しは進める。"""
+    s = np.asarray(steps, dtype=float)
+    if n_out < 2: raise ValueError("motion_positions: n_out は 2 以上")
+    if len(s) == 0: return np.zeros(n_out)
+    s = np.maximum(s, 0) + max(1e-3, 0.03 * float(s.mean()))
+    c = np.concatenate([[0.0], np.cumsum(s)]); c /= c[-1]
+    return np.interp(np.linspace(0, 1, n_out), c, np.arange(len(c), dtype=float))
+
+
+def edge_weight(u, edge):
+    """切り替えの位置 u（0〜1）で、端の止まった絵を重ねる割合 (前の絵の重み, 次の絵の重み)。始まりと終わりの edge の幅で滑らかに。"""
+    if edge <= 0: return 0.0, 0.0
+    if u < edge:
+        k = (edge - u) / edge; return k * k * (3 - 2 * k), 0.0
+    if u > 1 - edge:
+        k = (u - (1 - edge)) / edge; return 0.0, k * k * (3 - 2 * k)
+    return 0.0, 0.0
 
 
 def _pair_key(k):
@@ -850,17 +923,20 @@ def _pair_key(k):
 
 
 def interp_config(value, flag=None):
-    """config.interp と --interp rife|off から、中割りのコマ補間の設定（既定を埋めた辞書）か None（使わない）。
-    value: 無し・false は使わない、true と {} は全部既定、辞書は項目ごとに上書き。知らない項目・おかしな値は ValueError。"""
-    if flag not in (None, "rife", "off"): raise ValueError(f"--interp は rife か off: {flag}")
+    """config.interp と --interp rife|wan|off から、中割りのコマ補間の設定（既定を埋めた辞書）か None（使わない）。
+    value: 無し・false は使わない、true と {} は全部既定、辞書は項目ごとに上書き。知らない項目・おかしな値は ValueError。
+    --interp rife|wan は engine をその値にする（config に書いた他の項目は生かす）。"""
+    if flag not in (None, "rife", "wan", "off"): raise ValueError(f"--interp は rife か wan か off: {flag}")
     if flag == "off": return None
-    if value in (None, False) and flag != "rife": return None
+    if value in (None, False) and flag is None: return None
     v = {} if value is None or isinstance(value, bool) else value
     if not isinstance(v, dict): raise ValueError(f"config.interp は true か辞書: {value!r}")
     bad = sorted(set(v) - set(INTERP_DEFAULTS))
     if bad: raise ValueError(f"config.interp に知らない項目: {bad}")
     out = dict(INTERP_DEFAULTS); out.update(v)
-    if out["engine"] != "rife": raise ValueError(f"interp.engine は rife だけ: {out['engine']}")
+    if flag is not None: out["engine"] = flag
+    if out["engine"] not in ("rife", "wan"): raise ValueError(f"interp.engine は rife か wan: {out['engine']}")
+    out["wan"] = wan_config(out["wan"]) if out["engine"] == "wan" else None
     if not isinstance(out["mult"], int) or isinstance(out["mult"], bool) or out["mult"] < 2: raise ValueError(f"interp.mult は 2 以上の整数: {out['mult']!r}")
     if isinstance(out["dur"], bool) or not isinstance(out["dur"], (int, float)) or out["dur"] <= 0: raise ValueError(f"interp.dur は正の秒: {out['dur']!r}")
     ease(out["ease"], 0.5)                        # 名前の検査

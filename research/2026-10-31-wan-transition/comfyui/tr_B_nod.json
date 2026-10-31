@@ -1,0 +1,27 @@
+{
+ "base": "Bfull_home.png",
+ "prefix": "mascot_tr/Bfull",
+ "width": 704,
+ "height": 1248,
+ "style": "a glossy resin chibi figurine woman with a big head and black hair tied in a low bun at the nape of her neck, wearing a navy suit and a white blouse, stands on a plain white background. ",
+ "clips": [
+  {
+   "id": "home__nod",
+   "seed": 500,
+   "start": "Bfull_home.png",
+   "end": "Bfull_nod.png",
+   "length": 13,
+   "motion": "She gives a light polite bow: her upper body leans slightly forward from the hips and her head lowers a little, keeping her hands clasped in front of her waist.",
+   "keep": " Her head does not tilt sideways, her eyes stay open, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "nod__home",
+   "seed": 501,
+   "start": "Bfull_nod.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She straightens up from a light polite bow back to standing upright, keeping her hands clasped in front of her waist.",
+   "keep": " Her head does not tilt sideways, her eyes stay open, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  }
+ ]
+}

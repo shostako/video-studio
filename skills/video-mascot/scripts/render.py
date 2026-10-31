@@ -7,8 +7,9 @@
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
                  姿勢の切り替えの予備動作・オーバーシュート・イージング。off は今までどおりの息づかいとまばたき
-  --interp rife|off  中割りのコマ補間（既定は config.interp、無ければ off）。描いた中割りの間を RIFE で細かくし、
-                 切り替えを interp.dur 秒（組ごとは interp.durs）とイージングで出す。作った列は ib_interp/ にためる
+  --interp rife|wan|off  中割りのコマ補間（既定は config.interp、無ければ off）。rife: 描いた中割りの間を RIFE で細かくし、
+                 切り替えを interp.dur 秒（組ごとは interp.durs）とイージングで出す。作った列は ib_interp/ にためる。
+                 wan: 姿勢の切り替えを Wan2.2 の First-Last-Frame で動かす（新PC の ComfyUI。interp.wan、作った列は ib_wan/ にためる）
 config.transition（中割りの無い切り替えを溶かす・回って見せる）、events の via、config.gaze（視線の部品と、向きの切り替えの前に目が先に動く）、
 poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、書いた時だけ使う（references/config-spec.md の「向きと視線」）。
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
@@ -99,7 +100,7 @@ LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
 def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
 def legs(img, sc):
     """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。"""
-    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc)
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None)
     if info is None: return img, None
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
@@ -220,9 +221,26 @@ def dense_seq(pa, pb, rev, direct):
         paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
         return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     return LazySeq(DIV * INTERP["mult"] - 1, make, rev)
+def wan_seq(a_, b_):
+    """Wan の First-Last-Frame で a→b を動かした列（engine: wan）。長さと k の位置は RIFE の直の補間と同じ（端の姿勢の間を div 等分した単位）。"""
+    n = DIV * INTERP["mult"] - 1
+    def make():
+        from wanflf import dense_paths as wan_paths
+        paths = wan_paths(P, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
+        return [(pth, a_, b_, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
+    return LazySeq(n, make, False)
+def wan_ok(a_, b_):                               # Wan で動かす組か（engine: wan、向きの同じ組、interp.pairs で絞れる）
+    return bool(INTERP) and INTERP["engine"] == "wan" and a_ != b_ and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
 IBSEQ = {}
 def ib_seq(a_, b_):
     if (a_, b_) in IBSEQ: return IBSEQ[(a_, b_)]
+    if wan_ok(a_, b_):                            # engine: wan。rife_pairs の組（頭が少し動くだけ）は描いた 2 枚の間を RIFE で直に
+        rp = INTERP["wan"]["rife_pairs"]
+        if f"{a_}>{b_}" in rp or f"{b_}>{a_}" in rp:
+            pa, pb = sorted((a_, b_)); IBSEQ[(a_, b_)] = dense_seq(pa, pb, pa != a_, True)
+        else:
+            IBSEQ[(a_, b_)] = wan_seq(a_, b_)
+        return IBSEQ[(a_, b_)]
     d = P.pair_dir(a_, b_)
     if d is None and direct_ok(a_, b_):           # 中割りの無い組を、端の姿勢2枚の間で直に補間する（interp.direct）
         pa, pb = sorted((a_, b_)); IBSEQ[(a_, b_)] = dense_seq(pa, pb, pa != a_, True); return IBSEQ[(a_, b_)]
@@ -234,14 +252,14 @@ def ib_seq(a_, b_):
     IBSEQ[(a_, b_)] = seq[::-1] if rev else seq; return IBSEQ[(a_, b_)]
 def direct_ok(a_, b_):                            # 中割りの無い組を直に補間するか（interp.direct、向きの同じ組だけ）
     return bool(INTERP) and INTERP["direct"] and a_ != b_ and P.pair_dir(a_, b_) is None and VIEW[a_] == VIEW[b_] and interp_on(INTERP, a_, b_)
-def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組と、直に補間する組）
-    d = P.pair_dir(a_, b_); return bool(INTERP) and ((d is not None and interp_on(INTERP, d[0], d[1])) or direct_ok(a_, b_))
+def interp_pair(a_, b_):                          # コマ補間する組か（中割りのある組と、直に補間する組と、Wan で動かす組）
+    d = P.pair_dir(a_, b_); return bool(INTERP) and ((d is not None and interp_on(INTERP, d[0], d[1])) or direct_ok(a_, b_) or wan_ok(a_, b_))
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
 EVS = C.get("events", []); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
 def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
-def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_), via, TRANS, ib_d(a_, b_))
+def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_) or wan_ok(a_, b_), via, TRANS, ib_d(a_, b_))   # Wan で動かす組も「中割りあり」（events の via は優先）
 def sw_dur(a_, b_, via):
     k_ = trans_of(a_, b_, via); return ib_d(a_, b_) if k_ is None else k_[1]
 def route(a_, b_, via):                           # home 経由でつなぐ切り替えの (前→home の秒, hold, home→次 の秒)（via_home。via を書いた切り替えは via が優先）

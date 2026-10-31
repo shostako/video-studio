@@ -1,0 +1,81 @@
+{
+ "base": "Bfull_home.png",
+ "prefix": "mascot_tr/Bfull",
+ "width": 704,
+ "height": 1248,
+ "style": "a glossy resin chibi figurine woman with a big head and black hair tied in a low bun at the nape of her neck, wearing a navy suit and a white blouse, stands on a plain white background. ",
+ "clips": [
+  {
+   "id": "home__nod__home",
+   "seed": 500,
+   "start": "Bfull_home.png",
+   "end": "Bfull_home.png",
+   "length": 25,
+   "motion": "She gives a small polite nod, tilting her head slightly forward and back up, keeping her hands clasped in front of her waist.",
+   "keep": " Her eyes stay open, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "home__open",
+   "seed": 501,
+   "start": "Bfull_home.png",
+   "end": "Bfull_open.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: both hands spread apart to the sides at chest height with palms up.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "open__fist_r",
+   "seed": 502,
+   "start": "Bfull_open.png",
+   "end": "Bfull_fist_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: exactly the same pose, arm position and body as the reference, only the raised hand changes: all of her fingers are folded into a loose, relaxed fist with the thumb resting over the folded fingers, NO finger is pointing up, the back of the hand facing the viewer, standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "fist_r__count_3",
+   "seed": 503,
+   "start": "Bfull_fist_r.png",
+   "end": "Bfull_count_3.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: exactly the same pose, arm position and body as the reference, only the raised hand changes: her index, middle and ring fingers point straight up and are slightly apart, the thumb and little finger folded, the back of the hand facing the viewer, standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "count_3__raise_r",
+   "seed": 504,
+   "start": "Bfull_count_3.png",
+   "end": "Bfull_raise_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, her hand on the image-right side raised to the height of her face with the index finger pointing straight up, as when saying 'here is one point', the other arm relaxed at her side, standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "raise_r__arms_crossed",
+   "seed": 505,
+   "start": "Bfull_raise_r.png",
+   "end": "Bfull_arms_crossed.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, standing on exactly the same spot as the reference, both arms folded across her chest, each hand resting on the opposite upper arm, a calm and slightly serious expression, her face fully visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "arms_crossed__gassho",
+   "seed": 506,
+   "start": "Bfull_arms_crossed.png",
+   "end": "Bfull_gassho.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, standing on exactly the same spot as the reference, both palms pressed flat together in front of her chest with the fingers pointing up, elbows relaxed, her face fully visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "gassho__fist_r",
+   "seed": 507,
+   "start": "Bfull_gassho.png",
+   "end": "Bfull_fist_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: exactly the same pose, arm position and body as the reference, only the raised hand changes: all of her fingers are folded into a loose, relaxed fist with the thumb resting over the folded fingers, NO finger is pointing up, the back of the hand facing the viewer, standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  }
+ ]
+}
