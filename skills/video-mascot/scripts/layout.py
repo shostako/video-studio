@@ -81,14 +81,24 @@ def font_path():
     return p
 
 
+def fit_text(text, width_of, maxw, min_size, size):
+    """余白に収まる (字の大きさ, 文字)。maxw を超えるうちは字を 2px ずつ小さくし、min_size でも超えるなら末尾を「…」にして削る。
+    width_of(文字, 大きさ) は描いたときの幅。"""
+    while size > min_size and width_of(text, size) > maxw: size -= 2
+    if width_of(text, size) <= maxw: return size, text
+    t = text
+    while t and width_of(t + "…", size) > maxw: t = t[:-1]
+    return size, t + "…"
+
+
 def text_rgba(text, size, color, maxw=None):
-    """文字を透明の RGBA（numpy, 高さ x 幅 x 4）に。maxw より広ければ字を小さくして収める。"""
+    """文字を透明の RGBA（numpy, 高さ x 幅 x 4）に。maxw より広ければ字を小さくし、16px でも広ければ末尾を「…」で切って収める。"""
     from PIL import Image, ImageDraw, ImageFont
-    fp = font_path()
-    while True:
-        f = ImageFont.truetype(fp, size); b = f.getbbox(text)
-        if maxw is None or b[2] - b[0] <= maxw or size <= 16: break
-        size -= 2
+    fp = font_path(); fonts = {}
+    def width_of(t, sz):
+        f = fonts.setdefault(sz, ImageFont.truetype(fp, sz)); b = f.getbbox(t); return b[2] - b[0]
+    if maxw is not None: size, text = fit_text(text, width_of, maxw, 16, size)
+    f = fonts.setdefault(size, ImageFont.truetype(fp, size)); b = f.getbbox(text)
     im = Image.new("RGBA", (max(1, b[2] - b[0]), max(1, b[3] - b[1])), (0, 0, 0, 0))
     ImageDraw.Draw(im).text((-b[0], -b[1]), text, font=f, fill=color + (255,))
     return np.asarray(im).copy()

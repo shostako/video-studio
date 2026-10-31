@@ -44,6 +44,20 @@ def test_chapter_at_and_credit_alpha():
     assert L.credit_alpha(4.0, 2, 4) == 0
 
 
+def test_fit_text_shrinks_then_truncates():
+    w = lambda t, sz: len(t) * sz                                    # 1 字 = 大きさ px の等幅として
+    assert L.fit_text("あいう", w, 100, 16, 34) == (32, "あいう")    # 34*3=102 → 32 で収まる
+    sz, t = L.fit_text("あ" * 30, w, 200, 16, 34)
+    assert sz == 16 and t.endswith("…") and w(t, sz) <= 200 and len(t) == 12   # 16px でも広いので末尾を切る
+    assert L.fit_text("短い", w, 400, 16, 34) == (34, "短い")
+
+
+def test_text_rgba_never_exceeds_margin():
+    if not any(p and os.path.exists(p) for p in L.FONTS): pytest.skip("日本語の太字のフォントが無い")
+    im = L.text_rgba("とても長いサンプルの出どころの表示で余白に収まらない文字列の例です" * 2, 20, L.SUB, 416)
+    assert im.shape[1] <= 416
+
+
 def test_heading_bottom():
     assert L.heading_bottom([]) == L.RULE_Y + 3
     assert L.heading_bottom([(0, 1, ["a", "b", "c"])]) == L.CREDIT_Y + 3 * L.CREDIT_STEP
