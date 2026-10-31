@@ -362,7 +362,7 @@ def head_items():
     return HEAD_ITEMS
 def head_plan(f):
     """f が頭の動きの中なら、列のコマを中割りと同じ形で ("ib", item, 部品を写す向き)。外なら None"""
-    pos = head_pos(f / FPS, HEAD_KEYS, HEAD_IDX) if HEAD_KEYS else None
+    pos = head_pos(f / FPS, HEAD_KEYS, HEAD_IDX, rest=P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else None
     if pos is None: return None
     items = head_items(); j = min(len(items) - 1, max(0, int(round(pos))))
     src = min(HEADC["chain"], key=lambda p_: abs(HEAD_IDX[p_] - pos))
