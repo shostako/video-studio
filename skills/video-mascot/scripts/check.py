@@ -10,7 +10,7 @@
     それ以下は「動いていない」。結果は <動画の名前>.motion.json。--strict は「動いていない」があれば終了コード 3。
     vm render の検査（.check.json の problems）も合わせて出す。
 """
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 
 import numpy as np
 
@@ -28,11 +28,16 @@ def opt(name, default=None, cast=str): return cast(sys.argv[sys.argv.index(name)
 
 
 def probe(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,codec_name:stream_tags=alpha_mode",
-                        "-show_entries", "format=duration", "-of", "json", path], capture_output=True, text=True)
-    if r.returncode != 0: die(f"動画が読めない: {path}")
-    j = json.loads(r.stdout); s = j["streams"][0]; num, den = s["r_frame_rate"].split("/")
-    return s["width"], s["height"], float(num) / float(den), s["codec_name"], (s.get("tags") or {}).get("alpha_mode") == "1", float(j["format"]["duration"])
+    """(幅, 高さ, fps, 符号化の名前, 透明か, 秒)。ffprobe の無い環境（CI の imageio-ffmpeg）でも動くように ffmpeg -i の表示から読む。"""
+    if not os.path.exists(path): die(f"動画が無い: {path}")
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", path], capture_output=True, text=True)
+    s = r.stderr; v = re.search(r"Stream #0:\d+[^\n]*?: Video: (\w+)[^\n]*?, (\d{2,5})x(\d{2,5})[^\n]*", s)
+    d = re.search(r"Duration: (\d+):(\d+):([\d.]+)", s)
+    if not v or not d: die(f"動画が読めない: {path}")
+    fps = re.search(r"([\d.]+) fps", v.group(0)) or re.search(r"([\d.]+) tbr", v.group(0))
+    if not fps: die(f"動画のコマの速さが読めない: {path}")
+    alpha = re.search(r"alpha_mode\s*:\s*1", s[v.start():]) is not None   # 映像の流れの情報（Metadata）にある時だけ
+    return int(v.group(2)), int(v.group(3)), float(fps.group(1)), v.group(1), alpha, int(d.group(1)) * 3600 + int(d.group(2)) * 60 + float(d.group(3))
 
 
 def read_frames(path, want, crop):
