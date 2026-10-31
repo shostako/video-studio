@@ -1,6 +1,8 @@
 """マスコットの動画（白背景）を、画面を縮めた解説動画（1920x1080、左に 496px の余白）の余白に重ねる。
 乗算で重ねるので、白い所は下の余白の色になる。声はマスコットの動画のもの。
-使い方: python compose_layout.py <mascot.mp4> <full|bust> <L|S> <out.mp4> [--bg main2.mp4] [--bg-from 10]
+使い方: python compose_layout.py <mascot.mp4|webm> <full|bust> <L|S> <out.mp4> [--bg main2.mp4] [--bg-from 10] [--audio 声.wav] [--full] [--place-only]
+  --audio: 声を別の wav から付ける（透明の webm には声が無い）。--full: 主動画の最後まで書く（マスコットが先に終われば最後のコマのまま）。
+  CROP x,y,幅,高さ を出す（完成の動画でマスコットのいる範囲。vm check --crop 用）。--place-only は位置を出すだけ
 """
 import os, subprocess, sys
 
@@ -44,20 +46,28 @@ def main():
         s = width / mw; sw, sh = round(mw * s), round(mh * s)
         x = round(MARGIN_CX - sw / 2); y = H - sh
     print(f"{frame} {size}: {mw}x{mh} → {sw}x{sh} at ({x},{y})", flush=True)
+    x0, y0 = max(0, x), max(0, y); cw, ch_ = min(x + sw, W) - x0, min(y + sh, H) - y0
+    print(f"CROP {x0},{y0},{cw},{ch_}", flush=True)
+    if "--place-only" in sys.argv: return
+    audio = opt("--audio"); full_len = "--full" in sys.argv
 
-    rd_bg = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(bg_from), "-t", f"{dur:.3f}", "-i", bg, "-f", "rawvideo", "-pix_fmt", "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
+    rd_bg = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(bg_from)] + ([] if full_len else ["-t", f"{dur:.3f}"]) + ["-i", bg, "-f", "rawvideo", "-pix_fmt", "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
     ALPHA = mp.endswith(".webm")      # 背景が透明な webm（VP9 のアルファ）はアルファで重ねる。白背景の mp4 は乗算
     ch = 4 if ALPHA else 3
     rd_m = subprocess.Popen(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if ALPHA else []) + ["-i", mp, "-vf", f"scale={sw}:{sh}:flags=lanczos",
                             "-f", "rawvideo", "-pix_fmt", "rgba" if ALPHA else "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
     wr = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                           "-i", mp, "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", outp], stdin=subprocess.PIPE)
+                           "-i", audio or mp, "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"] + ([] if full_len else ["-shortest"]) + [outp], stdin=subprocess.PIPE)
     # 重ねる範囲（画面の外にはみ出した分は切る）
     X0, Y0, X1, Y1 = max(0, x), max(0, y), min(W, x + sw), min(H, y + sh)
-    n = 0; white = None
+    n = 0; white = None; last_m = None
     while True:
         b = rd_bg.stdout.read(W * H * 3); m = rd_m.stdout.read(sw * sh * ch)
-        if len(b) < W * H * 3 or len(m) < sw * sh * ch: break
+        if len(b) < W * H * 3: break
+        if len(m) < sw * sh * ch:
+            if not full_len or last_m is None: break
+            m = last_m
+        last_m = m
         img = np.frombuffer(b, np.uint8).reshape(H, W, 3).copy()
         if ALPHA:
             rgba = np.frombuffer(m, np.uint8).reshape(sh, sw, 4)[Y0 - y:Y1 - y, X0 - x:X1 - x].astype(np.float32)
