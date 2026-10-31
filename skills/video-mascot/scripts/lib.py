@@ -1055,8 +1055,9 @@ def switch_check(tags, f0, fps, switches):
         elif sw.get("engine") == "wan" and cnt["own"] and not cnt["wan"]: st = "not_wan"
         else:                                                      # 切り替えの後（終わりのコマは丸めで列の最後の 1 枚のことがあるので 2 コマ先まで見る。次の切り替えの前だけ）
             js = [j for j in range(aft, aft + 3) if 0 <= j < n and (j + f0) / fps < nxt - 1e-9]
-            if js and tags[js[-1]] == ("head",): st = "head"
-            elif js and tags[js[-1]] != ("pose", b): st = "not_reached"
+            seen = [tags[j] for j in js]
+            if js and ("pose", b) not in seen:                     # 幅のどこかで次の姿勢に着いていれば良い（すぐ後に頭の動きが始まってもよい）
+                st = "head" if ("head",) in seen else "not_reached"
         r["status"] = st; r["frames"] = {k: v for k, v in cnt.items() if v}; out.append(r)
     return out
 

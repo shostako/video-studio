@@ -47,6 +47,8 @@ def tags(home=10, mid=3, after="point", mid_tag=("ib", "home", "point", "drawn")
     (tags(mid=0), {**SW1, "kind": "instant", "dur": 0.0}, "ok"),                         # 一瞬の切り替え
     (tags(mid=0, after="home"), {**SW1, "kind": "instant", "dur": 0.0}, "not_reached"),
     (tags(mid_tag=("mix", "point", "home")), {**SW1, "kind": "mix"}, "ok"),              # 溶かしは前後どちら向きでもその組
+    (tags(n=15) + [("head",)] * 15, SW1, "ok"),                                           # 着いた（1.3・1.4 秒）すぐ後に頭の動き（1.5 秒〜）
+    (tags(n=13) + [("head",)] * 17, SW1, "head"),                                         # 着く前に頭の動き
 ])
 def test_switch_check_status(tg, sw, want):
     r = lib.switch_check(tg, 0, 10, [sw])[0]
