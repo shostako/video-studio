@@ -24,12 +24,12 @@ import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
-from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels
+from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
-from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report
+from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -75,7 +75,8 @@ words = json.load(open(WORDS))
 import pykakasi; KK = pykakasi.kakasi()
 def to_hira(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー")
 WH = [(to_hira(w), s, e) for w, s, e in words]     # 語のひらがなと時刻
-vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)
+vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)   # 音の並び（events の語の位置探し）はかなの語だけで作る（今までどおり）
+vowel_at, _ = vowel_frames([(word_hira(h, w[0]), s, e) for (h, s, e), w in zip(WH, words)], FPS, NALL)   # 口の母音: 英字・数字・記号の語は「あ」
 
 # ---------- 口 ----------
 lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
@@ -91,6 +92,7 @@ if LIPSYNC == "mora":                             # 行のかな台本（voice.l
     shape_at = mora_frames(segs, FPS, NALL)
     mouth = [mora_mouth(lvl_s[f], shape_at[f]) for f in range(NALL)]
 else:
+    vowel_at = fill_vowel_gaps(vowel_at, lvl_s >= 0.15, FPS)   # 語の間の短い隙間で声が出ているコマにも母音（0.15 は choose_mouth の閉じの境）
     mouth = [choose(lvl_s[f], vowel_at[f]) for f in range(NALL)]
 mouth = smooth_mouth(mouth, R)                    # すぐ消える形は直前の形にする
 print("口の形のコマ数:", {str(m): mouth.count(m) for m in sorted(set(mouth), key=str)}, file=sys.stderr)
@@ -433,13 +435,13 @@ def finish(img, sh, boxes, sdd):
         keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
     return matte(img, sh, keep)
 
-TAGS, SPEAK, FACEP = [], [], []                   # 検査: 各コマで何を出したか（frame_tag）、声が出ているか、口の部品を貼る姿勢に部品があるか
+TAGS, SPEAK, FACEP, LOUD = [], [], [], []         # 検査: 各コマで何を出したか（frame_tag）、口を開けているか、口の部品を貼る姿勢に部品があるか、声が出ているか
 def face_of(pl):
     if pl[0] == "mix": return (FACE_ON[pl[1]] and FACE_ON[pl[2]], pl[1] if not FACE_ON[pl[1]] else pl[2])
     p_ = pl[2] if pl[0] == "ib" else pl[1]; return (FACE_ON[p_], p_)
 for f in range(f0, min(f1, NALL)):
     hp = head_plan(f); pl = hp or plan(f); tt = f / FPS   # 頭の動きの中は、頭の向きの列が姿勢の時間割より優先
-    TAGS.append(frame_tag(pl, hp is not None)); SPEAK.append(mouth[f] is not None); FACEP.append(face_of(pl))
+    TAGS.append(frame_tag(pl, hp is not None)); SPEAK.append(mouth[f] is not None); FACEP.append(face_of(pl)); LOUD.append(bool(lvl_s[f] >= 0.15))
     if DRY: continue
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0
@@ -499,10 +501,13 @@ if DRY:                                           # 下見: これから Wan で
     print(f"Wan で新しく作る組: {len(todo)}{'（' + '、'.join(todo) + '）' if todo else ''}", file=sys.stderr)
 MOFF = mouth_off_spans(SPEAK, FACEP, FPS, f0)    # 口の検査: 口の部品の無い姿勢（face: false）で話している所（口が止まって見える）
 for ln in mouth_report(MOFF): print(ln, file=sys.stderr)
-NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF)
+MSHUT = [s_ for s_ in mouth_shut_spans(LOUD, SPEAK, FPS, f0)            # 声が出ているのに口が閉じている所。口の部品の無い姿勢の所は上で数えた
+         if not any(m_["from"] <= s_["from"] and s_["to"] <= m_["to"] for m_ in MOFF)]
+for ln in mouth_shut_report(MSHUT, LIPSYNC == "amp"): print(ln, file=sys.stderr)
+NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF) + (len(MSHUT) if LIPSYNC == "amp" else 0)   # モーラ式は知らせるだけ
 HSP = head_spans(HEAD_KEYS, P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else []
 CHKF = os.path.splitext(OUTF)[0] + (".precheck.json" if DRY else ".check.json")
-json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF},
+json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF, "mouth_shut": MSHUT},
           open(CHKF, "w"), ensure_ascii=False, indent=1)
 print(CHKF if DRY else OUTF)
 if NBAD and "--strict" in sys.argv: die(f"切り替えの検査・口の検査で問題が {NBAD} 件（{CHKF}）", 3)

@@ -330,6 +330,54 @@ def frame_levels(x, sr, fps, nall, win):
     return out
 
 
+def word_hira(hira, word):
+    """口パク（音量式）の母音に使う語のひらがな。かなが無く、英字・数字・記号（空白と句読点以外）を含む語は「あ」1 つにする。
+    聞き取りの語が「CAD」「IGES」「100」「%」「×」のままだと母音が付かず、声が出ていても口が閉じたままだった。
+    「あ」なら開きの大きさは声の大きさで決まる（choose_mouth）。"""
+    if hira: return hira
+    return "あ" if any(not ch.isspace() and ch not in PAUSE for ch in word) else ""
+
+
+def fill_vowel_gaps(vowel_at, loud, fps, max_gap=0.4):
+    """母音の無いコマのうち、声が出ている（loud）コマで、前後どちらかの語の端から max_gap 秒以内のものに、近い側の語の母音を入れた
+    新しいリストを返す。聞き取りの語の時刻は声より短めに出ることがあり（文の頭で語の始まりが声より 0.3 秒ほど遅いなど）、
+    語の間で声が出ているのに口が閉じた。語から max_gap より離れたコマと、声の無いコマは変えない。"""
+    out = list(vowel_at); n = len(out); f = 0; lim = max_gap * fps
+    while f < n:
+        if out[f] is not None: f += 1; continue
+        g = f
+        while g < n and out[g] is None: g += 1
+        prev = out[f - 1] if f > 0 else None; nxt = out[g] if g < n else None
+        for k in range(f, g):
+            if not loud[k]: continue
+            dp = k - f + 1 if prev is not None else None; dn = g - k if nxt is not None else None
+            if dp is not None and dp <= lim and (dn is None or dp <= dn): out[k] = prev
+            elif dn is not None and dn <= lim: out[k] = nxt
+        f = g
+    return out
+
+
+def mouth_shut_spans(loud, speak, fps, f0, long_s=0.2):
+    """声が出ている（loud）のに口が閉じている（speak が偽）コマが long_s 秒以上続く所。[{"from", "to", "dur"}, ...]。
+    loud・speak は f0 コマ目から書き出した順。母音の取れない語や、声と口の時刻のずれで起きる。"""
+    out, i, n = [], 0, len(loud)
+    while i < n:
+        if not (loud[i] and not speak[i]): i += 1; continue
+        j = i
+        while j < n and loud[j] and not speak[j]: j += 1
+        if (j - i) / fps >= long_s: out.append({"from": round((i + f0) / fps, 3), "to": round((j + f0) / fps, 3), "dur": round((j - i) / fps, 3)})
+        i = j
+    return out
+
+
+def mouth_shut_report(spans, problem=True):
+    """mouth_shut_spans の結果を人が読む行のリストに。無ければ空。problem が偽なら知らせるだけ（△）。"""
+    if not spans: return []
+    lines = [f"口の検査: 声が出ているのに口が閉じている所 {len(spans)} か所" + ("" if problem else "（モーラ式。台本の区切りの割り付けなので知らせるだけ）")]
+    for s in spans: lines.append(f"  {'✗' if problem else '△'} {s['from']:.2f}〜{s['to']:.2f} 秒（{s['dur']:.2f} 秒）")
+    return lines
+
+
 def choose_mouth(Lv, v):
     """声の大きさと母音から口の形。小さい声は小さく、いちばん大きい開き(m3)は強い「あ」の山だけ。"""
     if Lv < 0.15 or v in (None, "-"): return None
