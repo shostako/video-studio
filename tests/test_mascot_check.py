@@ -98,6 +98,11 @@ def test_switch_spans():
     sp = lib.switch_spans(sws, 0.05, 0.0, 5.0)
     assert sp[0] == pytest.approx((0.95, 1.35))                                     # 直後は次の開始（1.4 秒）の手前まで
     assert sp[1] == pytest.approx((1.35, 1.75)) and sp[2] is None and sp[3] is None  # 同じ姿勢・範囲の外
+    b2b = [SW1, {"at": 1.3, "dur": 0.3, "from": "point", "to": "home", "kind": "ib"}]   # 続けて並ぶ切り替え
+    sp = lib.switch_spans(b2b, 2 / 30, 0.0, 5.0)
+    assert sp[0] == pytest.approx((1.0 - 2 / 30, 1.3)) and sp[1] == pytest.approx((1.3, 1.6 + 2 / 30))   # 前の終わり・次の始まりで止める
+    ovl = [SW1, {"at": 1.2, "dur": 0.3, "from": "point", "to": "home", "kind": "ib"}]   # 前の終わりより先に次が始まる
+    assert lib.switch_spans(ovl, 2 / 30, 0.0, 5.0) == ["unclean", "unclean"]
 
 
 def test_rest_pairs_avoid_switches_and_head():
@@ -241,6 +246,18 @@ def test_check_without_rest_pairs_is_unknown_and_strict_fails(tmp_path, env):
     j = json.load(open(tmp_path / "m.motion.json"))
     assert j["face_mask"] is None and {s["verdict"] for s in j["switches"]} <= {"unknown", "skip"} and "測れない" in r.stdout
     assert check(v, env, "--strict").returncode == 3
+
+
+def test_check_back_to_back_missing_gesture_is_still(tmp_path, env):
+    """1.0〜1.3 秒の腕の動きのすぐ後に、1.3〜1.6 秒の切り替え（実際には腕は止まったまま＝消えた身振り）。
+    2 つ目の直前のコマを 1 つ目の途中から取ると、1 つ目の動きの残りで「動いた」に見えた。"""
+    v = tmp_path / "m.mp4"; synth_video(v, env)
+    sws = [{**SW1, "status": "ok"}, {"at": 1.3, "dur": 0.3, "from": "point", "to": "home", "kind": "ib", "engine": "drawn", "status": "ok"},
+           {"at": 2.5, "dur": 0.3, "from": "home", "to": "point", "kind": "ib", "engine": "drawn", "status": "ok"}]
+    switches_json(tmp_path / "m.check.json", sws=sws)
+    r = check(v, env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert [s["verdict"] for s in json.load(open(tmp_path / "m.motion.json"))["switches"]] == ["moved", "still", "still"]
 
 
 def test_check_strict_fails_when_nothing_was_measured(tmp_path, env):

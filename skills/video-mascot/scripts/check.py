@@ -104,10 +104,11 @@ def main():
     t_lo, t_hi = off, min(float(J["to"]), off + vdur - shift)
     gap = max(2 / vfps, 2 / float(J["fps"]))
     spans = switch_spans(sws, gap, t_lo, t_hi)
-    widths = sorted(s[1] - s[0] for s in spans if s)
+    pairs = [s for s in spans if isinstance(s, tuple)]
+    widths = sorted(s[1] - s[0] for s in pairs)
     rest = rest_pairs(sws, J.get("head_spans", []), widths[len(widths) // 2] if widths else 0.5, t_lo, t_hi)
     fi = lambda t: int(round((t - off + shift) * vfps))
-    want = {fi(t) for s in spans if s for t in s} | {fi(t) for p in rest for t in p}
+    want = {fi(t) for s in pairs for t in s} | {fi(t) for p in rest for t in p}
     fr = read_frames(video, want, crop)
     rp = [(fr[fi(p)], fr[fi(q)]) for p, q in rest if fi(p) in fr and fi(q) in fr]
     mask = face_mask(rp) if len(rp) >= MIN_REST else None   # 足りなければ顔を外せない＝測れない（画面全体で測ると目の変化で「動いた」に見える）
@@ -116,7 +117,8 @@ def main():
     res = []
     for sw, sp in zip(sws, spans):
         r = {"at": sw["at"], "from": sw["from"], "to": sw["to"], "engine": sw.get("engine"), "render": sw.get("status")}
-        if sp is None or fi(sp[0]) not in fr or fi(sp[1]) not in fr: r["verdict"] = "skip"
+        if sp == "unclean": r["verdict"] = "unknown"; r["note"] = "前後の切り替えと重なっていて、混ざらない直前・直後のコマが取れない"
+        elif sp is None or fi(sp[0]) not in fr or fi(sp[1]) not in fr: r["verdict"] = "skip"
         else:
             A, B = fr[fi(sp[0])], fr[fi(sp[1])]; r["change_face"] = round(change(A, B), 5)
             if mask is None: r["verdict"] = "unknown"
@@ -132,6 +134,7 @@ def main():
         if r["verdict"] in ("still", "weak"):
             mark = "✗" if r["verdict"] == "still" else "△"
             print(f"  {mark} {r['at']:.2f} 秒 {r['from']}→{r['to']}（{r['engine']}）: {LABEL[r['verdict']]}  顔の外の変化 {r['change'] * 100:.3f}%（顔を含めると {r['change_face'] * 100:.3f}%）")
+        elif r.get("note"): print(f"  ? {r['at']:.2f} 秒 {r['from']}→{r['to']}（{r['engine']}）: {LABEL[r['verdict']]}（{r['note']}）")
     if J.get("problems"): print(f"  vm render の切り替えの検査でも問題が {J['problems']} 件（{jp}）")
     nsw = sum(s.get("status") != "skip" and s["from"] != s["to"] for s in sws)
     if nsw and not meas: print(f"  切り替えが {nsw} 件あるのに 1 件も測れなかった（--from・--shift・動画の長さを見直す）")

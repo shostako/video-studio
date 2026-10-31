@@ -1084,14 +1084,19 @@ def motion_verdict(change, noise, strong=2.0, weak=1.2):
 
 
 def switch_spans(switches, gap, t_lo, t_hi):
-    """各切り替えの (直前の時刻, 直後の時刻) か None。直前は開始の gap 秒前、直後は終わりの gap 秒後で、次の切り替えの開始より前に収める。
-    前後が同じ姿勢・書き出した範囲 [t_lo, t_hi) の外・幅が無いものは None。"""
+    """各切り替えの (直前の時刻, 直後の時刻)、"unclean"、None のどれか。直前は開始の gap 秒前で、前の切り替えの終わりより後に収める。
+    直後は終わりの gap 秒後で、次の切り替えの開始より後にしない（続けて並ぶ切り替えの動きの残りを、こちらの動きと取り違えないため）。
+    収まらない（前後の切り替えと重なっている）ものは "unclean"（測れない）。前後が同じ姿勢・書き出した範囲 [t_lo, t_hi) の外は None。"""
+    def end_of(sw): return float(sw["at"]) + (float(sw["dur"]) if sw["kind"] != "instant" else 0.0)
     out = []
     for i, sw in enumerate(switches):
-        s = float(sw["at"]); d = float(sw["dur"]) if sw["kind"] != "instant" else 0.0
+        s = float(sw["at"]); e = end_of(sw)
+        prv = end_of(switches[i - 1]) if i > 0 else -math.inf
         nxt = float(switches[i + 1]["at"]) if i + 1 < len(switches) else math.inf
-        tb, ta = s - gap, min(s + d + gap, nxt - gap)
-        out.append(None if sw["from"] == sw["to"] or tb < t_lo or ta >= t_hi or ta <= tb else (tb, ta))
+        tb, ta = max(s - gap, prv), min(e + gap, nxt)
+        if sw["from"] == sw["to"] or s - gap < t_lo or e + gap >= t_hi: out.append(None)
+        elif tb > s + 1e-9 or ta < e - 1e-9 or ta <= tb: out.append("unclean")
+        else: out.append((tb, ta))
     return out
 
 
