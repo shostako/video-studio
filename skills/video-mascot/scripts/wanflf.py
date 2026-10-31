@@ -15,7 +15,7 @@ import numpy as np
 from lib import die, edge_weight, motion_positions, wan_cut
 
 _GEN_KEYS = ("width", "height", "length", "seed", "style", "head_poses", "unet_high", "unet_low", "lora_high", "lora_low", "clip", "vae", "clip_vision")
-_POST_KEYS = ("rife_mult", "cut_tol", "edge")
+_POST_KEYS = ("rife_mult", "cut_tol", "edge", "blink_tol")
 
 
 def _winpath(p):
@@ -96,6 +96,59 @@ def raw_frames(raw_dir):
     return [p for _, p in sorted(fs)]
 
 
+def eye_patches(P, pose, size):
+    """姿勢 pose の目のあたりの灰色の絵（開いた目、閉じた目）。閉じた目は parts_<pose>/e2.png を姿勢の絵に重ねて作る。作れなければ None。
+    size は Wan のコマの大きさ (幅, 高さ)。"""
+    pj = P.p(f"parts_{pose}", "parts.json")
+    if not os.path.exists(pj): return None
+    pos = json.load(open(pj))
+    if "e2" not in pos: return None
+    e2 = cv2.imread(P.p(f"parts_{pose}", "e2.png"), cv2.IMREAD_UNCHANGED)
+    if e2 is None or e2.ndim != 3 or e2.shape[2] != 4: return None
+    base = P.read_pose(pose); closed = base.copy(); x, y = pos["e2"]; h, w = e2.shape[:2]
+    if x < 0 or y < 0 or x + w > base.shape[1] or y + h > base.shape[0]: return None
+    al = e2[:, :, 3:] / 255.0; closed[y:y + h, x:x + w] = (e2[:, :, :3] * al + closed[y:y + h, x:x + w] * (1 - al)).astype(np.uint8)
+    ys_, xs_ = np.nonzero(e2[:, :, 3] > 8)              # 目の範囲は、その姿勢に置いた閉じた目の部品から取る（home で測った face.eye_roi は
+    if not len(xs_): return None                          # 目の位置が違う姿勢では目を外す。部品は姿勢ごとに正しい所に置いてある）
+    er = (x + int(xs_.min()), y + int(ys_.min()), x + int(xs_.max()) + 1, y + int(ys_.max()) + 1)
+    kx, ky = size[0] / base.shape[1], size[1] / base.shape[0]     # Wan の大きさへは縦横を別々の倍率で縮めている
+    X0, X1 = [min(size[0], max(0, round(v * kx))) for v in (er[0], er[2])]
+    Y0, Y1 = [min(size[1], max(0, round(v * ky))) for v in (er[1], er[3])]
+    if X1 - X0 < 4 or Y1 - Y0 < 4: return None
+    g = lambda im: cv2.cvtColor(cv2.resize(im, size, interpolation=cv2.INTER_AREA)[Y0:Y1, X0:X1], cv2.COLOR_BGR2GRAY)
+    return g(base), g(closed), (Y0, Y1)
+
+
+def blink_stamp(P, poses):
+    """瞬きの照合に使うもの（目の部品・置き場所・目の範囲）。変われば書き出しに渡す列を作り直す（Wan の生成はやり直さない）。"""
+    out = []
+    for p in poses:
+        fs = [P.p(f"parts_{p}", n) for n in ("e2.png", "parts.json")]
+        fc = P.cfg["poses"].get(p, {}).get("face"); er = (fc if isinstance(fc, dict) else P.cfg.get("face", {})).get("eye_roi")
+        out.append([p, _file_stamp([f for f in fs if os.path.exists(f)]), er])
+    return out
+
+
+def blink_score(gray, pats):
+    """（閉じた目の絵との合い）−（開いた目の絵との合い）。正なら閉じた目に近い。"""
+    so = max(cv2.minMaxLoc(cv2.matchTemplate(gray, o, cv2.TM_CCOEFF_NORMED))[1] for o, _, _ in pats)
+    sc = max(cv2.minMaxLoc(cv2.matchTemplate(gray, c, cv2.TM_CCOEFF_NORMED))[1] for _, c, _ in pats)
+    return sc - so
+
+
+def blink_frames(frames, pats, tol):
+    """Wan のコマ（BGR の列）のうち、目を閉じているコマの番号（1 コマ目は始点の絵なので除く）。pats は eye_patches の列。"""
+    if not pats or len(frames) < 3: return []
+    H = frames[0].shape[0]
+    y0 = max(0, min(p[2][0] for p in pats) - 80); y1 = min(H, max(p[2][1] for p in pats) + 80)
+    out = []
+    for i, im in enumerate(frames[1:], 1):
+        g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)[y0:y1]
+        if any(g.shape[0] < o.shape[0] or g.shape[1] < o.shape[1] for o, _, _ in pats): continue
+        if blink_score(g, pats) > tol: out.append(i)
+    return out
+
+
 def rife_frames(frames, mult, icfg, tag):
     """BGR の絵の列を RIFE で mult 倍に細かくした列（(len-1)*mult+1 枚）。"""
     if mult <= 1 or len(frames) < 2: return list(frames)
@@ -144,19 +197,26 @@ def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
     out_dir = os.path.join(base, f"n{n}")
     want = [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)]
     rp = raw_frames(raw)
-    st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"]}
+    st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
+          "blink": blink_stamp(P, (a, b)) if wan["blink_tol"] is not None else None}
     if _read_stamp(os.path.join(out_dir, "stamp.json")) == json.loads(json.dumps(st)) and all(os.path.exists(p) for p in want): return want
     img_a, img_b = P.read_pose(a), P.read_pose(b)
     H, W = img_a.shape[:2]
     if img_b.shape != img_a.shape: img_b = cv2.resize(img_b, (W, H), interpolation=cv2.INTER_AREA)
     ws = [cv2.imread(p) for p in rp]
     keep = wan_cut([bg_level(x) for x in ws], wan["cut_tol"])
+    blinks = []
+    if wan["blink_tol"] is not None:                 # Wan が勝手に入れる瞬きのコマは捨てる（間は RIFE でつなぐ）
+        size = (ws[0].shape[1], ws[0].shape[0])
+        pats = [x for x in (eye_patches(P, p, size) for p in (a, b)) if x]
+        blinks = blink_frames(ws[:keep], pats, wan["blink_tol"])
+    use = [x for i, x in enumerate(ws[:keep]) if i not in set(blinks)]
     end = cv2.resize(img_b, (ws[0].shape[1], ws[0].shape[0]), interpolation=cv2.INTER_AREA)
-    seq = rife(ws[:keep] + [end], wan["rife_mult"], icfg, f"wan_{os.path.basename(P.root)}_{a}__{b}")
+    seq = rife(use + [end], wan["rife_mult"], icfg, f"wan_{os.path.basename(P.root)}_{a}__{b}")
     seq = [cv2.resize(x, (W, H), interpolation=cv2.INTER_LANCZOS4) if x.shape[:2] != (H, W) else x for x in seq]
     frames = build(seq, img_a, img_b, n, wan["edge"])
     shutil.rmtree(out_dir, ignore_errors=True); os.makedirs(out_dir)
     for p, im in zip(want, frames): cv2.imwrite(p, im)
     json.dump(st, open(os.path.join(out_dir, "stamp.json"), "w"))
-    if log: log(f"Wan の切り替え: {a}→{b}（Wan {len(ws)} コマのうち {keep} コマ＋終点の絵、RIFE {wan['rife_mult']} 倍 → {n} 枚）")
+    if log: log(f"Wan の切り替え: {a}→{b}（Wan {len(ws)} コマのうち {keep} コマ{f'（瞬き {[i + 1 for i in blinks]} を捨てた）' if blinks else ''}＋終点の絵、RIFE {wan['rife_mult']} 倍 → {n} 枚）")
     return want

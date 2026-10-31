@@ -860,6 +860,7 @@ WAN_DEFAULTS = {
     "cut_tol": 5.0,         # 背景の明るさが 1 コマ目からこれ以上ずれたコマから後ろを捨てる（Wan の FLF は最後のまとまりで崩れる）
     "edge": 0.15,           # 切り替えの始まりと終わりの何割を、止まった絵と重ねるか
     "rife_pairs": [],       # Wan を通さず、描いた 2 枚の間を RIFE で直に補間する組（会釈など頭が少し動くだけの組）["home>nod", ...]
+    "blink_tol": 0.05,      # Wan が勝手に入れる瞬き（首を回すと振るたびに目を閉じた）のコマを捨てる。目のあたりが閉じた目の絵にこれ以上よく合うコマ。null は捨てない
     "head_poses": [],       # 頭だけが動く姿勢（横を見る・首振り）。その組は「頭だけを回す」と描かせ、「頭を動かさない」を外す
     "style": None,          # 描かせる文のキャラの説明（None は config.mascot.description）
     "unet_high": "Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf", "unet_low": "Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf",
@@ -880,6 +881,7 @@ def wan_config(value):
         if not isinstance(out[k], int) or isinstance(out[k], bool) or out[k] < 64 or out[k] % 16: raise ValueError(f"interp.wan.{k} は 64 以上の 16 の倍数: {out[k]!r}")
     if not isinstance(out["length"], int) or isinstance(out["length"], bool) or out["length"] < 5 or (out["length"] - 1) % 4: raise ValueError(f"interp.wan.length は 5 以上の 4n+1: {out['length']!r}")
     if not isinstance(out["rife_mult"], int) or isinstance(out["rife_mult"], bool) or out["rife_mult"] < 1: raise ValueError(f"interp.wan.rife_mult は 1 以上の整数: {out['rife_mult']!r}")
+    if out["blink_tol"] is not None and (isinstance(out["blink_tol"], bool) or not isinstance(out["blink_tol"], (int, float)) or out["blink_tol"] < 0): raise ValueError(f"interp.wan.blink_tol は 0 以上の数か null: {out['blink_tol']!r}")
     for k in ("cut_tol", "edge"):
         if isinstance(out[k], bool) or not isinstance(out[k], (int, float)) or out[k] < 0: raise ValueError(f"interp.wan.{k} は 0 以上の数: {out[k]!r}")
     if out["edge"] >= 0.5: raise ValueError(f"interp.wan.edge は 0.5 未満: {out['edge']!r}")
@@ -963,6 +965,42 @@ def interp_dur(cfg, a, b):
 def dense_ks(div, mult):
     """端の姿勢（k=0 と k=div）の間の、補間した列の位置（div 等分の単位。k が整数の所は描いた中割り）。"""
     return [j / mult for j in range(1, div * mult)]
+
+
+# ---------- 頭の向きの列（config.head、opt-in。純関数）----------
+HEAD_DEFAULTS = {"chain": None, "events": [], "mult": 6}
+
+
+def head_config(value, poses_cfg):
+    """config.head を辞書か None（使わない）に。chain は頭の向きの姿勢を一方の端から他方の端へ並べたもの（体は同じ姿勢で描く。
+    例 ["shake_r", "look_r", "home", "look_l", "shake_l"]）。events は頭の動きの要所（events と同じ開始の書き方で、その時刻に
+    その姿勢の向きにいる）。mult は隣り合う向きの間を、中割りの等分（inbetween_div）の何倍に細かくするか。"""
+    if value is None or value is False: return None
+    if not isinstance(value, dict): raise ValueError(f"head は辞書: {value!r}")
+    bad = sorted(set(value) - set(HEAD_DEFAULTS))
+    if bad: raise ValueError(f"head に知らない項目: {bad}")
+    out = {**HEAD_DEFAULTS, **value}
+    ch = out["chain"]
+    if not isinstance(ch, list) or len(ch) < 2 or not all(isinstance(p, str) for p in ch): raise ValueError("head.chain は姿勢の名前を 2 つ以上並べたもの")
+    if len(set(ch)) != len(ch): raise ValueError(f"head.chain に同じ姿勢が 2 回ある: {ch}")
+    miss = [p for p in ch if p not in poses_cfg]
+    if miss: raise ValueError(f"head.chain の姿勢が無い: {miss}")
+    if not isinstance(out["events"], list): raise ValueError("head.events は [{...}, ...]")
+    for e in out["events"]:
+        if not isinstance(e, dict) or e.get("pose") not in ch: raise ValueError(f"head.events の pose は head.chain のどれか: {e!r}")
+    if not isinstance(out["mult"], int) or isinstance(out["mult"], bool) or out["mult"] < 1: raise ValueError(f"head.mult は 1 以上の整数: {out['mult']!r}")
+    return out
+
+
+def head_pos(t, keys, index):
+    """頭の動きの要所 keys [(秒, 姿勢), ...]（時刻の順）と、列の中の各姿勢の位置 index {姿勢: 位置} から、t の列の位置（小数）。
+    要所の間は始まりと終わりが緩やかに動く。最初の要所より前と、最後の要所以降は None（頭の動きの外）。"""
+    if len(keys) < 2 or t < keys[0][0] or t >= keys[-1][0]: return None
+    for (t0, p0), (t1, p1) in zip(keys, keys[1:]):
+        if t0 <= t < t1:
+            u = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
+            return index[p0] + (index[p1] - index[p0]) * smooth01(u)
+    return None
 
 
 # ---------- home 経由の切り替え（config.via_home、opt-in。純関数）----------
