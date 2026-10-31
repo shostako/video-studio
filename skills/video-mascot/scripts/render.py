@@ -24,7 +24,7 @@ import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
-from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE
+from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
@@ -62,8 +62,8 @@ VOICE = P.p("voice", "master.wav")
 def load_audio(p, sr=16000):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", p, "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"], capture_output=True).stdout
     return np.frombuffer(raw, np.int16).astype(np.float32) / 32768, sr
-x, SR = load_audio(VOICE); NALL = int(math.ceil(END * FPS)); hop = SR // FPS; WIN = SR * 2 // 30; R = max(1, round(FPS / 30))   # 窓は時間で固定（30fps の2コマ分）。R = 30fps に対する倍率
-rms = np.array([np.sqrt(np.mean(x[i * hop: i * hop + WIN] ** 2)) if i * hop < len(x) else 0 for i in range(NALL)])
+x, SR = load_audio(VOICE); NALL = int(math.ceil(END * FPS)); WIN = SR * 2 // 30; R = max(1, round(FPS / 30))   # 窓は時間で固定（30fps の2コマ分）。R = 30fps に対する倍率
+rms = frame_levels(x, SR, FPS, NALL, WIN)
 lvl = np.clip(rms / (np.percentile(rms[rms > 0], 95) + 1e-6), 0, 1.5) * MS
 WORDS = P.p("voice", "master.words.json")
 if not os.path.exists(WORDS) or os.path.getmtime(WORDS) < os.path.getmtime(VOICE):

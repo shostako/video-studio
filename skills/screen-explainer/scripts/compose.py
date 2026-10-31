@@ -156,7 +156,9 @@ def mouth_shapes(path):
     w = wave.open(path); sr = w.getframerate(); ch = w.getnchannels()
     pcm = array.array("h", w.readframes(w.getnframes())); w.close()
     if ch > 1: pcm = pcm[::ch]
-    hop = sr // FPS; env = [math.sqrt(sum(x * x for x in pcm[i:i + hop]) / max(1, len(pcm[i:i + hop]))) / 32768 for i in range(0, len(pcm), hop)]
+    # コマの頭は round(f * sr / FPS)。sr // FPS の歩幅で進めると、割り切れない sr で後ろほど声とずれる
+    hop = sr / FPS; starts = [round(f * hop) for f in range(math.ceil(len(pcm) / hop))]
+    env = [math.sqrt(sum(x * x for x in pcm[i:i + round(hop)]) / max(1, len(pcm[i:i + round(hop)]))) / 32768 for i in starts]
     pk = sorted(env)[int(len(env) * 0.97)] if env else 1
     out, last, hold = [], 0, 0
     for i, e in enumerate(env):
