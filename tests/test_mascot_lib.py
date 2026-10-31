@@ -211,3 +211,50 @@ def test_frame_levels_outside_the_wave_is_zero():
     import numpy as np
     lv = lib.frame_levels(np.ones(1000, np.float32), 16000, 60, 10, 533)
     assert lv[0] == pytest.approx(1.0) and lv[4] == 0 and lv[9] == 0     # 1000 サンプルの外のコマ（4 は 1067 から）は 0
+
+
+# ---------- word_hira / fill_vowel_gaps / mouth_shut_spans ----------
+@pytest.mark.parametrize("hira, word, want", [
+    ("つかいかた", "使い方", "つかいかた"),     # かながあればそのまま
+    ("", "CAD", "あ"), ("", "100", "あ"), ("", "%", "あ"), ("", "×", "あ"),   # 英字・数字・記号は「あ」
+    ("", " ", ""), ("", "。", ""), ("", "", ""),                              # 空白・句読点だけなら母音なし
+])
+def test_word_hira(hira, word, want):
+    assert lib.word_hira(hira, word) == want
+
+
+def test_fill_vowel_gaps_near_words_only():
+    fps = 10
+    v = ["a", None, None, None, None, None, None, None, None, None, "o"]   # 語の間に 9 コマ（0.9 秒）
+    loud = [True] * 11
+    out = lib.fill_vowel_gaps(v, loud, fps, max_gap=0.3)
+    assert out == ["a", "a", "a", "a", None, None, None, "o", "o", "o", "o"]   # 両端から 0.3 秒以内だけ、近い側の母音
+    assert v[1] is None                                                      # 元のリストは変えない
+
+
+def test_fill_vowel_gaps_keeps_quiet_frames_and_edges():
+    fps = 10
+    v = [None, None, "i", None, None]; loud = [True, False, True, True, False]
+    assert lib.fill_vowel_gaps(v, loud, fps, max_gap=0.4) == ["i", None, "i", "i", None]
+    assert lib.fill_vowel_gaps([None] * 4, [True] * 4, fps) == [None] * 4     # 語が無ければ何もしない
+
+
+def test_mouth_shut_spans():
+    fps = 10
+    loud = [True] * 8 + [False] * 2
+    speak = [True, False, False, True, False, False, False, True, False, False]
+    assert lib.mouth_shut_spans(loud, speak, fps, f0=20, long_s=0.2) == [
+        {"from": 2.1, "to": 2.3, "dur": 0.2}, {"from": 2.4, "to": 2.7, "dur": 0.3}]
+    assert lib.mouth_shut_spans(loud, speak, fps, f0=0, long_s=0.25) == [{"from": 0.4, "to": 0.7, "dur": 0.3}]
+    assert lib.mouth_shut_report([]) == [] and "△" in lib.mouth_shut_report([{"from": 1, "to": 2, "dur": 1}], problem=False)[1]
+
+
+def test_speech_loud_skips_sokuon_closure():
+    """「きって」の「っ」は意図して口を閉じる所。声が残っていても口の検査では数えない（Codex の指摘）。"""
+    fps, R = 30, 1
+    va, _ = lib.vowel_frames([("きって", 0.0, 0.9)], fps, 27)
+    mouth = lib.smooth_mouth([lib.choose_mouth(0.7, v) for v in va], R)
+    loud = [lib.speech_loud(0.7, v) for v in va]
+    assert lib.mouth_shut_spans(loud, [m is not None for m in mouth], fps, 0) == []
+    assert lib.mouth_shut_spans([True] * 27, [m is not None for m in mouth], fps, 0) != []   # 「っ」を外さないと引っかかる
+    assert lib.speech_loud(0.1, "a") is False and lib.speech_loud(0.5, None) is True
