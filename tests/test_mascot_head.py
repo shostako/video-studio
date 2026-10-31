@@ -51,6 +51,19 @@ def test_head_pos_moves_between_keys_and_eases():
     assert lib.head_pos(1.0, [(1.0, "home")], idx) is None
 
 
+def test_head_pos_rest_between_two_head_moves_is_outside():
+    """2 回の頭の動きの間で正面（rest）に戻って止まっている区間は、rest を渡すと外（体の身振りが出る）。"""
+    idx = {"look_r": 0, "home": 36}
+    keys = [(1.0, "home"), (1.5, "look_r"), (2.0, "home"), (9.0, "home"), (9.5, "look_r"), (10.0, "home")]
+    assert lib.head_pos(5.0, keys, idx) == 36                                  # rest なしは今までどおり（間も頭の列の中）
+    assert lib.head_pos(5.0, keys, idx, rest="home") is None                   # 間は外
+    assert lib.head_pos(2.0, keys, idx, rest="home") is None and lib.head_pos(8.99, keys, idx, rest="home") is None
+    assert lib.head_pos(1.5, keys, idx, rest="home") == 0 and lib.head_pos(9.5, keys, idx, rest="home") == 0   # 動きの中は同じ
+    assert lib.head_pos(1.2, keys, idx, rest="home") == lib.head_pos(1.2, keys, idx)
+    hold = [(1.0, "home"), (1.5, "look_r"), (3.0, "look_r"), (3.5, "home")]   # rest でない向きで止まっている区間は動きの中
+    assert lib.head_pos(2.0, hold, idx, rest="home") == 0
+
+
 # ---------- 瞬きのコマ ----------
 @pytest.fixture()
 def proj(tmp_path):
@@ -196,6 +209,25 @@ def test_render_head_chain_overrides_the_pose(tmp_path, env):
     still, peak, after = fr[int(0.4 * fps)], fr[int(1.4 * fps)], fr[int(2.6 * fps)]
     assert np.abs(peak.astype(int) - still).mean() > 1.0                       # 1.4 秒は point の向き（腕が出ている）
     assert np.abs(after.astype(int) - still).mean() < 0.3 * np.abs(peak.astype(int) - still).mean()   # 動きの後は home に戻る（口の違いだけ）
+
+
+def test_render_body_moves_between_two_head_moves(tmp_path, env):
+    """頭の動きが 2 回あり、その間に体の身振り（point）がある。間は頭の列でなく体の時間割が出る（以前は home の向きの絵が出続けた）。"""
+    pytest.importorskip("pykakasi")
+    root = sm.make(str(tmp_path / "proj"))
+    cfgp = os.path.join(root, "config.json"); cfg = json.load(open(cfgp))
+    cfg["events"] = [{"at": 1.0, "pose": "point"}, {"at": 2.2, "pose": "home"}]; cfg["idle"] = False
+    cfg["head"] = {"chain": ["home", "point"], "mult": 2, "events": [
+        {"at": 0.1, "pose": "home"}, {"at": 0.3, "pose": "point"}, {"at": 0.5, "pose": "home"},
+        {"at": 2.9, "pose": "home"}, {"at": 3.0, "pose": "point"}, {"at": 3.1, "pose": "home"}]}
+    json.dump(cfg, open(cfgp, "w"))
+    P = lib.Proj(root); fill_direct(P, "home", "point", 2)
+    out = tmp_path / "g.mp4"
+    r = subprocess.run([sys.executable, "-B", str(RENDER), root, "--mode", "white", "--out", str(out)], env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr[-2000:]
+    fr = read_frames(out); fps = 30
+    still, body = fr[int(0.7 * fps)], fr[int(1.8 * fps)]
+    assert np.abs(body.astype(int) - still).mean() > 1.0                        # 1.8 秒は体の point（腕が出ている）
 
 
 def test_render_without_head_is_unchanged(tmp_path, env):

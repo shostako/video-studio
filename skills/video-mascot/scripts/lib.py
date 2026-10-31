@@ -992,12 +992,15 @@ def head_config(value, poses_cfg):
     return out
 
 
-def head_pos(t, keys, index):
+def head_pos(t, keys, index, rest=None):
     """頭の動きの要所 keys [(秒, 姿勢), ...]（時刻の順）と、列の中の各姿勢の位置 index {姿勢: 位置} から、t の列の位置（小数）。
-    要所の間は始まりと終わりが緩やかに動く。最初の要所より前と、最後の要所以降は None（頭の動きの外）。"""
+    要所の間は始まりと終わりが緩やかに動く。最初の要所より前と、最後の要所以降は None（頭の動きの外）。
+    rest（体の home と同じ向きの姿勢）を渡すと、rest から rest への区間（頭の動きと頭の動きの間で正面に戻っている所）も None。
+    渡さないと、2 回の頭の動きの間もずっと頭の列が出て、その間の体の身振りが消える。"""
     if len(keys) < 2 or t < keys[0][0] or t >= keys[-1][0]: return None
     for (t0, p0), (t1, p1) in zip(keys, keys[1:]):
         if t0 <= t < t1:
+            if rest is not None and p0 == rest and p1 == rest: return None
             u = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
             return index[p0] + (index[p1] - index[p0]) * smooth01(u)
     return None
