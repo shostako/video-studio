@@ -86,6 +86,16 @@ def test_blink_frames_with_a_different_aspect_ratio(proj):
     assert wanflf.blink_frames([op, op, cl, op], pats, 0.05) == [2]
 
 
+def test_eye_patches_follow_the_placed_eye_part(proj):
+    """face.eye_roi（home で測った物）が目から外れていても、その姿勢に置いた閉じた目の部品から範囲を取るので見つける。"""
+    proj.cfg["face"]["eye_roi"] = [0, 0, 20, 20]                                # 目から外れた範囲（左上の隅）
+    size = (240, 384)
+    pats = [wanflf.eye_patches(proj, "home", size)]
+    op = cv2.resize(proj.read_pose("home"), size, interpolation=cv2.INTER_AREA)
+    cl = cv2.resize(with_part(proj, "home", "e2"), size, interpolation=cv2.INTER_AREA)
+    assert wanflf.blink_frames([op, op, cl, op], pats, 0.05) == [2]
+
+
 def test_eye_patches_none_without_parts(proj):
     shutil.rmtree(proj.p("parts_point"))
     assert wanflf.eye_patches(proj, "point", (240, 384)) is None

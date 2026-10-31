@@ -108,8 +108,9 @@ def eye_patches(P, pose, size):
     base = P.read_pose(pose); closed = base.copy(); x, y = pos["e2"]; h, w = e2.shape[:2]
     if x < 0 or y < 0 or x + w > base.shape[1] or y + h > base.shape[0]: return None
     al = e2[:, :, 3:] / 255.0; closed[y:y + h, x:x + w] = (e2[:, :, :3] * al + closed[y:y + h, x:x + w] * (1 - al)).astype(np.uint8)
-    fc = P.cfg["poses"].get(pose, {}).get("face"); er = (fc if isinstance(fc, dict) else P.cfg.get("face", {})).get("eye_roi")
-    if not er: return None
+    ys_, xs_ = np.nonzero(e2[:, :, 3] > 8)              # 目の範囲は、その姿勢に置いた閉じた目の部品から取る（home で測った face.eye_roi は
+    if not len(xs_): return None                          # 目の位置が違う姿勢では目を外す。部品は姿勢ごとに正しい所に置いてある）
+    er = (x + int(xs_.min()), y + int(ys_.min()), x + int(xs_.max()) + 1, y + int(ys_.max()) + 1)
     kx, ky = size[0] / base.shape[1], size[1] / base.shape[0]     # Wan の大きさへは縦横を別々の倍率で縮めている
     X0, X1 = [min(size[0], max(0, round(v * kx))) for v in (er[0], er[2])]
     Y0, Y1 = [min(size[1], max(0, round(v * ky))) for v in (er[1], er[3])]
