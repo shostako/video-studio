@@ -31,7 +31,11 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 足すポーズ（`docs/mascot-poses-spec.md` の段階 A: 考える・お辞儀・片手を挙げる・伸び）を `/img` で描き、足が動いていないか・顔が見えるか・中割りが少しずつ動くか・`scale` 固定で大きさが自然かを見る。良ければ段階 B（屈む・軽い屈伸）
 - 向きの切り替えと視線の見た目（`transition` の `fade`/`turn` と長さ・縮み、`gaze.lead`、回転の中割りが要るか、段階 B・C を作るか）。手順は `docs/mascot-views-spec.md` の「描く順番」5・6
 
+- 姿勢の切り替えを Wan で動かす（`interp.engine: "wan"`）を、実際の作業フォルダで `vm render` から通す（新PC。これまでは research の `render_wan.py` で作った）。止めて話す所・切り替え・口の重ね・足元が、research 版と同じに出るか。旧PC の「Claude Code デスクトップの使い方」のマスコット部分の作り直しで使う
+
 ## 済んだこと
+
+- 姿勢の切り替えを Wan2.2 の First-Last-Frame で動かす（2026-10-31）: `interp.engine: "wan"`（opt-in）と `legs_lock.fix_x`。調べた中身・見本の作り方は `research/2026-10-31-wan-transition/`
 
 - 画面操作の解説動画のスキル screen-explainer（2026-10-29）: Excel 2 本と Web アプリ 1 本を作った道具を汎用にした。撮影（Excel・Web）、ワイプの顔、語ごとの長さ、組み立て。場面の割り付けは外の `scenes.py` に書く
 

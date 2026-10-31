@@ -1,0 +1,180 @@
+{
+ "base": "Bfull_home.png",
+ "prefix": "mascot_tr/Bfull",
+ "width": 704,
+ "height": 1248,
+ "style": "a glossy resin chibi figurine woman with a big head and black hair tied in a low bun at the nape of her neck, wearing a navy suit and a white blouse, stands on a plain white background. ",
+ "clips": [
+  {
+   "id": "home__think",
+   "seed": 500,
+   "start": "Bfull_home.png",
+   "end": "Bfull_think.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, standing on exactly the same spot as the reference, her hand on the image-right side raised so that her index finger and thumb lightly touch her chin, the other arm folded across her waist supporting that elbow, thinking calmly, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "think__home",
+   "seed": 501,
+   "start": "Bfull_think.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "home__count_5",
+   "seed": 502,
+   "start": "Bfull_home.png",
+   "end": "Bfull_count_5.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: exactly the same pose, arm position and body as the reference, only the raised hand changes: all five fingers are spread apart and point up, the palm facing the viewer, standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "count_5__home",
+   "seed": 503,
+   "start": "Bfull_count_5.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "home__shake_l",
+   "seed": 504,
+   "start": "Bfull_home.png",
+   "end": "Bfull_shake_l.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: part of a gentle head shake meaning 'no': only her head turns about 20 degrees so that her nose points toward the LEFT edge of the image, her pupils also look toward the LEFT edge of the image, the head stays level and upright without tilting sideways, her shoulders, body, both hands lightly clasped in front of her waist, and her feet stay exactly as in the reference, a mildly apologetic calm expression, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "shake_l__shake_r",
+   "seed": 505,
+   "start": "Bfull_shake_l.png",
+   "end": "Bfull_shake_r.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: part of a gentle head shake meaning 'no': only her head turns about 20 degrees so that her nose points toward the RIGHT edge of the image, her pupils also look toward the RIGHT edge of the image, the head stays level and upright without tilting sideways, her shoulders, body, both hands lightly clasped in front of her waist, and her feet stay exactly as in the reference, a mildly apologetic calm expression, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "shake_r__shake_l",
+   "seed": 506,
+   "start": "Bfull_shake_r.png",
+   "end": "Bfull_shake_l.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: part of a gentle head shake meaning 'no': only her head turns about 20 degrees so that her nose points toward the LEFT edge of the image, her pupils also look toward the LEFT edge of the image, the head stays level and upright without tilting sideways, her shoulders, body, both hands lightly clasped in front of her waist, and her feet stay exactly as in the reference, a mildly apologetic calm expression, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "shake_l__home",
+   "seed": 507,
+   "start": "Bfull_shake_l.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "home__wag_r",
+   "seed": 508,
+   "start": "Bfull_home.png",
+   "end": "Bfull_wag_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: her hand on the image-right side raised in front of her chest at shoulder height with only the index finger pointing up and the other fingers folded, the back of the hand facing the viewer, as when wagging a finger to say 'no, no', the other hand resting at her waist, facing the camera, standing on exactly the same spot as the reference, a playful calm expression, calm closed mouth, her raised forearm, hand and index finger all lean about 35 degrees toward the RIGHT edge of the image, so that the fingertip is clearly further toward the RIGHT edge than the wrist.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "wag_r__wag_l",
+   "seed": 509,
+   "start": "Bfull_wag_r.png",
+   "end": "Bfull_wag_l.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: exactly the same pose, body, face and the same raised hand as the reference (the hand on the image-right side, index finger up, other fingers folded, the other hand resting at her waist), only the raised forearm, hand and index finger now lean about 35 degrees toward the LEFT edge of the image instead, so that the fingertip is clearly further toward the LEFT edge than the wrist, as when wagging a finger to say 'no, no', standing on exactly the same spot as the reference, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "wag_l__wag_r",
+   "seed": 510,
+   "start": "Bfull_wag_l.png",
+   "end": "Bfull_wag_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: her hand on the image-right side raised in front of her chest at shoulder height with only the index finger pointing up and the other fingers folded, the back of the hand facing the viewer, as when wagging a finger to say 'no, no', the other hand resting at her waist, facing the camera, standing on exactly the same spot as the reference, a playful calm expression, calm closed mouth, her raised forearm, hand and index finger all lean about 35 degrees toward the RIGHT edge of the image, so that the fingertip is clearly further toward the RIGHT edge than the wrist.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "wag_l__home",
+   "seed": 511,
+   "start": "Bfull_wag_l.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "home__point_r",
+   "seed": 512,
+   "start": "Bfull_home.png",
+   "end": "Bfull_point_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, her arm on the image-right side extended toward the RIGHT edge of the image with an open palm, presenting something, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "point_r__point_l",
+   "seed": 513,
+   "start": "Bfull_point_r.png",
+   "end": "Bfull_point_l.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: facing the camera, her arm on the image-left side extended toward the LEFT edge of the image with an open palm, presenting something, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "point_l__home",
+   "seed": 514,
+   "start": "Bfull_point_l.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "home__look_r",
+   "seed": 515,
+   "start": "Bfull_home.png",
+   "end": "Bfull_look_r.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: only her head turns slightly, about 12 degrees, so that her nose points a little toward the RIGHT edge of the image, her pupils look toward the RIGHT edge of the image, as when glancing at something beside her, the head stays level and upright without tilting, her shoulders, body, both hands lightly clasped in front of her waist, and her feet stay exactly as in the reference, calm faint smile, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "look_r__home",
+   "seed": 516,
+   "start": "Bfull_look_r.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly turns only her head into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head turns but stays level and does not tilt sideways, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her shoulders, hands, feet and legs do not move."
+  },
+  {
+   "id": "home__thumb_r",
+   "seed": 517,
+   "start": "Bfull_home.png",
+   "end": "Bfull_thumb_r.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: her hand on the image-right side raised in front of her chest with a clear thumbs-up: the thumb points straight up and the other four fingers are curled into the palm, the other hand resting at her waist, facing the camera, standing on exactly the same spot as the reference, a cheerful calm expression, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  },
+  {
+   "id": "thumb_r__home",
+   "seed": 518,
+   "start": "Bfull_thumb_r.png",
+   "end": "Bfull_home.png",
+   "length": 13,
+   "motion": "She smoothly moves her arms and hands into the next pose: standing naturally and facing the camera almost straight on, both hands lightly clasped together in front of her lower belly (the arms do NOT hang down at her sides), elbows relaxed, a polite and tidy standing pose, both feet visible, calm closed mouth.",
+   "keep": " Her head stays still and level, her eyes stay open and look straight at the viewer, calm faint smile, mouth closed, same face, same hairstyle, smooth natural motion, stable fixed camera, full body visible, her feet and legs do not move."
+  }
+ ]
+}
