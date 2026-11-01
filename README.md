@@ -73,7 +73,8 @@ vm explain ~/.local/share/video-scene/work/my-howto --shots <撮影> --scenes sc
 
 ## 開発の決まり
 
-- 経緯と現状: `docs/handoff-2026-10-15.md`、決めたこと `DECISIONS.md`、次にやること `ROADMAP.md`、作業ログ `logs/`
+- 経緯と現状: `docs/handoff-2026-10-15.md`、決めたこと `DECISIONS.md`、次にやること `ROADMAP.md`、使う人に効く変更の記録 `CHANGELOG.md`、作業ログ `logs/`
+- パックを作り直したら: `vm packs export <パック> <名前>-pack.zip --version <日付>` → 出た zip を新しい Release（`packs-<日付>`）に上げる → 出力の 1 行（版・大きさ・sha256）と Release の URL を `skills/video-mascot/data/packs.json` に書いて PR にする。各 PC は同期して `setup.sh` を回せば新しい版に替わる
 - PR は `scripts/pr_gate.py <番号>` が通ってからマージする（`CLAUDE.md`）
 
 ## スキルの置き方
