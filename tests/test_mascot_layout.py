@@ -189,3 +189,45 @@ def test_layout_shrinks_mascot_to_fit_narrow_margin(tmp_path, env):
         if extra: assert x >= 0 and x + cw <= 208 and "縮めた" in r.stdout
     r = run_layout(root, env, "--place-only", "--margin", "60")
     assert r.returncode != 0 and "狭すぎて" in r.stderr
+
+
+# ---------- ワイプの型（--style wipe）----------
+def test_face_box_centers_on_head_and_stays_inside():
+    fg = np.zeros((1280, 720), bool); fg[200:1160, 260:460] = True; fg[200:440, 300:420] = True
+    x, y, side = L.face_box(fg)
+    assert side == int(0.44 * 959) // 2 * 2 and abs((x + side / 2) - 360) <= 2 and y == round(200 - 0.01 * 959)
+    fg2 = np.zeros((600, 300), bool); fg2[0:590, 0:40] = True                      # 端に寄った人物でも枠は画面の内側
+    x2, y2, s2 = L.face_box(fg2)
+    assert x2 >= 0 and y2 >= 0 and x2 + s2 <= 300 and y2 + s2 <= 600
+
+
+def test_wipe_layers_shapes():
+    under, over, mask = L.wipe_layers(200)
+    assert under.shape == over.shape == (252, 252, 4) and mask.shape == (200, 200, 1)
+    assert mask[100, 100, 0] > 0.99 and mask[0, 0, 0] < 0.01                       # 丸の中は 1、角は 0
+    assert over[26 - 4 + 3, 126, 0] > 200 and over[26 - 4 + 3, 126, 2] < 100       # 上の縁は橙
+
+
+def test_layout_wipe_puts_round_face_bottom_left(tmp_path, env):
+    root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
+    out = tmp_path / "wipe.mp4"
+    r = run_layout(root, env, "--out", str(out), "--style", "wipe")
+    assert r.returncode == 0, r.stderr
+    crop = next(l.split()[1] for l in r.stdout.splitlines() if l.startswith("CROP "))
+    assert crop == "48,632,400,400"                                                # 余白 496 の真ん中、下から 48、直径 400
+    f = frame_at(out, 0.2, env)
+    assert f[832, 248].max() < 80                                                  # 丸の真ん中に人物（黒）
+    assert f[632 + 2, 248][0] > 180 and f[632 + 2, 248][2] < 110                   # 上の縁は橙
+    assert f[632 + 30, 48 + 30].min() > 200                                        # 丸の外の角は余白の地のまま（四角く出ない）
+    r = run_layout(root, env, "--place-only", "--style", "wipe", "--margin", "150")
+    assert r.returncode != 0 and "ワイプを置けない" in r.stderr
+
+
+
+def test_layout_rejects_wipe_size_larger_than_margin(tmp_path, env):
+    """--wipe-size が余白に入らなければ書き出す前に止める（Codex の指摘。負の x で NumPy が落ちていた）。"""
+    root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
+    r = run_layout(root, env, "--out", str(tmp_path / "o.mp4"), "--style", "wipe", "--margin", "384", "--wipe-size", "400")
+    assert r.returncode != 0 and "入らない" in r.stderr and not (tmp_path / "o.mp4").exists()
+    r = run_layout(root, env, "--place-only", "--style", "wipe", "--margin", "384", "--wipe-size", "320")
+    assert r.returncode == 0 and "CROP 32,712,320,320" in r.stdout

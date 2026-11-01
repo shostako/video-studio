@@ -7,6 +7,7 @@
                  次の姿勢に着いたか）を最後に表で出し、<出力>.check.json に書く。書き出した動画の画素での確認は vm check
   --check-only   下見。絵を作らず（RIFE・Wan を呼ばず）時間割だけを回して同じ検査をし、Wan で新しく作る組を出す（<出力>.precheck.json）
   --strict       切り替えの検査で問題があれば終了コード 3（動画は書き出したまま残る）
+  --no-events    config.events（身振り）を使わず home のまま話す（ワイプの型の顔用）。--no-head は頭の向きの列（config.head）も止める
   --lipsync amp|mora  口パクの母音の決め方（既定は config.lipsync、無ければ amp）。amp: 聞き取りの語を音の数で等分（今まで）。
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
@@ -35,6 +36,8 @@ from parts import map_rois
 a = [x for x in sys.argv[1:]]
 if not a or a[0].startswith("-"): die("使い方: vm render <作業フォルダ> [--mode alpha|white] [--from 秒 --to 秒] [--out ファイル]")
 P = Proj(a[0]); C = P.cfg
+if "--no-events" in sys.argv: C["events"] = []    # 身振り（姿勢の切り替え）を止める。ワイプ用（手が丸に入らない・Wan が要らない）。頭・視線・まばたき・口は残す
+if "--no-head" in sys.argv: C.pop("head", None)  # 頭の向きの列（config.head）を止める（RIFE の作り置きが無い PC でワイプを作るとき）
 def opt(name, default=None, cast=str): return cast(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
 MODE = opt("--mode", "alpha"); LIPSYNC = opt("--lipsync", C.get("lipsync", "amp"))
 if LIPSYNC not in ("amp", "mora"): die(f"lipsync は amp か mora: {LIPSYNC}")

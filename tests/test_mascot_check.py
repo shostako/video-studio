@@ -145,6 +145,19 @@ def test_render_writes_check_json(tmp_path, env):
     assert j["problems"] == 0 and [s["status"] for s in j["switches"]] == ["ok"] * 3 and j["video"] == str(out.resolve())
 
 
+def test_render_no_events_and_no_head(tmp_path, env):
+    """--no-events は身振りを使わず home のまま（ワイプの顔用）、--no-head は頭の向きの列も止める。config は書き換えない。"""
+    pytest.importorskip("pykakasi")
+    root = sm.make(str(tmp_path / "proj")); hidden_by_head(root)
+    before = open(os.path.join(root, "config.json")).read()
+    r = render(root, tmp_path / "n.mp4", env, "--no-events", "--no-head", "--check-only", "--strict")
+    assert r.returncode == 0, r.stderr[-2000:]
+    j = json.load(open(tmp_path / "n.precheck.json"))
+    assert j["switches"] == [] and j["head_spans"] == [] and open(os.path.join(root, "config.json")).read() == before
+    r = render(root, tmp_path / "h.mp4", env, "--no-events", "--check-only")
+    assert r.returncode == 0 and json.load(open(tmp_path / "h.precheck.json"))["head_spans"] != []   # --no-head が無ければ頭は動く
+
+
 def hidden_by_head(root):
     """体の切り替え（1.0 秒 home→point）が、頭の動き（0.6〜1.6 秒は point の向きのまま）の中にある config。"""
     cfgp = os.path.join(root, "config.json"); cfg = json.load(open(cfgp))
