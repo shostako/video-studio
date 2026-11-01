@@ -276,3 +276,64 @@ def test_hand_reference_outside_the_workspace_is_rejected(tmp_path):
     ca = cfg(a); ca["hands"] = {"wave": {"base": "home", "box": [0, 0, 10, 10], "desc": "x", "refs": ["../outside.png"]}}; put(a, ca)
     r = run("pack.py", pk, "--from", a, "--from", b)
     assert r.returncode != 0 and not pk.exists()
+
+
+# ---------- 作り置きを入れたパック（--with-cache）----------
+def _wan_wf(tmp_path, name="w"):
+    """Wan で動かす作業フォルダ。home⇄point の切り替えを偽の生成でためておく（ComfyUI・RIFE は呼ばない）。"""
+    import cv2
+    sys.path.insert(0, str(SCRIPTS)); import lib, wanflf  # noqa: E401
+    p = wf(tmp_path, name); c = cfg(p)
+    c["interp"] = {"engine": "wan", "mult": 4, "wan": {"width": 240, "height": 384, "rife_mult": 1}}; c["legs_lock"] = {"fix_x": True}
+    c["head"] = {"chain": ["home", "point"], "mult": 2, "events": [{"at": 0.4, "pose": "point"}]}; put(p, c)
+    P = lib.Proj(str(p)); icfg = lib.interp_config(c["interp"]); n = P.ib_div * icfg["mult"] - 1
+
+    def gen(P_, a, b, wan, raw_dir, log=None):
+        A = cv2.resize(P_.read_pose(a), (wan["width"], wan["height"])); B = cv2.resize(P_.read_pose(b), (wan["width"], wan["height"]))
+        os.makedirs(raw_dir, exist_ok=True)
+        for i in range(wan["length"]): cv2.imwrite(os.path.join(raw_dir, f"w{i + 1:02d}.png"), cv2.addWeighted(A, 1 - i / (wan["length"] - 1), B, i / (wan["length"] - 1), 0))
+
+    def rife(frames, mult, icfg_, tag):
+        out = []
+        for x, y in zip(frames, frames[1:]): out += [cv2.addWeighted(x, 1 - j / mult, y, j / mult, 0) for j in range(mult)]
+        return out + [frames[-1]]
+    for a_, b_ in (("home", "point"), ("point", "home")): wanflf.dense_paths(P, a_, b_, n, icfg, gen=gen, rife=rife)
+    return p, n
+
+
+def test_pack_with_cache_holds_webp_without_raw_and_new_links_it(tmp_path):
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    r = run("pack.py", pk, "--from", p, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 2 組" in r.stdout
+    d = pk / "ib_wan" / "home__point"
+    assert (d / "raw_stamp.json").exists() and not (d / "raw").exists() and (pk / "ib_wan" / ".readonly").exists()
+    assert len(list((d / f"n{n}").glob("f*.webp"))) == n and not list((d / f"n{n}").glob("f*.png"))
+    man = json.loads((pk / "pack.json").read_text()); assert sorted(man["cache"]["wan"]) == ["home__point", "point__home"]
+    assert "events" not in cfg(pk)["head"] and cfg(pk)["head"]["chain"] == ["home", "point"]   # 頭の動きの予定は台本に属する
+    nw = tmp_path / "video"
+    assert run("pack.py", pk, "--new", nw).returncode == 0
+    assert (nw / "ib_wan").is_symlink() and os.path.realpath(nw / "ib_wan") == os.path.realpath(pk / "ib_wan")
+    shutil.rmtree(nw / "voice"); shutil.copytree(p / "voice", nw / "voice")
+    c = cfg(nw); c["voice"] = cfg(p)["voice"]; c["events"] = [{"at": 0.6, "pose": "point"}, {"at": 2.0, "pose": "home"}]; put(nw, c)
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only")
+    assert r.returncode == 0 and "Wan で新しく作る組: 0" in r.stderr, r.stderr[-1500:]
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--strict", env=ffmpeg_env(tmp_path))   # ComfyUI は無いので、作ろうとすれば落ちる
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    own = tmp_path / "video_own"
+    assert run("pack.py", pk, "--new", own, "--own-cache").returncode == 0
+    assert not (own / "ib_wan").is_symlink() and not (own / "ib_wan" / ".readonly").exists()
+
+
+def test_pack_with_cache_skips_stale_pairs(tmp_path):
+    p, n = _wan_wf(tmp_path)
+    im = Image.open(p / "poses/pose_point.png"); im.putpixel((3, 3), (1, 2, 3)); im.save(p / "poses/pose_point.png")   # 作った後に絵を描き直した
+    r = run("pack.py", tmp_path / "pack", "--from", p, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 0 組" in r.stdout and "入れなかった: home__point" in r.stdout
+
+
+def test_pack_without_cache_flag_keeps_old_behavior(tmp_path):
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p).returncode == 0
+    assert not (pk / "ib_wan").exists() and "cache" not in json.loads((pk / "pack.json").read_text())

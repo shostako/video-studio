@@ -6,8 +6,13 @@
       台本に属するもの（voice・events・視線の予定・name）は持ってこない。補間の控え（ib_interp/）は書き出しのときに作り直す。
       パックは作業フォルダと同じ形（config.json・mascot.png・poses/・parts/・parts_<姿勢>/・ib/・hands/）で、出どころを pack.json に書く。
       既にあるパックは --force で置き換える（古いパックは <パック>.old-<時刻> に残す）。
-  vm pack <パック> --new <新しい作業フォルダ> [--name 名前]
-      パックを丸ごと複製して、新しい動画の作業フォルダを作る（台本・声・動きは空）。パックは書き換えない。"""
+      --with-cache: Wan の切り替え（ib_wan/）と RIFE の列（ib_interp/）の作り置きも入れる。パックの絵と設定でそのまま使える
+      組だけを入れ（入れた後にパックの中で判定し直す）、列は WebP（画質 95）にして Wan の元のコマ（raw/）は外す（raw_stamp.json は残す）。
+      置き場に .readonly を置く。Wan・RIFE の無い PC でも、作り置きのある組は書き出せる
+  vm pack <パック> --new <新しい作業フォルダ> [--name 名前] [--own-cache]
+      パックを丸ごと複製して、新しい動画の作業フォルダを作る（台本・声・動きは空）。パックは書き換えない。
+      パックに作り置きがあれば、ib_wan/・ib_interp/ はパックへのリンクにする（読むだけ。足りない組は作らずに止まる）。
+      --own-cache は作り置きを作業フォルダへ写して、自分の置き場にする（Wan・RIFE のある PC で足りない組を作り足すとき）"""
 import argparse
 import glob
 import hashlib
@@ -17,7 +22,7 @@ import shutil
 import sys
 import time
 
-from lib import die
+from lib import die, file_sig, file_sig_mtime, READONLY
 
 SCRIPT_KEYS = {"name", "voice", "events", "events_kw", "events_script", "events_demo", "gaze_script", "gaze_demo"}
 SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face", "anchor"}
@@ -100,11 +105,76 @@ def merge_top(cfg, c):
         for k in ("points", "scales"):
             if isinstance(old.get(k), dict) or isinstance(c["anchor"].get(k), dict): new[k] = {**(old.get(k) or {}), **(c["anchor"].get(k) or {})}
         cfg["anchor"] = new
+    if isinstance(c.get("head"), dict): cfg["head"] = {k: v for k, v in c["head"].items() if k != "events"}   # 頭の動きの予定は台本に属する（向きの列は持つ）
     if isinstance(c.get("gaze"), dict): cfg["gaze"] = {k: v for k, v in c["gaze"].items() if k != "events"}   # 視線の予定は台本に属する
     elif "gaze" in c: cfg["gaze"] = c["gaze"]      # true / false はそのまま（後が勝つ）
 
 
-def build(pack, sources, force=False):
+def _webp_dir(src_dir, dst_dir, names):
+    """列のコマ（f<j>.png か .webp）を WebP（画質 95）にして写す。"""
+    from PIL import Image
+    os.makedirs(dst_dir, exist_ok=True)
+    for n in names:
+        sp = os.path.join(src_dir, n + ".png")
+        if os.path.exists(sp): Image.open(sp).save(os.path.join(dst_dir, n + ".webp"), "WEBP", quality=95, method=4)
+        else: shutil.copy2(os.path.join(src_dir, n + ".webp"), os.path.join(dst_dir, n + ".webp"))
+
+
+def _interp_srcs(root, st):
+    """RIFE の列の stamp の src（名前の並び）を、root の中のパスに。姿勢の絵は poses/、描いた中割りは ib/。"""
+    out = []
+    for name, *_ in st.get("src", []):
+        p = os.path.join(root, "poses" if name.startswith("pose_") else "ib", name)
+        if not os.path.exists(p): return None
+        out.append(p)
+    return out
+
+
+def add_caches(tmp, sources):
+    """作業フォルダの作り置きのうち、パックの絵と設定でそのまま使える組を tmp に入れる。後の作業フォルダが勝つ。
+    戻り値 (入れた Wan の組, 入れた RIFE の列, 外した組と理由)。"""
+    import interp, lib, wanflf
+    P = lib.Proj(tmp); icfg = lib.interp_config(P.cfg.get("interp"), None); n = P.ib_div * icfg["mult"] - 1 if icfg else None
+    got_w, got_r, skipped = [], [], []
+    for s in reversed(sources):
+        Ps = lib.Proj(s)
+        ic_s = lib.interp_config(Ps.cfg.get("interp"), None)
+        if ic_s and icfg and icfg["engine"] == "wan" and ic_s["engine"] == "wan":
+            for base in sorted(glob.glob(os.path.join(s, "ib_wan", "*__*"))):
+                key = os.path.basename(base); a, _, b = key.partition("__")
+                if key in got_w or a not in P.cfg["poses"] or b not in P.cfg["poses"]: continue
+                if not os.path.isdir(os.path.join(base, f"n{n}")): continue
+                if wanflf.need(Ps, a, b, n, ic_s) is not None: skipped.append((key, "元の作業フォルダで今の絵・設定と合わない")); continue
+                d = os.path.join(tmp, "ib_wan", key); os.makedirs(d, exist_ok=True)
+                shutil.copy2(os.path.join(base, "raw_stamp.json"), d)
+                _webp_dir(os.path.join(base, f"n{n}"), os.path.join(d, f"n{n}"), [f"f{j}" for j in range(1, n + 1)])
+                json.dump(wanflf._stamp_maker(P, a, b, icfg, [], [P.pose_path(a), P.pose_path(b)])(file_sig), open(os.path.join(d, f"n{n}", "stamp.json"), "w"))
+                if wanflf.need(P, a, b, n, icfg) is None: got_w.append(key)
+                else: shutil.rmtree(d); skipped.append((key, "パックの絵・設定（描かせる文・部品）と合わない"))
+        for d_s in sorted(glob.glob(os.path.join(s, "ib_interp", "*"))):
+            key = os.path.basename(d_s); sp = os.path.join(d_s, "stamp.json")
+            if key in got_r or not os.path.isdir(d_s) or not os.path.exists(sp): continue
+            try: st = json.load(open(sp))
+            except ValueError: continue
+            srcs = _interp_srcs(s, st)
+            if srcs is None: continue
+            cnt = (len(srcs) - 1) * st.get("mult", 0) - 1
+            fr, have = lib.frame_paths(d_s, cnt)
+            if not have: continue
+            rest = {k: v for k, v in st.items() if k != "src"}
+            if st != {"src": file_sig(srcs), **rest} and st != json.loads(json.dumps({"src": file_sig_mtime(srcs), **rest})):
+                skipped.append((key, "元の作業フォルダで今の絵と合わない")); continue
+            psrcs = _interp_srcs(tmp, st)
+            if psrcs is None or file_sig(psrcs) != file_sig(srcs): skipped.append((key, "パックの絵と合わない")); continue
+            d = os.path.join(tmp, "ib_interp", key)
+            _webp_dir(d_s, d, [os.path.splitext(os.path.basename(f))[0] for f in fr])
+            json.dump({"src": file_sig(psrcs), **rest}, open(os.path.join(d, "stamp.json"), "w")); got_r.append(key)
+    for sub in ("ib_wan", "ib_interp"):
+        if os.path.isdir(os.path.join(tmp, sub)): open(os.path.join(tmp, sub, READONLY), "w").close()
+    return got_w, got_r, skipped
+
+
+def build(pack, sources, force=False, with_cache=False):
     sources = [os.path.abspath(s) for s in sources]
     for s in sources:
         if not os.path.isdir(s): die(f"作業フォルダが無い: {s}")
@@ -211,8 +281,10 @@ def build(pack, sources, force=False):
         for d in ("poses", "parts", "ib", "out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
         cfg["name"] = os.path.basename(pack)
         json.dump(cfg, open(os.path.join(tmp, "config.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        cache = add_caches(tmp, sources) if with_cache else None
         man = {"built": time.strftime("%Y-%m-%d %H:%M:%S"), "sources": sources,
                "poses": {n: s for n, s in owner.items()}, "pairs": pair_src, "missing_inbetweens": missing, "hands_base_changed": stale_hands}
+        if cache: man["cache"] = {"wan": cache[0], "rife": cache[1], "skipped": [list(x) for x in cache[2]]}
         json.dump(man, open(os.path.join(tmp, "pack.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         if os.path.exists(pack):                  # 古いパックは消さずに、重ならない名前で残す（同じ秒に2回作っても）
             old = unique(pack + ".old-" + time.strftime("%Y%m%d_%H%M%S")); os.rename(pack, old); print("古いパック:", old)
@@ -225,6 +297,9 @@ def build(pack, sources, force=False):
     for s in sources: print(f"  {s}: 姿勢 {len(by.get(s, []))} {sorted(by.get(s, []))}")
     print(f"  中割りの組 {len(pairs)}（持ってきた {len(pairs) - len(missing)}）")
     if missing: print(f"  中割りが要る組（端の絵が変わった・描いていない）: {missing}\n  → vm poses {pack} inbetweens で描き足す")
+    if "cache" in man:
+        c = man["cache"]; print(f"  作り置き: Wan の切り替え {len(c['wan'])} 組、RIFE の列 {len(c['rife'])}（WebP、読むだけ）")
+        for k, why in c["skipped"]: print(f"    入れなかった: {k}（{why}）")
     return man
 
 
@@ -240,15 +315,22 @@ def inside(child, parent):
     return child == parent or child.startswith(parent.rstrip(os.sep) + os.sep)
 
 
-def new(pack, dst, name=None):
+def new(pack, dst, name=None, own_cache=False):
     pack = os.path.abspath(pack); dst = os.path.abspath(dst)
     if inside(dst, pack) or inside(pack, dst): die(f"作業フォルダはパックの外に作る: {dst}")
     if not os.path.exists(os.path.join(pack, "pack.json")): die(f"パックではない（pack.json が無い）: {pack}")
     if os.path.exists(dst): die(f"作業フォルダが既にある: {dst}")
     tmp = dst + f".tmp-{os.getpid()}"
     try:
-        shutil.copytree(pack, tmp, ignore=shutil.ignore_patterns("pack.json", "ib_interp", "out", "voice", "reject"))
+        shutil.copytree(pack, tmp, ignore=shutil.ignore_patterns("pack.json", "ib_interp", "ib_wan", "out", "voice", "reject"))
         for d in ("out", "voice"): os.makedirs(os.path.join(tmp, d), exist_ok=True)
+        for sub in ("ib_wan", "ib_interp"):          # 作り置き: 読むだけのリンク（--own-cache は自分の置き場に写す）
+            sp = os.path.join(pack, sub)
+            if not os.path.isdir(sp): continue
+            if own_cache:
+                shutil.copytree(sp, os.path.join(tmp, sub)); ro = os.path.join(tmp, sub, READONLY)
+                if os.path.exists(ro): os.remove(ro)
+            else: os.symlink(sp, os.path.join(tmp, sub))
         cf = os.path.join(tmp, "config.json"); c = json.load(open(cf, encoding="utf-8"))
         c["name"] = name or os.path.basename(dst); c["from_pack"] = pack
         json.dump(c, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -262,10 +344,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pack"); ap.add_argument("--from", dest="sources", action="append", default=[])
     ap.add_argument("--new"); ap.add_argument("--name"); ap.add_argument("--force", action="store_true")
+    ap.add_argument("--with-cache", action="store_true"); ap.add_argument("--own-cache", action="store_true")
     a = ap.parse_args()
     if bool(a.sources) == bool(a.new): die("--from（まとめる）か --new（使う）のどちらか一方を指定する")
-    if a.sources: build(a.pack, a.sources, a.force)
-    else: new(a.pack, a.new, a.name)
+    if a.sources: build(a.pack, a.sources, a.force, a.with_cache)
+    else: new(a.pack, a.new, a.name, a.own_cache)
 
 
 if __name__ == "__main__":
