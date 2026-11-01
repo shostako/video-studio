@@ -30,7 +30,7 @@ from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
-from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report, speech_loud
+from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report, speech_loud, short_holds, short_hold_report
 from parts import map_rois
 
 a = [x for x in sys.argv[1:]]
@@ -525,10 +525,12 @@ for ln in mouth_report(MOFF): print(ln, file=sys.stderr)
 MSHUT = [s_ for s_ in mouth_shut_spans(LOUD, SPEAK, FPS, f0)            # 声が出ているのに口が閉じている所。口の部品の無い姿勢の所は上で数えた
          if not any(m_["from"] <= s_["from"] and s_["to"] <= m_["to"] for m_ in MOFF)]
 for ln in mouth_shut_report(MSHUT, LIPSYNC == "amp"): print(ln, file=sys.stderr)
-NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF) + (len(MSHUT) if LIPSYNC == "amp" else 0)   # モーラ式は知らせるだけ
+SHOLD = [h_ for h_ in short_holds(SW, P.home) if T0 - 1 <= h_["at"] <= (T1 if T1 is not None else END) + 1]   # 着く前に上書きされる身振り（重なり。書き出す範囲の分）
+for ln in short_hold_report(SHOLD): print(ln, file=sys.stderr)
+NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF) + (len(MSHUT) if LIPSYNC == "amp" else 0) + len(SHOLD)   # モーラ式は知らせるだけ
 HSP = head_spans(HEAD_KEYS, P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else []
 CHKF = os.path.splitext(OUTF)[0] + (".precheck.json" if DRY else ".check.json")
-json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF, "mouth_shut": MSHUT},
+json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF, "mouth_shut": MSHUT, "short_holds": SHOLD},
           open(CHKF, "w"), ensure_ascii=False, indent=1)
 print(CHKF if DRY else OUTF)
 if NBAD and "--strict" in sys.argv: die(f"切り替えの検査・口の検査で問題が {NBAD} 件（{CHKF}）", 3)

@@ -361,3 +361,13 @@ def test_voice_master_mutes_tail_blip_without_changing_timing(tmp_path):
     m = np.frombuffer(raw, np.float32); st = tm["lines"][1]["start"]
     tail = m[int((st + 1.87) * 48000):int((st + 1.90) * 48000)]
     assert np.abs(tail).max() < 0.02                                       # ゴミの音の所は無音
+
+
+# ---------- short_holds（着く前に上書きされる身振り）----------
+def test_short_holds_flags_overlap_but_not_quick_wag_or_home():
+    sw = [(10.0, 0.6, "home", "point_r"), (10.3, 0.6, "point_r", "home"),      # point_r に着く前（10.6）に次が始まる（旧PC の 29.04 秒）
+          (20.0, 0.6, "home", "wag_r"), (20.65, 0.3, "wag_r", "wag_l"),        # 着いて 0.05 秒で次（指を振る）＝見える
+          (21.0, 0.6, "wag_l", "home"), (21.6, 0.6, "home", "open")]            # home に一瞬寄るのは数えない
+    out = lib.short_holds(sw, "home")
+    assert [(o["at"], o["pose"]) for o in out] == [(10.0, "point_r")] and out[0]["hold"] < 0
+    assert lib.short_hold_report([]) == [] and "上書き" in lib.short_hold_report(out)[0]
