@@ -276,3 +276,119 @@ def test_hand_reference_outside_the_workspace_is_rejected(tmp_path):
     ca = cfg(a); ca["hands"] = {"wave": {"base": "home", "box": [0, 0, 10, 10], "desc": "x", "refs": ["../outside.png"]}}; put(a, ca)
     r = run("pack.py", pk, "--from", a, "--from", b)
     assert r.returncode != 0 and not pk.exists()
+
+
+# ---------- 作り置きを入れたパック（--with-cache）----------
+def _wan_wf(tmp_path, name="w"):
+    """Wan で動かす作業フォルダ。home⇄point の切り替えを偽の生成でためておく（ComfyUI・RIFE は呼ばない）。"""
+    import cv2
+    sys.path.insert(0, str(SCRIPTS)); import lib, wanflf  # noqa: E401
+    p = wf(tmp_path, name); c = cfg(p)
+    c["interp"] = {"engine": "wan", "mult": 4, "wan": {"width": 240, "height": 384, "rife_mult": 1}}; c["legs_lock"] = {"fix_x": True}
+    c["head"] = {"chain": ["home", "point"], "mult": 2, "events": [{"at": 0.4, "pose": "point"}]}; put(p, c)
+    P = lib.Proj(str(p)); icfg = lib.interp_config(c["interp"]); n = P.ib_div * icfg["mult"] - 1
+
+    def gen(P_, a, b, wan, raw_dir, log=None):
+        A = cv2.resize(P_.read_pose(a), (wan["width"], wan["height"])); B = cv2.resize(P_.read_pose(b), (wan["width"], wan["height"]))
+        os.makedirs(raw_dir, exist_ok=True)
+        for i in range(wan["length"]): cv2.imwrite(os.path.join(raw_dir, f"w{i + 1:02d}.png"), cv2.addWeighted(A, 1 - i / (wan["length"] - 1), B, i / (wan["length"] - 1), 0))
+
+    def rife(frames, mult, icfg_, tag):
+        out = []
+        for x, y in zip(frames, frames[1:]): out += [cv2.addWeighted(x, 1 - j / mult, y, j / mult, 0) for j in range(mult)]
+        return out + [frames[-1]]
+    for a_, b_ in (("home", "point"), ("point", "home")): wanflf.dense_paths(P, a_, b_, n, icfg, gen=gen, rife=rife)
+    return p, n
+
+
+def test_pack_with_cache_holds_webp_without_raw_and_new_links_it(tmp_path):
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    r = run("pack.py", pk, "--from", p, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 2 組" in r.stdout
+    d = pk / "ib_wan" / "home__point"
+    assert (d / "raw_stamp.json").exists() and not (d / "raw").exists() and (pk / "ib_wan" / ".readonly").exists()
+    assert len(list((d / f"n{n}").glob("f*.webp"))) == n and not list((d / f"n{n}").glob("f*.png"))
+    man = json.loads((pk / "pack.json").read_text()); assert sorted(man["cache"]["wan"]) == ["home__point", "point__home"]
+    assert "events" not in cfg(pk)["head"] and cfg(pk)["head"]["chain"] == ["home", "point"]   # 頭の動きの予定は台本に属する
+    nw = tmp_path / "video"
+    assert run("pack.py", pk, "--new", nw).returncode == 0
+    assert (nw / "ib_wan").is_symlink() and os.path.realpath(nw / "ib_wan") == os.path.realpath(pk / "ib_wan")
+    shutil.rmtree(nw / "voice"); shutil.copytree(p / "voice", nw / "voice")
+    c = cfg(nw); c["voice"] = cfg(p)["voice"]; c["events"] = [{"at": 0.6, "pose": "point"}, {"at": 2.0, "pose": "home"}]; put(nw, c)
+    fenv = ffmpeg_env(tmp_path)
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only", env=fenv)
+    assert r.returncode == 0 and "Wan で新しく作る組: 0" in r.stderr, r.stderr[-1500:]
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--strict", env=fenv)   # ComfyUI は無いので、作ろうとすれば落ちる
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    own = tmp_path / "video_own"
+    assert run("pack.py", pk, "--new", own, "--own-cache").returncode == 0
+    assert not (own / "ib_wan").is_symlink() and not (own / "ib_wan" / ".readonly").exists()
+
+
+def test_pack_with_cache_skips_stale_pairs(tmp_path):
+    p, n = _wan_wf(tmp_path)
+    im = Image.open(p / "poses/pose_point.png"); im.putpixel((3, 3), (1, 2, 3)); im.save(p / "poses/pose_point.png")   # 作った後に絵を描き直した
+    r = run("pack.py", tmp_path / "pack", "--from", p, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 0 組" in r.stdout and "入れなかった: home__point" in r.stdout
+
+
+def test_pack_without_cache_flag_keeps_old_behavior(tmp_path):
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p).returncode == 0
+    assert not (pk / "ib_wan").exists() and "cache" not in json.loads((pk / "pack.json").read_text())
+
+
+
+def test_pack_with_cache_keeps_all_frames_of_direct_rife(tmp_path):
+    """直の補間の列（頭の向きなど）は分割数×倍率のコマ数。全部入れる（Codex の指摘。1 枚しか入らなかった）。"""
+    import cv2
+    sys.path.insert(0, str(SCRIPTS)); import interp, lib  # noqa: E401
+    p, n = _wan_wf(tmp_path); P = lib.Proj(str(p))
+    cfg_ = dict(lib.INTERP_DEFAULTS); cfg_["mult"] = 2; tot = cfg_["mult"] * P.ib_div
+    srcs = [P.pose_path("home"), P.pose_path("point")]
+    out = P.p("ib_interp", f"home_point_direct_x{tot}_{cfg_['model']}"); os.makedirs(out)
+    A, B = P.read_pose("home"), P.read_pose("point")
+    for j in range(1, tot): cv2.imwrite(os.path.join(out, f"f{j}.png"), cv2.addWeighted(A, 1 - j / tot, B, j / tot, 0))
+    json.dump(interp._stamp(srcs, cfg_), open(os.path.join(out, "stamp.json"), "w"))
+    pk = tmp_path / "pack"; r = run("pack.py", pk, "--from", p, "--with-cache")
+    assert r.returncode == 0 and "RIFE の列 1" in r.stdout, r.stdout + r.stderr
+    assert len(list((pk / "ib_interp" / os.path.basename(out)).glob("f*.webp"))) == tot - 1
+    Pk = lib.Proj(str(pk)); assert interp.ready(Pk, "home", "point", Pk.ib_div, cfg_, direct=True)
+
+
+def test_pack_with_cache_rejects_frames_made_with_other_post_settings(tmp_path):
+    """後処理の値（wan.edge）が元とパックで違う列は、パックの値で書き換えて通さない（Codex の指摘）。"""
+    p, n = _wan_wf(tmp_path, "a"); q = wf(tmp_path, "b")
+    cq = cfg(q); cq["interp"] = dict(cfg(p)["interp"]); cq["interp"]["wan"] = {**cq["interp"]["wan"], "edge": 0.3}; put(q, cq)   # 後の作業フォルダ: 同じ絵・同じ生成で edge だけ違う（作り置きは無い）
+    r = run("pack.py", tmp_path / "pack", "--from", p, "--from", q, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 0 組" in r.stdout and "post" in r.stdout
+
+
+
+def test_hand_replace_does_not_touch_linked_pack_cache(tmp_path):
+    """パックから作った作業フォルダで手の部品を置き直しても、リンク先のパックの補間の列は動かさない（Codex の指摘）。"""
+    sys.path.insert(0, str(SCRIPTS)); import hands, lib  # noqa: E401
+    p, n = _wan_wf(tmp_path); c = cfg(p); c["pairs"] = [["home", "point"]]; put(p, c)
+    pk = tmp_path / "pack"; (pk / "ib_interp" / "home_point_x8_rife-v4.6").mkdir(parents=True)
+    assert run("pack.py", pk.with_name("pack2"), "--from", p, "--with-cache").returncode == 0
+    pk = pk.with_name("pack2"); d = pk / "ib_interp" / "home_point_x8_rife-v4.6"; d.mkdir(parents=True, exist_ok=True); (d / "f1.webp").write_bytes(b"x")
+    (pk / "ib_interp" / ".readonly").write_text("")
+    nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
+    hands.archive_old(lib.Proj(str(nw)), "point")
+    assert (d / "f1.webp").exists()
+
+
+
+def test_rebuild_repins_workspace_links_to_the_old_pack(tmp_path):
+    """パックを --force で作り直しても、前のパックから作った作業フォルダは前のパックの作り置きを使い続ける（Codex の指摘）。"""
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
+    nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
+    assert str(nw) in json.loads((pk / "pack.json").read_text())["workspaces"]
+    r = run("pack.py", pk, "--from", p, "--force")                          # 作り置きなしで作り直す
+    assert r.returncode == 0 and "向け直した" in r.stdout, r.stdout + r.stderr
+    old = next(x for x in tmp_path.iterdir() if x.name.startswith("pack.old-"))
+    assert os.readlink(nw / "ib_wan") == str(old / "ib_wan") and (nw / "ib_wan" / "home__point").is_dir()

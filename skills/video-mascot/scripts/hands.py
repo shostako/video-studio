@@ -68,7 +68,7 @@ def archive_old(P, name, pose=True, parts_dir=True):
     その姿勢を端に持つ中割り（ib/ib_<前>_<次>_<番号>[_<分割数>].png）と補間の控え（ib_interp/<前>_<次>_x*）を reject/hands_replaced/<名前>_<時刻>/ へ移す。
     名前はぴったり一致で選ぶ（count を置き換えても count_2 の絵は動かさない）。"""
     import re, time
-    from lib import MOUTHS, EYES, GAZES
+    from lib import MOUTHS, EYES, GAZES, READONLY
     stem = P.p("reject", "hands_replaced", f"{name}_{time.strftime('%Y%m%d_%H%M%S')}"); rd = stem; n = 1
     while os.path.exists(rd): n += 1; rd = f"{stem}_{n}"     # 同じ秒にもう一度置き換えても、前の退避を上書きしない
     os.makedirs(rd); moved = []
@@ -77,12 +77,14 @@ def archive_old(P, name, pose=True, parts_dir=True):
         if name not in (a, b): continue
         ibr = re.compile(rf"^ib_{re.escape(a)}_{re.escape(b)}_\d+(_\d+)?\.png$"); itr = re.compile(rf"^{re.escape(a)}_{re.escape(b)}_(direct_)?x\d+_")
         if os.path.isdir(P.p("ib")): src += [P.p("ib", f) for f in os.listdir(P.p("ib")) if ibr.match(f)]
-        if os.path.isdir(P.p("ib_interp")): src += [P.p("ib_interp", f) for f in os.listdir(P.p("ib_interp")) if itr.match(f)]
+        if os.path.isdir(P.p("ib_interp")) and not os.path.exists(P.p("ib_interp", READONLY)):   # パックの作り置き（リンク）は動かさない（ほかの作業フォルダも使う）
+            src += [P.p("ib_interp", f) for f in os.listdir(P.p("ib_interp")) if itr.match(f)]
     for f in src:
         if os.path.exists(f):
             rel = os.path.relpath(f, P.p("")); dst = os.path.join(rd, rel); os.makedirs(os.path.dirname(dst), exist_ok=True)
             os.replace(f, dst); moved.append(rel)
     if moved: print(f"  {name}: 古い絵から作った物 {len(moved)} 件を {os.path.relpath(rd, P.p(''))}/ へ移した")
+    if os.path.exists(P.p("ib_interp", READONLY)): print(f"  {name}: 補間の作り置きはパックのもの（読むだけ）なので動かさない。絵が変わった組は、書き出しで合わないと分かって止まる")
     return moved
 
 
