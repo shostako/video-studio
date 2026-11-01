@@ -523,6 +523,28 @@ def speech_loud(level, vowel, thr=0.15):
     return bool(level >= thr) and vowel != "-"
 
 
+SHORT_HOLD = 0.0                          # 着く前（これ未満）に次の切り替えが始まると、身振りが着かずに上書きされる。指を振るような素早い行き来（着いて 0.05 秒で次）は見えるので数えない
+
+
+def short_holds(switches, home, min_hold=SHORT_HOLD):
+    """切り替え [(開始秒, 長さ, 前, 次), ...]（時刻の順）のうち、姿勢（home 以外）に着く前に次の切り替えが始まる所（重なり、hold < min_hold）。[{"at": 着く切り替えの開始, "pose": 姿勢, "hold": 見せる秒（負は重なり）, "next": 次の切り替えの開始}, ...]。
+    台本の身振りの語が行の頭の home の指定より前に来ると、身振りが着く前に home に上書きされた（旧PC の 29.04 秒の point_r など）。
+    home を通る経路で一瞬 home に寄るのはわざとなので数えない。"""
+    out = []
+    for (t0, d0, _, b0), (t1, _, a1, _) in zip(switches, switches[1:]):
+        hold = t1 - (t0 + d0)
+        if b0 != home and hold < min_hold - 1e-6:   # ちょうど接する切り替え（0.1+0.2 と 0.3）を浮動小数点の誤差で重なりと見ない
+            out.append({"at": round(t0, 3), "pose": b0, "hold": round(hold, 3), "next": round(t1, 3)})
+    return out
+
+
+def short_hold_report(spans):
+    if not spans: return []
+    lines = [f"身振りの検査: 着く前に次の切り替えに上書きされる身振り {len(spans)} 件（重なり。身振りが見えない）"]
+    for s in spans: lines.append(f"  ✗ {s['at']:.2f} 秒に {s['pose']} へ → 着く前の {s['next']:.2f} 秒に次の切り替え（{s['hold']:+.2f} 秒）。kw を後ろの語にするか、前後の指定の時刻をずらす")
+    return lines
+
+
 def mouth_shut_spans(loud, speak, fps, f0, long_s=0.2):
     """声が出ている（loud）のに口が閉じている（speak が偽）コマが long_s 秒以上続く所。[{"from", "to", "dur"}, ...]。
     loud・speak は f0 コマ目から書き出した順。母音の取れない語や、声と口の時刻のずれで起きる。"""
