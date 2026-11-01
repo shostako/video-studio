@@ -392,6 +392,58 @@ def frame_levels(x, sr, fps, nall, win):
     return out
 
 
+_KDIG = "〇一二三四五六七八九"
+
+
+def _kanji_number(n):
+    """0〜9999億9999万9999 の整数を漢数字に（10 は「十」、1000 は「千」）。"""
+    if n == 0: return "零"
+    out = ""
+    for unit, big in ((10 ** 8, "億"), (10 ** 4, "万"), (1, "")):
+        q = (n // unit) % 10000
+        if not q: continue
+        for d, small in ((1000, "千"), (100, "百"), (10, "十"), (1, "")):
+            k = (q // d) % 10
+            if k: out += ("" if (k == 1 and small) else _KDIG[k]) + small
+        out += big
+    return out
+
+
+def num_to_kanji(text):
+    """文の中の算用数字の並びを漢数字にする（「2つ」→「二つ」、「100」→「百」、「2026」→「二千二十六」）。かなに直すとき、
+    数字のままだと読みが付かない。小数点・桁区切りの付いた数と、1 兆以上はそのまま。"""
+    import re
+    fw = str.maketrans("０１２３４５６７８９", "0123456789")
+    def repl(m):
+        a, b = m.start(), m.end()
+        if (a > 0 and text[a - 1] in ".,．，") or (b < len(text) and text[b] in ".,．，"): return m.group(0)
+        n = int(m.group(0).translate(fw))
+        return m.group(0) if n >= 10 ** 12 else _kanji_number(n)
+    return re.sub(r"[0-9０-９]+", repl, text)
+
+
+def words_hira(words, convert):
+    """聞き取りの語の並び（表記）を、行の中でつないで文脈ごとにひらがなに直し、語ごとに配り直す（ひらがなと「ー」だけ）。
+    1 語ずつ直すと、Whisper が「見える」を「見」「える」に分けたとき「見」が「けん」になり、キーワードの「みえる」と合わなかった。
+    convert(text) は [{"orig": 表記, "hira": ひらがな}, ...]（pykakasi の convert）。表記の長さが合わなければ 1 語ずつ直す。"""
+    keep = lambda h: "".join(ch for ch in h if "ぁ" <= ch <= "ゖ" or ch == "ー")
+    surf = [num_to_kanji(w) for w in words]
+    toks = convert("".join(surf)); total = sum(len(t["orig"]) for t in toks)
+    if total != sum(len(w) for w in surf):
+        return [keep("".join(t["hira"] for t in convert(w))) for w in surf]
+    bounds = []; pos = 0
+    for w in surf: bounds.append((pos, pos + len(w))); pos += len(w)
+    out = [""] * len(words); pos = 0
+    for t in toks:
+        a, b = pos, pos + len(t["orig"]); pos = b; h = keep(t["hira"])
+        if not h or b <= a: continue
+        for i, (wa, wb) in enumerate(bounds):
+            lo, hi = max(a, wa), min(b, wb)
+            if hi <= lo: continue
+            out[i] += h[round((lo - a) / (b - a) * len(h)):round((hi - a) / (b - a) * len(h))]
+    return out
+
+
 def word_hira(hira, word):
     """口パク（音量式）の母音に使う語のひらがな。かなが無く、英字・数字・記号（空白と句読点以外）を含む語は「あ」1 つにする。
     聞き取りの語が「CAD」「IGES」「100」「%」「×」のままだと母音が付かず、声が出ていても口が閉じたままだった。

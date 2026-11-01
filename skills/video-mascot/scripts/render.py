@@ -25,7 +25,7 @@ import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
-from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps
+from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
@@ -76,8 +76,7 @@ if not os.path.exists(WORDS) or os.path.getmtime(WORDS) < os.path.getmtime(VOICE
     json.dump([[w.word, w.start, w.end] for s in segs for w in s.words], open(WORDS, "w"), ensure_ascii=False)
 words = json.load(open(WORDS))
 import pykakasi; KK = pykakasi.kakasi()
-def to_hira(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー")
-WH = [(to_hira(w), s, e) for w, s, e in words]     # 語のひらがなと時刻
+WH = [(h, s, e) for h, (w, s, e) in zip(words_hira([w for w, _, _ in words], KK.convert), words)]   # 語のひらがなと時刻（行の文脈ごとに読む。数字は漢数字にして読む）
 vowel_at, hira_stream = vowel_frames(WH, FPS, NALL)   # 音の並び（events の語の位置探し）はかなの語だけで作る（今までどおり）
 vowel_at, _ = vowel_frames([(word_hira(h, w[0]), s, e) for (h, s, e), w in zip(WH, words)], FPS, NALL)   # 口の母音: 英字・数字・記号の語は「あ」
 
@@ -86,7 +85,7 @@ lvl_s = np.array([np.median(lvl[max(0, f - R):f + R + 1]) for f in range(NALL)])
 if LIPSYNC == "mora":                             # 行のかな台本（voice.lines[].kana、無ければ say か text をかなにしたもの）をモーラで割り付ける
     VL = C.get("voice", {}).get("lines", []); MO = C.get("mora", {}); segs = []
     lvl_t = lvl_s / MS if MS > 0 else lvl_s        # 無音を削る判定は口の倍率に左右されない大きさで
-    def to_kana(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(s)) if "ぁ" <= ch <= "ゖ" or ch == "ー" or ch in PAUSE)
+    def to_kana(s): return "".join(ch for ch in "".join(t["hira"] for t in KK.convert(num_to_kanji(s))) if "ぁ" <= ch <= "ゖ" or ch == "ー" or ch in PAUSE)
     for n in sorted(L):
         if n > len(VL): die(f"lipsync=mora: 行{n} の台本が config.voice.lines に無い")
         kana = VL[n - 1].get("kana") or to_kana(VL[n - 1].get("say", VL[n - 1]["text"]))
