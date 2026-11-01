@@ -3,7 +3,8 @@
             [--wipe-size 400] [--wipe-box x,y,辺] [--bg-from 秒] [--audio 声.wav] [--full] [--chapters 章.json] [--margin 496] [--place-only]
   --style    full（既定。全身を余白の下に立たせる）か wipe（顔の周りを丸く切り抜いて余白の左下に置く）
   --wipe-size  ワイプの直径（既定は余白の幅 − 80 で、400 まで）
-  --wipe-box   マスコットの動画のどこを切り抜くか（x,y,辺。画素）。既定は最初のコマの人物から顔の周りを測る
+  --wipe-box   マスコットの動画のどこを切り抜くか（x,y,辺。画素）。既定は最初のコマの人物から顔の周りを測る。
+             vm render --crop で顔の周りだけを書き出した動画（隣に <名前>.crop.json）は、そのまま丸にする
   --mascot   重ねるマスコット（既定 <作業フォルダ>/out/mascot.webm）。.webm は透明で、.mp4 は白背景を乗算で重ねる
   --frame    full（全身。既定）か bust（胸から上）。--size は大きさ（全身は S=高さ 560px・L=880px、胸から上は S=幅 340・L=496）
   --bg-from  主動画のどこから使うか（秒、既定 0）
@@ -26,7 +27,7 @@ import json, os, subprocess, sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import die
+from lib import die, wipe_box
 from check import probe as vprobe
 
 W, H, FPS = 1920, 1080, 60
@@ -163,14 +164,10 @@ def first_frame(mp):
 
 
 def face_box(fg):
-    """人物の画素（真偽の配列）から、ワイプに切り抜く正方形 (x, y, 辺)。辺は背の 0.44 倍、横は頭（上 25%）の真ん中、
-    上は頭の少し上。3 頭身のキャラで、顔と肩の上が丸に収まる（凜で合わせた）。画面の外に出る分は内側へ寄せる。"""
-    mh, mw = fg.shape; ys, xs = np.where(fg)
-    if not len(ys): die("最初のコマに人物が無い（--wipe-box で切り抜く所を渡す）")
-    top, fh = int(ys.min()), int(ys.max() - ys.min())
-    cx = float(np.median(xs[ys < top + 0.25 * fh])); side = min(mw, mh, int(0.44 * fh) // 2 * 2)
-    x = int(round(cx - side / 2)); y = int(round(top - 0.01 * fh))
-    return max(0, min(mw - side, x)), max(0, min(mh - side, y)), side
+    """人物の画素から、ワイプに切り抜く正方形 (x, y, 辺)（lib.wipe_box。vm render --crop face と同じ決め方）。"""
+    box = wipe_box(fg)
+    if box is None: die("最初のコマに人物が無い（--wipe-box で切り抜く所を渡す）")
+    return box
 
 
 def wipe_layers(d, pad=26):
@@ -206,8 +203,14 @@ def main():
         if not os.path.exists(p): die(f"無い: {p}")
     WIPE = style == "wipe"
     if WIPE:                                      # 顔の周りの正方形を切り抜き、直径 d の丸にして余白の左下（下から 48px）に置く
-        mw_, mh_, fg = first_frame(mp)
-        box = tuple(int(v) for v in opt("--wipe-box").split(",")) if opt("--wipe-box") else face_box(fg)
+        cj = os.path.splitext(mp)[0] + ".crop.json"    # vm render --crop で、もう顔の周りだけを書き出した動画
+        if opt("--wipe-box"): box = tuple(int(v) for v in opt("--wipe-box").split(","))
+        elif os.path.exists(cj) and os.path.getmtime(cj) >= os.path.getmtime(mp):
+            mw_, mh_, _ = probe(mp)
+            if mw_ != mh_: die(f"切り抜き済みの動画が正方形でない（{mw_}x{mh_}）: {mp}")
+            box = (0, 0, mw_); print(f"wipe: 切り抜き済みの動画を使う（{cj}: {json.load(open(cj)).get('box')}）", flush=True)
+        else:
+            box = face_box(first_frame(mp)[2])
         if len(box) != 3 or box[2] <= 0: die("--wipe-box は x,y,辺")
         sw = sh = opt("--wipe-size", min(400, (margin - 80) // 2 * 2), int)
         if sw < 120: die(f"余白が狭すぎてワイプを置けない（直径 {sw}px）。--scale を下げるか --wipe-size を渡す")

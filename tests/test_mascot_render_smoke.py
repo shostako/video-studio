@@ -93,3 +93,27 @@ def test_render_idle_false_stops_the_default_breathing(proj, env, tmp_path):
     still = lambda x: np.abs(x[i0:i1].astype(np.int16) - x[i0].astype(np.int16)).max()
     assert still(b) <= 2                                               # 止めると動かない（圧縮の誤差だけ）
     assert still(a) > still(b)                                          # 既定は動いている
+
+
+def test_render_crop_face_writes_square_and_sidecar(proj, env, tmp_path):
+    """--crop face: 顔の周りの正方形だけを書き出し、決めた範囲を <出力>.crop.json に書く。全体で書き出して切り抜いたものと同じ絵。"""
+    import json
+    full, crop = tmp_path / "full.webm", tmp_path / "face.webm"
+    render(proj, env, full, "--to", "0.5")
+    log = render(proj, env, crop, "--to", "0.5", "--crop", "face")
+    cj = json.loads((tmp_path / "face.crop.json").read_text()); x, y, d = cj["box"]
+    assert "crop:" in log and not (tmp_path / "full.crop.json").exists()
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-c:v", "libvpx-vp9", "-i", str(crop), "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
+                         env=env, capture_output=True, check=True).stdout
+    c = np.frombuffer(raw, np.uint8).reshape(-1, d, d, 4); f = frames(full, env, True)[:, y:y + d, x:x + d]
+    assert len(c) == len(f) and (c[..., 3] > 247).mean() > 0.1           # 顔と体の上が入っている
+    assert np.abs(c[..., 3].astype(int) - f[..., 3].astype(int)).mean() < 2   # 違いは圧縮の揺らぎだけ
+    render(proj, env, crop, "--to", "0.5")                                # 切り抜かずに書き直したら、前の控えは消す
+    assert not (tmp_path / "face.crop.json").exists()
+
+
+def test_render_crop_rejects_white_and_overflow(proj, env, tmp_path):
+    for extra, word in ((["--mode", "white", "--crop", "face"], "alpha"), (["--crop", "0,0,99999"], "はみ出す"), (["--crop", "1,2"], "x,y,辺")):
+        r = subprocess.run([sys.executable, "-B", str(RENDER), str(proj), "--out", str(tmp_path / "x.webm"), *extra],
+                           env=env, capture_output=True, text=True, timeout=120)
+        assert r.returncode != 0 and word in r.stderr, (extra, r.stderr)

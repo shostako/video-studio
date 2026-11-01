@@ -57,7 +57,7 @@ def main():
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
         step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale, "--out", main_mp4])
-        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events"] if style == "wipe" else []
+        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else []   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", *extra))
         lay = step("余白に置く", vm("layout", main_mp4, work, "--mascot", face, "--style", "full" if style == "full" else "wipe", "--out", out, "--full"))

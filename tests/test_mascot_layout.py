@@ -224,6 +224,24 @@ def test_layout_wipe_puts_round_face_bottom_left(tmp_path, env):
 
 
 
+def test_layout_wipe_uses_precropped_mascot(tmp_path, env):
+    """vm render --crop で顔の周りだけを書き出した動画（隣に .crop.json）は、測り直さずにそのまま丸にする。"""
+    root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
+    sq = root / "out" / "face.webm"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-c:v", "libvpx-vp9", "-i", str(root / "out" / "mascot.webm"), "-vf", "crop=200:200:260:200",
+                    "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", str(sq)], env=env, check=True)
+    json.dump({"box": [260, 200, 200], "size": [720, 1280]}, open(root / "out" / "face.crop.json", "w"))
+    out = tmp_path / "wipe.mp4"
+    r = run_layout(root, env, "--out", str(out), "--style", "wipe", "--mascot", str(sq))
+    assert r.returncode == 0, r.stderr
+    assert "切り抜き済み" in r.stdout and "切り抜き 0,0 辺 200" in r.stdout
+    f = frame_at(out, 0.2, env)
+    assert f[832, 248].max() < 80 and f[640, 248].max() < 80                       # 丸いっぱいに人物（黒い箱の上の方）
+    os.utime(root / "out" / "face.crop.json", (1, 1))                               # 動画より古い控えは使わない
+    r = run_layout(root, env, "--place-only", "--style", "wipe", "--mascot", str(sq))
+    assert r.returncode == 0 and "切り抜き済み" not in r.stdout
+
+
 def test_layout_rejects_wipe_size_larger_than_margin(tmp_path, env):
     """--wipe-size が余白に入らなければ書き出す前に止める（Codex の指摘。負の x で NumPy が落ちていた）。"""
     root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
