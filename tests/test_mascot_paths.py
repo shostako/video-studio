@@ -33,3 +33,10 @@ def test_no_user_name_is_hardcoded():
         t = p.read_text(encoding="utf-8", errors="ignore")
         if "/mnt/c/Users/shost" in t or "C:\\\\Users\\\\shost" in t: bad.append(str(p))
     assert bad == []
+
+
+def test_win_decode_handles_cp932():
+    """日本語のユーザー名（cmd.exe は CP932 で出す）も正しく読む（Codex の指摘）。"""
+    assert lib.win_decode("C:\\Users\\山田\r\n".encode("cp932")).strip() == "C:\\Users\\山田"
+    assert lib.win_decode("C:\\Users\\山田".encode("utf-8")) == "C:\\Users\\山田"
+    assert lib.win_decode(b"C:\\Users\\shost") == "C:\\Users\\shost"

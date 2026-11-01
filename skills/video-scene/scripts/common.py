@@ -4,8 +4,11 @@ import json, os, subprocess, sys, time, datetime, shutil
 def _default_out():
     """出力先の既定: Windows のユーザーの Videos/generated（WSL）、Windows が無ければ ~/Videos/generated。"""
     try:
-        r = subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, text=True, timeout=15, cwd="/mnt/c" if os.path.isdir("/mnt/c") else None)
-        w = r.stdout.strip().splitlines()
+        r = subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, timeout=15, cwd="/mnt/c" if os.path.isdir("/mnt/c") else None)
+        b = r.stdout                               # 日本語のユーザー名は CP932 で出るので、UTF-8 で読めなければ CP932 で読む
+        try: txt = b.decode("utf-8")
+        except UnicodeDecodeError: txt = b.decode("cp932", errors="replace")
+        w = txt.strip().splitlines()
         if w and "%" not in w[-1]:
             u = subprocess.run(["wslpath", "-u", w[-1].strip()], capture_output=True, text=True, timeout=15).stdout.strip()
             if u: return os.path.join(u, "Videos", "generated")

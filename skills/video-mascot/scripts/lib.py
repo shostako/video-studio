@@ -965,6 +965,14 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
 _WIN_HOME = None
 
 
+def win_decode(b):
+    """cmd.exe の出力（バイト）を文字にする。UTF-8 で読めなければ CP932（日本語の Windows の既定）で読む。"""
+    for enc in ("utf-8", "cp932"):
+        try: return b.decode(enc)
+        except UnicodeDecodeError: pass
+    return b.decode("utf-8", errors="replace")
+
+
 def win_home():
     """Windows のユーザーのフォルダを WSL から見たパス（例 /mnt/c/Users/<名前>）。環境変数 VM_WIN_HOME → cmd.exe の %USERPROFILE%。
     Windows の無い所（CI など）では None。1 回調べたら覚えておく。"""
@@ -975,8 +983,8 @@ def win_home():
             import shutil, subprocess
             if shutil.which("cmd.exe") and shutil.which("wslpath"):
                 try:
-                    w = subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, text=True, timeout=15,
-                                       cwd="/mnt/c" if os.path.isdir("/mnt/c") else None).stdout.strip().splitlines()
+                    w = win_decode(subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, timeout=15,
+                                                  cwd="/mnt/c" if os.path.isdir("/mnt/c") else None).stdout).strip().splitlines()
                     if w and "%" not in w[-1]: v = subprocess.run(["wslpath", "-u", w[-1].strip()], capture_output=True, text=True, timeout=15).stdout.strip()
                 except (OSError, subprocess.SubprocessError): v = ""
         _WIN_HOME = v
