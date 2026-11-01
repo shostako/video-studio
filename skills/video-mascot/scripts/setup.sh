@@ -38,4 +38,11 @@ for t in codex node; do
   esac
 done
 if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where）"; else say "NG   /img が使えない: $why"; ok=0; fi
+# 基準キャラのパック（蘭・凜。GitHub Releases から、リポの data/packs.json の版を取る。リポを同期して回せば、どの PC にも同じ版がそろう）
+SD="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$PY" ]; then
+  if [ $CHECK -eq 1 ]; then out_="$("$PY" -B "$SD/packs.py" status 2>&1)"; rc_=$?; printf '%s\n' "$out_" | sed 's/^/     /'
+    [ $rc_ -eq 0 ] && say "ok   パック（data/packs.json の版）" || { say "NG   パックが足りないか古い（vm packs fetch か setup.sh）"; ok=0; }
+  else "$PY" -B "$SD/packs.py" fetch && say "ok   パック（data/packs.json の版）" || { say "NG   パックを取れない（vm packs fetch で取り直す）"; ok=0; }; fi
+fi
 [ $ok -eq 1 ] && say "全部そろっている" || say "足りないものがある"; [ $ok -eq 1 ]

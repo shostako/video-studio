@@ -24,7 +24,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 マスコットは「パック」で持つ。パックには、姿勢の絵、口と目の部品、姿勢の切り替えの動き（Wan2.2 で作った列の作り置き）が入っている。パックのあるキャラなら、台本の言葉に身振りを割り当てるだけで動画になり、Wan や RIFE の無い PC でも書き出せる。
 
-基準のキャラは 2 体: **蘭**（ボブの丸顔）と **凜**（まとめ髪）。パックは GitHub Releases に zip で置く（準備中）。展開したフォルダを `~/.local/share/video-scene/packs/` に置く。新しいキャラを作る手順は `skills/video-mascot/references/new-character.md`（新PC 相当の GPU と ComfyUI が要る）。
+基準のキャラは 2 体: **蘭**（ボブの丸顔）と **凜**（まとめ髪）。パックは GitHub Releases に zip で置き、どの版を使うかをリポの `skills/video-mascot/data/packs.json` に書いてある。`setup.sh`（か `vm packs fetch`）が足りない・古いパックを取ってきて `~/.local/share/video-scene/packs/` に置くので、**リポを同期して `setup.sh` を回せば、どの PC にも同じ版のパックがそろう**。`vm packs` で手元の版を確かめられる。新しいキャラを作る手順は `skills/video-mascot/references/new-character.md`（新PC 相当の GPU と ComfyUI が要る）。
 
 ## 必要なもの
 
@@ -44,7 +44,7 @@ git clone https://github.com/shostako/video-studio.git ~/ClaudeCode/video-studio
 mkdir -p ~/.claude/skills                                         # 入れたばかりの Claude Code には無い
 ~/ClaudeCode/video-studio/scripts/link-skills.sh                 # ~/.claude/skills/ に symlink を張る
 ~/.claude/skills/video-scene/scripts/setup.sh                    # 道具を入れる
-~/.claude/skills/video-mascot/scripts/setup.sh                   # 音声合成を入れる
+~/.claude/skills/video-mascot/scripts/setup.sh                   # 音声合成とマスコットのパック（蘭・凜）を入れる
 ```
 
 場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）。
