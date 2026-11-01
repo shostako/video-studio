@@ -53,7 +53,10 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 
 ```bash
 vm pack ~/.local/share/video-scene/packs/rin --new ~/.local/share/video-scene/work/my-howto   # パックから作業フォルダ
-# config.json の voice.lines に台詞、events に身振り（台詞の言葉と姿勢の名前）を書く
+# config.json に声の設定と台詞、身振りを書く（パックには声の設定が入っていない）。例:
+#   "voice": {"caption": "落ち着いた若い女性の声で、はきはきと説明する", "seed": 2024, "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
+#   "events": [{"line": 1, "kw": "せつめい", "pose": "open"}, ...]   （行 1 の声の「せつめい」の直前に open へ。書き方は skills/video-mascot/references/config-spec.md）
+#   声を選ぶなら voice.candidates に説明文を数通り書いて vm voice <作業フォルダ> candidates で聞き比べ、決めた 1 本を voice.ref に
 vm voice ~/.local/share/video-scene/work/my-howto synth && vm voice ~/.local/share/video-scene/work/my-howto master   # 声
 # 画面を撮る（screen-explainer の excel_capture.py / web_capture.py）、scenes.py に場面ごとの寄り・カーソルを書く
 vm explain ~/.local/share/video-scene/work/my-howto --shots <撮影> --scenes scenes.py --style full --out my-howto.mp4
