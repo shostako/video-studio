@@ -9,7 +9,7 @@
   作業フォルダ: 声（config.json の voice.lines と voice/master.wav・timing.json。vm voice で作る）。wipe と full はマスコットの
     作業フォルダ（vm pack <パック> --new で作るのが楽。Wan・RIFE の無い PC でも作り置きのある身振りは書き出せる）
   流れ: screen-explainer の compose.py で主動画 → （wipe・full）vm render の下見（--strict。足りない作り置き・口の問題で止まる）
-        → vm render → vm layout → （full）vm check。途中の物は <出力>_work/ に置き、--keep が無ければ最後に消す
+        → vm render → vm layout → （full）vm check。途中の物は毎回新しく作る <出力の名前>_work_<ランダム>/ に置き、--keep が無ければ最後に消す
   使える段は既存のコマンドを順に呼ぶだけ。1 段ずつ確かめたいときは、それぞれのコマンドを直に使う。"""
 import json, os, re, shutil, subprocess, sys
 
@@ -47,7 +47,9 @@ def main():
     for p in (work, shots, scenes, COMPOSE):
         if not os.path.exists(p): die(f"無い: {p}")
     if not os.path.exists(os.path.join(work, "voice", "master.wav")): die(f"声が無い: {work}/voice/master.wav（vm voice {work} synth → master）")
-    out = os.path.abspath(out); tmp = os.path.splitext(out)[0] + "_work"; os.makedirs(tmp, exist_ok=True)
+    out = os.path.abspath(out); os.makedirs(os.path.dirname(out), exist_ok=True)
+    import tempfile                                # 途中の置き場は毎回新しく作る（既にあるフォルダを使って消さない）
+    tmp = tempfile.mkdtemp(prefix=os.path.splitext(os.path.basename(out))[0] + "_work_", dir=os.path.dirname(out))
     py = sys.executable; vm = lambda *x: [py, "-B", os.path.join(HERE, x[0] + ".py"), *x[1:]]
     comp = [py, COMPOSE, "--shots", shots, "--voice", work, "--scenes", scenes]
     for k in ("--clip-bottom", "--clip-right", "--chapters"):
@@ -72,6 +74,7 @@ def main():
             if soft: print(f"   注意: 弱い・測れない切り替え {len(soft)} 件（短い動画や話していない所が少ないと測れない。{mj} を見て、気になる所は目で確かめる）", flush=True)
             if bad: die(f"身振りが出ていない切り替えが {len(bad)} 件ある: {[(r['at'], r['from'], r['to']) for r in bad]}（{mj}）", 3)
     if "--keep" not in sys.argv: shutil.rmtree(tmp, ignore_errors=True)
+    else: print(f"途中の物: {tmp}", flush=True)
     print(f"できた: {out}（{style}）", flush=True)
 
 

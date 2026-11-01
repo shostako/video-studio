@@ -62,7 +62,7 @@ def test_explain_makes_each_style(tmp_path, env, style):
     work, shots, sc, ch = inputs(tmp_path); out = tmp_path / f"{style}.mp4"
     r = explain(env, work, shots, sc, out, style, "--chapters", ch)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    assert out.exists() and out.stat().st_size > 0 and not (tmp_path / f"{style}_work").exists()
+    assert out.exists() and out.stat().st_size > 0 and not list(tmp_path.glob(f"{style}_work_*"))
     f = frame(out, 2.5, env)
     if style == "cursor":
         assert (np.abs(f[600, 100] - (245, 245, 245)) <= 8).all()          # 画面が全面（左端まで撮影の地）
@@ -79,3 +79,23 @@ def test_explain_rejects_bad_style_and_missing_voice(tmp_path, env):
     os.remove(work / "voice" / "master.wav")
     r = explain(env, work, shots, sc, tmp_path / "x.mp4", "cursor")
     assert r.returncode != 0 and "声が無い" in r.stderr
+
+
+def test_explain_never_deletes_an_existing_folder_named_like_work(tmp_path, env):
+    """出力の名前の _work と同じ名前のフォルダ（作業フォルダなど）があっても、消さない（Codex の指摘）。"""
+    work, shots, sc, ch = inputs(tmp_path)
+    keep = tmp_path / "demo_work"; keep.mkdir(); (keep / "大事.txt").write_text("x")
+    r = explain(env, work, shots, sc, tmp_path / "demo.mp4", "cursor")
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert (keep / "大事.txt").exists()
+
+
+def test_compose_stops_at_video_length_when_voice_is_short(tmp_path, env):
+    """声が絵より短くても、出力は絵の長さで終わる（無音を書き続けない）。"""
+    work, shots, sc, ch = inputs(tmp_path); out = tmp_path / "c.mp4"
+    r = explain(env, work, shots, sc, out, "cursor")
+    assert r.returncode == 0, r.stderr[-1500:]
+    import re
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(out)], capture_output=True, text=True, env=env).stderr
+    h, m, s_ = re.search(r"Duration: (\d+):(\d+):([\d.]+)", p).groups()
+    assert abs(int(h) * 3600 + int(m) * 60 + float(s_) - (sm.END + 0.8)) < 0.3
