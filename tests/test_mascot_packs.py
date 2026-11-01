@@ -102,3 +102,17 @@ def test_fetch_keeps_inbetween_chain_newer_than_poses(tmp_path, env):
     mt = lambda f: os.path.getmtime(dst / f)
     ks = [mt(f"ib/ib_home_point_{k}.png") for k in range(1, 6)]
     assert max(mt("poses/pose_home.png"), mt("poses/pose_point.png")) < ks[0] and ks == sorted(ks)
+
+
+def test_status_can_look_at_named_packs_only(tmp_path):
+    """VM_PACKS=ran で入れた PC の setup.sh --check が、使わない凜で NG にならない。"""
+    m = tmp_path / "packs.json"
+    m.write_text(json.dumps({"packs": [
+        {"name": "a", "version": "1", "url": "u", "size": 1, "sha256": "x"},
+        {"name": "b", "version": "1", "url": "u", "size": 1, "sha256": "x"}]}), encoding="utf-8")
+    env = dict(os.environ, VIDEO_SCENE_HOME=str(tmp_path / "home"))
+    run = lambda *a: subprocess.run([sys.executable, "-B", str(SCRIPTS / "packs.py"), "status", *a, "--manifest", str(m)], capture_output=True, text=True, env=env)
+    both = run(); only = run("a"); bad = run("zzz")
+    assert both.returncode == 1 and " a:" in both.stdout and " b:" in both.stdout
+    assert only.returncode == 1 and " a:" in only.stdout and " b:" not in only.stdout
+    assert bad.returncode == 2 and "zzz" in bad.stderr

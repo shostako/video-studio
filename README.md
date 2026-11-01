@@ -63,7 +63,7 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 
 入れたあとは Claude Code を起動し直す。動いているセッションの途中で入れたスキルは、一覧に出ないことがある。
 
-場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）、`VM_IMG_CMD`（絵を描く道具）。
+場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）、`VM_IMG_CMD`（絵を描く道具）、`VM_PACKS`（`setup.sh` が取るパック。例 `VM_PACKS=ran` で蘭だけ。既定は全部）。
 
 ### WSL を使わない Windows
 

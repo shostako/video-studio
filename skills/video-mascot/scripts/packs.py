@@ -1,5 +1,5 @@
 """マスコットのパック（基準キャラの蘭・凜）を GitHub Releases から取ってくる・公開用に書き出す。
-  vm packs                      リポの控え（data/packs.json）のパックが手元にあって版が合うかを一覧する（足りない・古ければ終了コード 1）
+  vm packs [名前 ...]           リポの控え（data/packs.json）のパックが手元にあって版が合うかを一覧する（足りない・古ければ終了コード 1）
   vm packs fetch [名前 ...]     足りない・古いパックを取ってきて展開する（ハッシュを確かめる。古い版は <パック>.old-<時刻> に退避し、
                                 そのパックから作った作業フォルダの作り置きのリンクを退避先へ向け直す）。名前を書かなければ全部
   vm packs export <パック> <出力.zip> --version 版
@@ -158,15 +158,15 @@ def main():
         if len(a.args) != 2 or not a.version: die("使い方: vm packs export <パック> <出力.zip> --version 版")
         export(a.args[0], a.args[1], a.version); return
     entries = manifest(a.manifest)
+    want = [e for e in entries if not a.args or e["name"] in a.args]
+    if a.args and len(want) != len(set(a.args)): die(f"控えに無いパック: {sorted(set(a.args) - {e['name'] for e in want})}")
     if a.cmd == "fetch":
-        want = [e for e in entries if not a.args or e["name"] in a.args]
-        if a.args and len(want) != len(a.args): die(f"控えに無いパック: {sorted(set(a.args) - {e['name'] for e in want})}")
         for name, ver, have, st in status(want):
             if st == "ok": print(f"{name}: {ver} はそろっている"); continue
             install(next(e for e in want if e["name"] == name))
         return
     bad = 0
-    for name, ver, have, st in status(entries):
+    for name, ver, have, st in status(want):
         print(f"{'ok  ' if st == 'ok' else 'NG  '} {name}: 控え {ver}、手元 {have if have is not None else '無し'}" + ("" if st == "ok" else "（vm packs fetch）"))
         bad += st != "ok"
     sys.exit(1 if bad else 0)
