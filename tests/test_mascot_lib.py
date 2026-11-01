@@ -1,5 +1,8 @@
 """video-mascot の lib.py の純関数（母音の時刻列、events の時刻の解決、口の形）のテスト。
 入力はすべて合成。今の挙動をそのまま固定して、リファクタや opt-in の機能を足すときの安全網にする。"""
+import ast
+from pathlib import Path
+
 import pytest
 
 import lib
@@ -466,3 +469,37 @@ def test_matte_enclosed_rejects_unknown():
     img, sh, keeps = _figure()
     with pytest.raises(ValueError):
         lib.matte(img, sh, keeps, enclosed="close")
+
+
+# ---------- resolve_pose_names ----------
+def test_pose_names_keep_existing_events_as_they_are():
+    ev = [{"at": 1.0, "pose": "point"}, {"at": 2.0, "pose": "home"}]
+    assert lib.resolve_pose_names(ev, ["home", "point"]) == ev
+
+
+def test_pose_names_read_the_same_gesture_both_ways():
+    notes = []
+    ev = [{"line": 1, "kw": "x", "pose": "point_r"}]
+    assert lib.resolve_pose_names(ev, ["home", "point"], log=notes.append) == [{"line": 1, "kw": "x", "pose": "point"}]
+    assert ev[0]["pose"] == "point_r" and "point" in notes[0]                 # 元は書き換えない。読み替えたことを知らせる
+    assert lib.resolve_pose_names([{"at": 1, "pose": "point"}], ["home", "point_r"])[0]["pose"] == "point_r"
+
+
+def test_pose_names_stop_on_a_missing_pose_with_the_list(capsys):
+    with pytest.raises(SystemExit):
+        lib.resolve_pose_names([{"at": 1, "pose": "gap"}], ["home", "point_r"])
+    err = capsys.readouterr().err
+    assert "gap" in err and "home point_r" in err
+
+
+def test_pose_names_do_not_read_left_as_right():
+    with pytest.raises(SystemExit):
+        lib.resolve_pose_names([{"at": 1, "pose": "point_l"}], ["home", "point"])
+
+
+def test_render_imports_and_uses_pose_names():
+    """lib のテストだけでは、render.py につながっていないのを見逃す（import を書き忘れて実物で落ちた）。"""
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "lib" for a in n.names}
+    assert "resolve_pose_names" in imported and "resolve_pose_names(C.get(\"events\"" in src
