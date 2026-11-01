@@ -427,3 +427,16 @@ def test_registry_with_bare_file_name(tmp_path, monkeypatch):
     r = run("pack.py", pk, "--new", tmp_path / "video")
     assert r.returncode == 0 and "書けなかった" not in r.stdout, r.stdout + r.stderr
     assert str(tmp_path / "video") in json.loads((tmp_path / "registry.json").read_text())[str(pk)]
+
+
+
+def test_concurrent_new_keeps_every_registration(tmp_path):
+    """vm pack --new を同時に何本走らせても、控えが抜けない（Codex の指摘）。"""
+    import concurrent.futures
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
+    dsts = [tmp_path / f"v{i}" for i in range(8)]
+    with concurrent.futures.ThreadPoolExecutor(8) as ex:
+        rs = list(ex.map(lambda d: run("pack.py", pk, "--new", d), dsts))
+    assert all(r.returncode == 0 for r in rs)
+    assert sorted(json.loads((tmp_path / "pack_workspaces.json").read_text())[str(pk)]) == sorted(map(str, dsts))

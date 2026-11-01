@@ -317,6 +317,18 @@ def registry_path():
     return os.path.abspath(os.path.expanduser(os.environ.get("VM_PACK_REGISTRY") or os.path.join(os.environ.get("VIDEO_SCENE_HOME") or "~/.local/share/video-scene", "pack_workspaces.json")))   # フォルダ無しの名前でも置けるよう絶対パスに
 
 
+class _RegLock:
+    """控えを読んで直して書くまでを 1 本ずつにする（同時の vm pack --new が互いの控えを上書きしないように）。"""
+    def __enter__(self):
+        import fcntl
+        p = registry_path(); os.makedirs(os.path.dirname(p), exist_ok=True)
+        self.f = open(p + ".lock", "w"); fcntl.flock(self.f, fcntl.LOCK_EX); return self
+
+    def __exit__(self, *a):
+        import fcntl
+        fcntl.flock(self.f, fcntl.LOCK_UN); self.f.close()
+
+
 def _reg_load():
     try: return json.load(open(registry_path(), encoding="utf-8"))
     except (OSError, ValueError): return {}
@@ -333,6 +345,14 @@ def _reg_save(reg):
 def repin(pack, old):
     """パックを作り直して古いパックを old へ退避したとき、古いパックから作った作業フォルダの作り置きのリンクを old へ向け直す
     （新しいパックの絵・作り置きに、古い作業フォルダが勝手に乗り換えないように）。"""
+    try: lk_ = _RegLock().__enter__()
+    except OSError: lk_ = None                    # 控えの置き場に書けなければロックせずに進む
+    try: _repin(pack, old)
+    finally:
+        if lk_: lk_.__exit__()
+
+
+def _repin(pack, old):
     reg = _reg_load(); ws = list(reg.get(pack, []))
     try: ws += json.load(open(os.path.join(old, "pack.json"), encoding="utf-8")).get("workspaces", [])   # 前の版はパックの中に控えていた
     except (OSError, ValueError): pass
@@ -386,8 +406,10 @@ def new(pack, dst, name=None, own_cache=False):
     except BaseException:                          # 途中で落ちたら、半端な複製を残さない
         shutil.rmtree(tmp, ignore_errors=True); raise
     if not own_cache and any(os.path.islink(os.path.join(dst, sub)) for sub in ("ib_wan", "ib_interp")):
-        reg = _reg_load()                          # 作り直しのときにリンクを古いパックへ向け直すため、使う作業フォルダをパックの外に控える（パックは書き換えない）
-        reg[pack] = sorted(set(reg.get(pack, [])) | {dst}); _reg_save(reg)
+        try:                                       # 作り直しのときにリンクを古いパックへ向け直すため、使う作業フォルダをパックの外に控える（パックは書き換えない）
+            with _RegLock():
+                reg = _reg_load(); reg[pack] = sorted(set(reg.get(pack, [])) | {dst}); _reg_save(reg)
+        except OSError as e: print(f"  注意: 作業フォルダの控え（{registry_path()}）を書けなかった: {e}")
     print("作業フォルダ:", dst, f"（{pack} から。台本・声・動きは空）")
 
 
