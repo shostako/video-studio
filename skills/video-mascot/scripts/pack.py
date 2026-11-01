@@ -11,6 +11,7 @@
       置き場に .readonly を置く。Wan・RIFE の無い PC でも、作り置きのある組は書き出せる
   vm pack <パック> --new <新しい作業フォルダ> [--name 名前] [--own-cache]
       パックを丸ごと複製して、新しい動画の作業フォルダを作る（台本・声・動きは空）。パックは書き換えない。
+      パックは名前だけ（rin・ran）でもよい。そのときは置き場 <VIDEO_SCENE_HOME>/packs/<名前> を使う。
       パックに作り置きがあれば、ib_wan/・ib_interp/ はパックへのリンクにする（読むだけ。足りない組は作らずに止まる）。
       --own-cache は作り置きを作業フォルダへ写して、自分の置き場にする（Wan・RIFE のある PC で足りない組を作り足すとき）"""
 import argparse
@@ -381,7 +382,7 @@ def inside(child, parent):
 
 
 def new(pack, dst, name=None, own_cache=False):
-    pack = os.path.abspath(pack); dst = os.path.abspath(dst)
+    pack = resolve_pack(pack); dst = os.path.abspath(dst)
     if inside(dst, pack) or inside(pack, dst): die(f"作業フォルダはパックの外に作る: {dst}")
     if not os.path.exists(os.path.join(pack, "pack.json")): die(f"パックではない（pack.json が無い）: {pack}")
     if os.path.exists(dst): die(f"作業フォルダが既にある: {dst}")
@@ -411,6 +412,14 @@ def new(pack, dst, name=None, own_cache=False):
                 reg = _reg_load(); reg[pack] = sorted(set(reg.get(pack, [])) | {dst}); _reg_save(reg)
         except OSError as e: print(f"  注意: 作業フォルダの控え（{registry_path()}）を書けなかった: {e}")
     print("作業フォルダ:", dst, f"（{pack} から。台本・声・動きは空）")
+
+
+def resolve_pack(pack):
+    """--new のパックの指定。パス（/ を含む・今のフォルダにある）はそのまま、名前だけ（rin・ran）なら
+    パックの置き場 <VIDEO_SCENE_HOME>/packs/<名前>（vm packs fetch が置く所）を指す（旧PC での指摘）。"""
+    pack = os.path.expanduser(pack)
+    if os.sep in pack or os.path.exists(pack): return os.path.abspath(pack)
+    return os.path.join(os.path.abspath(os.path.expanduser(os.environ.get("VIDEO_SCENE_HOME") or "~/.local/share/video-scene")), "packs", pack)
 
 
 def main():
