@@ -75,7 +75,7 @@ def test_explain_makes_each_style(tmp_path, env, style):
 def test_explain_rejects_bad_style_and_missing_voice(tmp_path, env):
     work, shots, sc, ch = inputs(tmp_path)
     r = explain(env, work, shots, sc, tmp_path / "x.mp4", "dance")
-    assert r.returncode != 0 and "--style" in r.stderr
+    assert r.returncode != 0 and "style" in r.stderr
     os.remove(work / "voice" / "master.wav")
     r = explain(env, work, shots, sc, tmp_path / "x.mp4", "cursor")
     assert r.returncode != 0 and "声が無い" in r.stderr
@@ -99,3 +99,11 @@ def test_compose_stops_at_video_length_when_voice_is_short(tmp_path, env):
     p = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(out)], capture_output=True, text=True, env=env).stderr
     h, m, s_ = re.search(r"Duration: (\d+):(\d+):([\d.]+)", p).groups()
     assert abs(int(h) * 3600 + int(m) * 60 + float(s_) - (sm.END + 0.8)) < 0.3
+
+
+def test_explain_positional_work_survives_same_named_options(tmp_path, env):
+    """撮影を作業フォルダの中に置いて --shots に同じ名前を渡しても、作業フォルダの引数を落とさない（Codex の指摘）。"""
+    work, shots, sc, ch = inputs(tmp_path)
+    for f in shots.iterdir(): shutil.copy(f, work / f.name)
+    r = explain(env, work, work, sc, tmp_path / "same.mp4", "cursor")
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]

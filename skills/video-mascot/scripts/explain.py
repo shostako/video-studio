@@ -20,10 +20,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 COMPOSE = os.path.join(HERE, "..", "..", "screen-explainer", "scripts", "compose.py")
 
 
-def opt(name, default=None, typ=str):
-    return typ(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
-
-
 def step(title, cmd):
     """1 段を動かす。失敗したらその段の名前で止める。標準出力を返す。"""
     print(f"== {title}", flush=True)
@@ -37,13 +33,14 @@ def step(title, cmd):
 
 
 def main():
-    a = [x for x in sys.argv[1:] if not x.startswith("--")]
-    vals = {sys.argv[i + 1] for i, x in enumerate(sys.argv[:-1]) if x.startswith("--") and x != "--keep"}
-    a = [x for x in a if x not in vals]
-    if not a: die(__doc__.split("\n\n")[0])
-    work = os.path.abspath(a[0]); shots, scenes, style, out = opt("--shots"), opt("--scenes"), opt("--style"), opt("--out")
-    if not (shots and scenes and style and out): die("--shots・--scenes・--style・--out が要る")
-    if style not in ("cursor", "wipe", "full"): die(f"--style は cursor・wipe・full: {style}")
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("work"); ap.add_argument("--shots", required=True); ap.add_argument("--scenes", required=True)
+    ap.add_argument("--style", required=True, choices=["cursor", "wipe", "full"]); ap.add_argument("--out", required=True)
+    ap.add_argument("--scale", default="0.73"); ap.add_argument("--chapters"); ap.add_argument("--clip-bottom"); ap.add_argument("--clip-right")
+    ap.add_argument("--keep", action="store_true")
+    A = ap.parse_args()
+    work, shots, scenes, style, out = os.path.abspath(A.work), A.shots, A.scenes, A.style, A.out
     for p in (work, shots, scenes, COMPOSE):
         if not os.path.exists(p): die(f"無い: {p}")
     if not os.path.exists(os.path.join(work, "voice", "master.wav")): die(f"声が無い: {work}/voice/master.wav（vm voice {work} synth → master）")
@@ -52,14 +49,14 @@ def main():
     tmp = tempfile.mkdtemp(prefix=os.path.splitext(os.path.basename(out))[0] + "_work_", dir=os.path.dirname(out))
     py = sys.executable; vm = lambda *x: [py, "-B", os.path.join(HERE, x[0] + ".py"), *x[1:]]
     comp = [py, COMPOSE, "--shots", shots, "--voice", work, "--scenes", scenes]
-    for k in ("--clip-bottom", "--clip-right", "--chapters"):
-        if opt(k): comp += [k, opt(k)]
+    for k, v in (("--clip-bottom", A.clip_bottom), ("--clip-right", A.clip_right), ("--chapters", A.chapters)):
+        if v: comp += [k, v]
 
     if style == "cursor":
         step("画面の組み立て（カーソルだけ）", comp + ["--out", out])
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
-        step(f"画面の組み立て（余白あり・倍率 {opt('--scale', '0.73')}）", comp + ["--layout", "margin", "--scale", opt("--scale", "0.73"), "--out", main_mp4])
+        step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale, "--out", main_mp4])
         face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events"] if style == "wipe" else []
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", *extra))
@@ -73,7 +70,7 @@ def main():
             bad = [r for r in res if r.get("verdict") == "still"]; soft = [r for r in res if r.get("verdict") in ("weak", "unknown")]
             if soft: print(f"   注意: 弱い・測れない切り替え {len(soft)} 件（短い動画や話していない所が少ないと測れない。{mj} を見て、気になる所は目で確かめる）", flush=True)
             if bad: die(f"身振りが出ていない切り替えが {len(bad)} 件ある: {[(r['at'], r['from'], r['to']) for r in bad]}（{mj}）", 3)
-    if "--keep" not in sys.argv: shutil.rmtree(tmp, ignore_errors=True)
+    if not A.keep: shutil.rmtree(tmp, ignore_errors=True)
     else: print(f"途中の物: {tmp}", flush=True)
     print(f"できた: {out}（{style}）", flush=True)
 
