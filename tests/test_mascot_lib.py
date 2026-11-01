@@ -258,3 +258,37 @@ def test_speech_loud_skips_sokuon_closure():
     assert lib.mouth_shut_spans(loud, [m is not None for m in mouth], fps, 0) == []
     assert lib.mouth_shut_spans([True] * 27, [m is not None for m in mouth], fps, 0) != []   # 「っ」を外さないと引っかかる
     assert lib.speech_loud(0.1, "a") is False and lib.speech_loud(0.5, None) is True
+
+
+# ---------- num_to_kanji / words_hira ----------
+@pytest.mark.parametrize("src, want", [
+    ("2つ", "二つ"), ("100%", "百%"), ("2026年", "二千二十六年"), ("10", "十"), ("1000", "千"), ("12345", "一万二千三百四十五"),
+    ("0", "零"), ("２つ", "二つ"), ("1.5倍", "1.5倍"), ("1,000円", "千円"), ("12,345,678", "千二百三十四万五千六百七十八"), ("かな", "かな"),
+])
+def test_num_to_kanji(src, want):
+    assert lib.num_to_kanji(src) == want
+
+
+def test_words_hira_reads_split_words_in_context():
+    """Whisper が「見える」を「見」「える」に分けても、行の文脈で「み」「える」と読む（1 語ずつだと「けん」になった）。"""
+    pykakasi = pytest.importorskip("pykakasi"); K = pykakasi.kakasi()
+    hs = lib.words_hira(["ここが", "見", "える", "。", "2", "つ", "の", "考え"], K.convert)
+    assert hs[1] + hs[2] == "みえる" and hs[4] + hs[5] == "ふたつ" and hs[7] == "かんがえ" and hs[3] == ""
+    stream = [(ch, 0.0) for h in hs for ch in h]
+    assert lib.find_time(stream, 0, 1, "みえる", 0.5)[1] == "声" and lib.find_time(stream, 0, 1, "ふたつ", 0.5)[1] == "声"
+
+
+def test_words_hira_falls_back_per_word_when_lengths_do_not_match():
+    calls = []
+    def conv(t):
+        calls.append(t); return [{"orig": t + "x", "hira": "あ"}] if len(calls) == 1 else [{"orig": t, "hira": "い"}]
+    assert lib.words_hira(["a", "b"], conv) == ["い", "い"]
+
+
+
+def test_words_hira_numbers_split_across_words():
+    """数字が語の途中で分かれても、つないだ文の上で読む（「20」「26」「年」→ にせんにじゅうろくねん）（Codex の指摘）。"""
+    pykakasi = pytest.importorskip("pykakasi"); K = pykakasi.kakasi()
+    assert "".join(lib.words_hira(["20", "26", "年"], K.convert)) == "にせんにじゅうろくねん"
+    hs = lib.words_hira(["1", ",", "000", "円"], K.convert)
+    assert "".join(hs) == "せんえん"                                    # 桁区切りの数も千と読む（語への配り方は読みの塊の比で）

@@ -392,6 +392,77 @@ def frame_levels(x, sr, fps, nall, win):
     return out
 
 
+_KDIG = "〇一二三四五六七八九"
+
+
+def _kanji_number(n):
+    """0〜9999億9999万9999 の整数を漢数字に（10 は「十」、1000 は「千」）。"""
+    if n == 0: return "零"
+    out = ""
+    for unit, big in ((10 ** 8, "億"), (10 ** 4, "万"), (1, "")):
+        q = (n // unit) % 10000
+        if not q: continue
+        for d, small in ((1000, "千"), (100, "百"), (10, "十"), (1, "")):
+            k = (q // d) % 10
+            if k: out += ("" if (k == 1 and small) else _KDIG[k]) + small
+        out += big
+    return out
+
+
+_NUM_RE = r"[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})+|[0-9０-９]+"   # 桁区切り（1,000）か、数字の並び
+
+
+def _num_spans(text):
+    """text の中の、漢数字に直す数の [(始め, 終わり, 漢数字), ...]。小数（前後が . の数）と 1 兆以上は直さない。"""
+    import re
+    fw = str.maketrans("０１２３４５６７８９，", "0123456789,")
+    out = []
+    for m in re.finditer(_NUM_RE, text):
+        a, b = m.start(), m.end()
+        if (a > 0 and text[a - 1] in ".．") or (b < len(text) and text[b] in ".．"): continue
+        n = int(m.group(0).translate(fw).replace(",", ""))
+        if n < 10 ** 12: out.append((a, b, _kanji_number(n)))
+    return out
+
+
+def num_to_kanji(text):
+    """文の中の算用数字を漢数字にする（「2つ」→「二つ」、「100」→「百」、「1,000」→「千」、「2026」→「二千二十六」）。
+    かなに直すとき、数字のままだと読みが付かない。小数と 1 兆以上はそのまま。"""
+    out, pos = "", 0
+    for a, b, k in _num_spans(text): out += text[pos:a] + k; pos = b
+    return out + text[pos:]
+
+
+def words_hira(words, convert):
+    """聞き取りの語の並び（表記）を、つないで文脈ごとにひらがなに直し、語ごとに配り直す（ひらがなと「ー」だけ）。
+    1 語ずつ直すと、Whisper が「見える」を「見」「える」に分けたとき「見」が「けん」になり、キーワードの「みえる」と合わなかった。
+    数字もつないだ文の上で漢数字にする（「20」「26」「年」を語ごとに直すと「二十二十六年」になる）。
+    convert(text) は [{"orig": 表記, "hira": ひらがな}, ...]（pykakasi の convert）。表記の長さが合わなければ 1 語ずつ直す。"""
+    keep = lambda h: "".join(ch for ch in h if "ぁ" <= ch <= "ゖ" or ch == "ー")
+    text = "".join(words)
+    norm, cover, pos = "", [], 0                     # cover[i]: 直した文の i 字目が元の文のどこ（始め, 終わり）にあたるか
+    for a, b, k in _num_spans(text):
+        for c in range(pos, a): norm += text[c]; cover.append((c, c + 1))
+        for q, ch in enumerate(k): norm += ch; cover.append((a + (b - a) * q / len(k), a + (b - a) * (q + 1) / len(k)))
+        pos = b
+    for c in range(pos, len(text)): norm += text[c]; cover.append((c, c + 1))
+    toks = convert(norm)
+    if sum(len(t["orig"]) for t in toks) != len(norm):
+        return [keep("".join(t["hira"] for t in convert(num_to_kanji(w)))) for w in words]
+    bounds = []; p = 0
+    for w in words: bounds.append((p, p + len(w))); p += len(w)
+    out = [""] * len(words); p = 0
+    for t in toks:
+        na, nb = p, p + len(t["orig"]); p = nb; h = keep(t["hira"])
+        if not h or nb <= na: continue
+        a, b = cover[na][0], cover[nb - 1][1]       # この読みが元の文で占める範囲
+        for i, (wa, wb) in enumerate(bounds):
+            lo, hi = max(a, wa), min(b, wb)
+            if hi <= lo: continue
+            out[i] += h[round((lo - a) / (b - a) * len(h)):round((hi - a) / (b - a) * len(h))]
+    return out
+
+
 def word_hira(hira, word):
     """口パク（音量式）の母音に使う語のひらがな。かなが無く、英字・数字・記号（空白と句読点以外）を含む語は「あ」1 つにする。
     聞き取りの語が「CAD」「IGES」「100」「%」「×」のままだと母音が付かず、声が出ていても口が閉じたままだった。
