@@ -574,7 +574,7 @@ for ln in short_hold_report(SHOLD): print(ln, file=sys.stderr)
 NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF) + (len(MSHUT) if LIPSYNC == "amp" else 0) + len(SHOLD)   # モーラ式は知らせるだけ
 HSP = head_spans(HEAD_KEYS, P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else []
 CHKF = os.path.splitext(OUTF)[0] + (".precheck.json" if DRY else ".check.json")
-json.dump({"video": None if DRY else os.path.abspath(OUTF), "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF, "mouth_shut": MSHUT, "short_holds": SHOLD},
+json.dump({"video": None if DRY else os.path.abspath(OUTF), "cache_todo": (list(todo) + list(rtodo)) if DRY else [], "fps": FPS, "from": T0, "to": T1, "problems": NBAD, "switches": CHK, "head_spans": HSP, "mouth_off": MOFF, "mouth_shut": MSHUT, "short_holds": SHOLD},
           open(CHKF, "w"), ensure_ascii=False, indent=1)
 print(CHKF if DRY else OUTF)
 if NBAD and "--strict" in sys.argv: die(f"切り替えの検査・口の検査で問題が {NBAD} 件（{CHKF}）", 3)

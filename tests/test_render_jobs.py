@@ -38,6 +38,19 @@ def test_white_chunks_leave_the_voice_to_the_parent():
     assert "--video-only" not in rj.child_args(["w"], 0.0, 1.0, "c.webm")
 
 
+def test_new_caches_are_made_by_one_process():
+    assert rj.must_run_serial({"cache_todo": ["home→point"]})
+    assert not rj.must_run_serial({"cache_todo": []}) and not rj.must_run_serial({})
+    assert rj.without_jobs(["w", "--jobs", "4", "--strict", "--from", "1"]) == ["w", "--strict", "--from", "1"]
+    assert "cache_todo" not in rj.merged_check({"cache_todo": ["x"], "problems": 0}, "o.webm")
+
+
+def test_run_stops_parallel_before_any_chunk_when_caches_are_missing():
+    src = (ROOT / "skills/video-mascot/scripts/render_jobs.py").read_text(encoding="utf-8")
+    assert src.index("if must_run_serial(pre):") < src.index("plan_chunks(f0, f1, jobs, fps); parts")
+    assert "\"cache_todo\"" in (ROOT / "skills/video-mascot/scripts/render.py").read_text(encoding="utf-8")
+
+
 def test_concat_list_escapes_quotes():
     assert rj.concat_list(["/a/it's.webm"]) == "file '/a/it'\\''s.webm'\n"
 

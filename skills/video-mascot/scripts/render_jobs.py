@@ -41,7 +41,20 @@ def child_args(argv, t0, t1, out, crop=None, video_only=False):
 
 def merged_check(precheck, out):
     """下見の検査の結果を、書き出した動画の検査の結果にする（時間割の計算は同じなので区間ごとに集めない）。"""
-    d = dict(precheck); d["video"] = os.path.abspath(out); return d
+    d = dict(precheck); d["video"] = os.path.abspath(out); d.pop("cache_todo", None); return d
+
+
+def must_run_serial(precheck):
+    """Wan・RIFE の列を新しく作るときは並列にしない。同じ列を複数の区間が同時に作ると、作業の置き場を消し合う。"""
+    return bool(precheck.get("cache_todo"))
+
+
+def without_jobs(argv):
+    args = []; it = iter(argv)
+    for x in it:
+        if x == "--jobs": next(it, None); continue
+        args.append(x)
+    return args
 
 
 def concat_list(paths):
@@ -76,6 +89,9 @@ def run(argv, jobs, f0, f1, fps, mode, out, crop, voice, t0, t1):
         rc = subprocess.run(py + [a for a in child_args(argv, t0, t1, pre_out, crop if crop != "face" else None)] + ["--check-only"]).returncode
         if rc != 0: die(f"下見で止まった（終了コード {rc}）", rc)
         pref = os.path.splitext(pre_out)[0] + ".precheck.json"; pre = json.load(open(pref, encoding="utf-8"))
+        if must_run_serial(pre):
+            print(f"作り置きを新しく作る分（{len(pre['cache_todo'])} 件）があるので、今回は 1 本で書き出す。作り置きができた次からは並列になる", file=sys.stderr, flush=True)
+            sys.exit(subprocess.run(py + without_jobs(argv)).returncode)
         box = crop
         if crop == "face":                 # 枠は最初のコマで 1 回だけ決める。区間ごとに測るとつないだ所でずれる
             head = os.path.join(tmp, "head" + ext); a_, b_ = frame_times(f0, f0 + 1, fps)
