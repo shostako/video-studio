@@ -9,7 +9,7 @@ usage（faster-whisper の入った Python で。video-scene の venv にある�
 import argparse, os, sys
 from faster_whisper import WhisperModel
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "video-scene", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-scene", "scripts"))
 from common import read_audio  # noqa: E402
 
 def words_of(model, path):

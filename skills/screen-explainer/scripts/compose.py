@@ -58,7 +58,7 @@ if MARGIN:
     PX, PY = W - 24 - PW, 34
     if PX < 200: sys.exit(f"ERROR: --scale {A.scale} では余白が {PX}px しか無い（マスコットを置けない）")
 LIGHT, INK, ACC, SUBC = (247, 246, 244), (28, 33, 44), (232, 120, 30), (110, 114, 122)
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "video-mascot", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-mascot", "scripts"))
 import chapters as CH  # noqa: E402
 
 R = json.load(open(os.path.join(A.shots, "rects.json"), encoding="utf-8"))
