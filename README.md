@@ -35,7 +35,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 | WSL2 の Ubuntu 24.04（作者の新PC、RTX 5070） | 全部（キャラ作り・Wan・RIFE を含む）。日々ここで作っている |
 | WSL2 の Ubuntu 22.04（作者の旧PC、RTX 4060） | パックを Releases から入れ、蘭・凜で 3 つの型（カーソルだけ・ワイプ・全身）を作った。Wan・RIFE は使わない |
 | WSL2 に新しく作った Ubuntu 24.04（何も入っていない） | README の手順だけで入れ、Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-01） |
-| WSL を使わない Windows 11（Git Bash） | 試験用の家（何も入れていない `HOME`）で、README の手順を Git Bash で流して入れ、同じ Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-02）。書き出しは WSL より遅い（30 秒の動画で WSL 382 秒、Windows 616 秒）。Python・ffmpeg・Node.js などは元から入っていた PC で試した。Claude Code に頼む段からは未確認 |
+| WSL を使わない Windows 11（Git Bash） | 試験用の家（何も入れていない `HOME`）で、README の手順を Git Bash で流して入れ、同じ Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-02）。書き出しは WSL より遅い（30 秒の動画で WSL 382 秒、Windows 616 秒）。Python・ffmpeg・Node.js などは元から入っていた PC で試した。別の日に、何も入っていない家の Claude Code に「README で入れて解説動画を作って」と頼み、51.8 秒の動画まで通した（全体 56 分、書き出し 19.6 分、2026-11-02）。声と動きの最終の確認は人がする |
 | WSL ではない Ubuntu（GitHub Actions の CI） | テストだけ（PR ごと）。動画を作るところまでは試していない |
 
 ## 必要なもの
@@ -60,6 +60,8 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 ~/.claude/skills/video-scene/scripts/setup.sh                    # 道具を入れる
 ~/.claude/skills/video-mascot/scripts/setup.sh                   # 音声合成とマスコットのパック（蘭・凜）を入れる
 ```
+
+入れたあとは Claude Code を起動し直す。動いているセッションの途中で入れたスキルは、一覧に出ないことがある。
 
 場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）、`VM_IMG_CMD`（絵を描く道具）。
 

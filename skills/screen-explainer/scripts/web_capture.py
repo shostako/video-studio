@@ -30,7 +30,7 @@ do の種類:
     （動きを細かく刻み、1 刻みごとに <名前>_000.png… を撮る。カーソルの位置は film.json に書く。compose.py の film で流す）
 キャンバス（3D の画面など）のように要素で指せない所は、click_xy・drag・wheel か hooks で動かし、カーソルを置く点は
 rects の js か hooks の戻り値で残す（compose.py の ctr で使う）。
-押してはいけないボタン（取り込み・削除・送信など）は do に書かない。Enter も送らない。
+押してはいけないボタン（取り込み・削除・送信など）は do に書かない。Enter も既定で送らない（送信や削除が起きないと確かめたアプリでだけ送る）。
 ページが scroll-behavior: smooth でも、ここでは瞬時に動かす（滑らかなスクロールの途中で撮らない）。
 """
 import json, os, runpy, sys

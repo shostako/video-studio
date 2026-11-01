@@ -18,7 +18,7 @@
 |---|---|---|---|
 | greet あいさつ・締め | 冒頭と最後 | 会釈（`nod`、パックにある）、`bow` | 見る人 |
 | open_topic 導入 | 話題を出す・流れを見せる | `open` | 見る人 |
-| show 図を示す | 主動画の図・部品・動き | `point_r` / `point_l`（パネルのある側）、下なら `crouch` | 指す側 |
+| show 図を示す | 主動画の図・部品・動き | `point_r` / `point_l`（パネルのある側）、下なら `crouch`。名前はキャラで違う（凜は `point_r`・`point_l`、蘭は `point`（画面の右を指す）と `present_r`・`present_l`）。使えるのは `config.json` の `poses` にある名前 | 指す側 |
 | question 問い | 疑問や前提を出す | `think` | 上 |
 | key_point 要点 | 「そこで」「ポイントは」 | `raise_r`、`palm_stop` | 見る人 |
 | count 列挙 | 「3つ」「1つ目」 | `raise_r`、`count_2`〜（手の部品） | 見る人 |
