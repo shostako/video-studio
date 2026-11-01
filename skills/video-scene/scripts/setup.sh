@@ -37,9 +37,14 @@ else
     [ -e "$bak" ] && bak="$bak.$(date +%Y%m%d%H%M%S)"
     mv "$VENV" "$bak" && say "..   古い venv を退避した: $bak"
   fi
+  # 前回 venv を作り損ねて pip の無い venv が残っていたら作り直す（python3-venv が無いと、python だけの venv が残る）
+  if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+    bak="$VENV.broken"; [ -e "$bak" ] && bak="$bak.$(date +%Y%m%d%H%M%S)"
+    mv "$VENV" "$bak" && say "..   pip の無い venv を退避して作り直す: $bak"
+  fi
   if [ ! -x "$VENV/bin/python" ]; then
     if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
-      python3 -m venv "$VENV" || { say "NG   venv を作れない"; exit 1; }
+      python3 -m venv "$VENV" || { say "NG   venv を作れない（Ubuntu は sudo apt install python3-venv）"; exit 1; }
     elif command -v uv >/dev/null 2>&1; then
       # システムの Python（apt 管理）には触らない。uv がユーザー領域に持つ 3.12 で作る
       uv venv -q --seed --python 3.12 "$VENV" || { say "NG   uv で 3.12 の venv を作れない"; exit 1; }
@@ -61,6 +66,19 @@ elif [ -x "$VENV/bin/python" ]; then say "..   parselmouth を入れる"; "$VENV
 if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import yaml" 2>/dev/null; then say "ok   pyyaml"
 elif [ $CHECK -eq 1 ]; then say "--   pyyaml が無い（vs terms が使えない。setup.sh を引数なしで流すと入る）"
 elif [ -x "$VENV/bin/python" ]; then say "..   pyyaml を入れる"; "$VENV/bin/pip" install -q pyyaml && say "ok   pyyaml" || say "--   pyyaml を入れられない（vs terms が使えない）"; fi
+
+# Playwright と Chromium（screen-explainer の web_capture.py が Web アプリの画面を撮るのに使う。venv を共用する）
+# ブラウザが起動するかまで確かめる。入れたばかりの Ubuntu はブラウザの部品（ライブラリ）が足りず、sudo で入れる必要がある
+PW_LAUNCH='from playwright.sync_api import sync_playwright
+with sync_playwright() as p: p.chromium.launch().close()'
+if [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "$PW_LAUNCH" >/dev/null 2>&1; then say "ok   Playwright（Web の撮影）"
+elif [ $CHECK -eq 1 ]; then say "--   Playwright が無いか、ブラウザが起動しない（Web の撮影が使えない。setup.sh を引数なしで流すと入る）"
+elif [ -x "$VENV/bin/python" ]; then
+  say "..   Playwright と Chromium を入れる（Web の撮影）"
+  "$VENV/bin/pip" install -q playwright && "$VENV/bin/python" -m playwright install chromium >/dev/null 2>&1
+  if "$VENV/bin/python" -c "$PW_LAUNCH" >/dev/null 2>&1; then say "ok   Playwright（Web の撮影）"
+  else say "--   Playwright のブラウザが起動しない。部品を入れる: sudo $VENV/bin/python -m playwright install-deps chromium"; fi
+fi
 
 # HyperFrames（版を固定。使い方の統計は送らない。AI 用スキルの自動導入はしない）
 export HYPERFRAMES_SKIP_SKILLS=1

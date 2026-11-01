@@ -4,6 +4,12 @@
 
 ## 未リリース
 
+- **まっさらな環境で入れられるように**: 新しい WSL（Ubuntu 24.04、何も入っていない）で README の手順だけを流し、蘭の解説動画を 1 本作って見つかった穴を直した（#76）
+  - README: apt の前に `apt update`、`python3-venv` を足した。Web・Excel の撮影に要る物を書いた
+  - video-scene の `setup.sh`: Web の撮影に使う Playwright と Chromium を venv に入れ、ブラウザが起動するかまで確かめる。前回作り損ねた pip の無い venv は退避して作り直す
+  - video-mascot の `setup.sh`: `/img`（キャラ作りで絵を描くときだけ要る）が無くても失敗にしない
+  - screen-explainer: Web の撮影は video-scene の venv の Python で動かすと書いた。声の決まりが無いときの既定の声を書いた
+  - 手元の PC のパスを SKILL と例から外した
 - コードの許諾を MIT にした（`LICENSE`）。パックは CC0 のまま（#75）
 - `vm pack rin --new <作業フォルダ>` のように、パックを名前だけで指定できる（置き場 `~/.local/share/video-scene/packs/` の中を使う）。今まではパスとして読んで「パックではない」で止まっていた（#74）
 - **白い服を閉じる（opt-in）**: `config.matte.enclosed: "keep"`（`vm render --enclosed keep`）で、囲まれた白（白いシャツ・袖口・おでこの光）をキャラとして閉じる。内側が背景の色そのものの平らな所（脚の間・腕と体の間）だけ抜く。暗い背景に重ねても穴に見えない。既定は今までどおり（#73）

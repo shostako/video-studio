@@ -1,5 +1,5 @@
 {
- "base": "/mnt/c/Users/shost/Pictures/generated/20261011-145941_Ran_Figure_Typing_Start_A.png",
+ "base": "<絵のフォルダ>/20261011-145941_Ran_Figure_Typing_Start_A.png",
  "layers": [
   {
    "name": "hand",
@@ -10,8 +10,8 @@
     640
    ],
    "variants": {
-    "N": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_HandNearUp.png",
-    "F": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_HandFarUp.png"
+    "N": "<絵のフォルダ>/20261011-152331_Ran_Figure_Typing_Flip_HandNearUp.png",
+    "F": "<絵のフォルダ>/20261011-152331_Ran_Figure_Typing_Flip_HandFarUp.png"
    }
   },
   {
@@ -23,14 +23,14 @@
     430
    ],
    "variants": {
-    "K": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_Blink.png",
-    "S": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_Smirk.png"
+    "K": "<絵のフォルダ>/20261011-152331_Ran_Figure_Typing_Flip_Blink.png",
+    "S": "<絵のフォルダ>/20261011-152331_Ran_Figure_Typing_Flip_Smirk.png"
    }
   }
  ],
  "full": {
-  "shock": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Shock.png",
-  "panic": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Panic.png",
-  "angry": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Angry.png"
+  "shock": "<絵のフォルダ>/20261011-153611_Ran_Figure_Typing_Flip_Shock.png",
+  "panic": "<絵のフォルダ>/20261011-153611_Ran_Figure_Typing_Flip_Panic.png",
+  "angry": "<絵のフォルダ>/20261011-153611_Ran_Figure_Typing_Flip_Angry.png"
  }
 }

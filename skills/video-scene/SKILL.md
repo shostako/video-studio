@@ -16,7 +16,7 @@ description: 1場面の短い動画（数秒〜十数秒）を作って MP4 に�
 
 迷ったら: 声やなめらかさが要るなら、まず h3（無料・自動で回せる。画質は 480p）。720p 以上の画質が要るなら Flow で手で作ってもらい `file` で受け取るか（契約の枠）、veo（有料。試し撮りは lite、仕上げは fast）。h3 で芝居と台詞を詰めてから、同じ指示文を Veo に渡して仕上げてもよい。動きを完全に指定したいときは flipbook。
 Google Vids も同じ Veo 3.1 で、AI Pro なら月50本ほど（Flow とは別の枠、未実測）。10秒・30fps・右下に小さな✦の透かしが常に入る（隠さない）。指示文の欄は窓が狭いと隠れて見えない。全画面で開いてもらう。1本ずつの比較では、蓋や文字の崩れが Flow Fast より少なく、芝居も台本どおりだった（2026-10-11、git blame の話で各1本）。
-Flow／Vids に渡すもの: 最初の絵（縦横比を合わせて白か背景色を足したもの）と英語の指示文を `C:\Users\shost\Downloads\flow-<名前>\` にまとめ、「Frames to Video・Veo 3.1 Fast・縦横」を伝える。出来た動画はダウンロードに置いてもらう。
+Flow／Vids に渡すもの: 最初の絵（縦横比を合わせて白か背景色を足したもの）と英語の指示文を `C:\Users\<you>\Downloads\flow-<名前>\` にまとめ、「Frames to Video・Veo 3.1 Fast・縦横」を伝える。出来た動画はダウンロードに置いてもらう。
 
 ## 方針（ユーザーと決めた）
 
@@ -71,7 +71,7 @@ Flow／Vids に渡すもの: 最初の絵（縦横比を合わせて白か背景
 
 ## 保存先
 
-- 動画: `/mnt/c/Users/shost/Videos/generated/<日時>_<名前>.mp4`（上書きしない。同名は -v2…）
+- 動画: Windows のユーザーの `Videos/generated/<日時>_<名前>.mp4`（WSL から `/mnt/c/Users/<you>/Videos/generated/`。Windows が無ければ `~/Videos/generated/`、`VIDEO_SCENE_OUT` で変えられる。上書きしない。同名は -v2…）
 - 絵: img スキルの既定（Pictures/generated）
 - 作業: `~/.local/share/video-scene/work/<名前>/`。`hf/` は compose が毎回作り直す
 

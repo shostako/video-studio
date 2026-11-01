@@ -37,7 +37,8 @@ for t in codex node; do
     /mnt/*) why="${why:+$why、}$t が Windows 側を指している（$p_）。WSL の node（nvm など）の bin を PATH の先頭に足す" ;;
   esac
 done
-if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where）"; else say "NG   /img が使えない: $why"; ok=0; fi
+# /img はキャラ作り（新しい絵を描く）にだけ要る。パック（蘭・凜）で動画を作るだけなら無くてよいので、足りなくても失敗にしない
+if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where）"; else say "--   /img が使えない（キャラ作りで絵を描くときだけ要る。パックで動画を作るのには要らない）: $why"; fi
 # 基準キャラのパック（蘭・凜。GitHub Releases から、リポの data/packs.json の版を取る。リポを同期して回せば、どの PC にも同じ版がそろう）
 SD="$(cd "$(dirname "$0")" && pwd)"
 if [ -x "$PY" ]; then
