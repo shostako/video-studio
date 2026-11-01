@@ -159,7 +159,8 @@ def feet_center(img, min_area=2500):
 
 def fg_mask(img, bg=BG, thr=24):
     """背景（ほぼ白の無地）と違う所。色・服に依らない前景の目安。"""
-    return (np.abs(img.astype(np.int16) - bg).max(axis=2) > thr).astype(np.uint8)
+    b_, g_, r_ = cv2.split(cv2.absdiff(img, (bg, bg, bg, 0)))   # numpy の max(axis=2) は 1 枚 25 ms 掛かる
+    return (cv2.max(cv2.max(b_, g_), r_) > thr).astype(np.uint8)
 
 
 def feet_anchor(img, band=0.04, min_area=400):
@@ -378,6 +379,15 @@ def partial_voice_ref(only, n_lines, exists):
     for n in range(1, n_lines + 1):
         if n not in only and exists(n): return n
     return None
+
+
+def used_poses(events, home, head=None, legs_from=None):
+    """この書き出しで絵を読む姿勢。台本の姿勢、home（切り替えの経由先）、頭の向きの列、下半身の元。
+    蘭は 36 姿勢あり、全部を読むとメモリを 4.9GB 使う。"""
+    used = {home} | {e["pose"] for e in events}
+    if isinstance(head, dict): used |= set(head.get("chain") or [])
+    if legs_from: used.add(legs_from)
+    return used
 
 
 POSE_SAME = {"point": "point_r", "point_r": "point"}   # キャラで名前が違うだけの同じ身振り（画面の右を指す。蘭 point、凜 point_r）
@@ -1590,7 +1600,8 @@ def occlude(full, target, ref, thr=40.0, grow=7):
     """写した部品（絵全体の大きさの RGBA）の透明度を、写す先の絵 target が写す元の絵 ref（写す先の座標に合わせたもの）と
     大きく違う所で 0 にする。顔の前にある手（顎に手を当てる姿勢など）の上に、元の絵の顔（口・あご）を貼らないため。
     違う所は grow 画素だけ広げ、縁はぼかす。戻り値は新しい RGBA（full は書き換えない）。"""
-    d = np.linalg.norm(target.astype(np.float32) - ref.astype(np.float32), axis=2)
+    b_, g_, r_ = cv2.split(target.astype(np.float32) - ref.astype(np.float32))   # np.linalg.norm(axis=2) は 1 枚 15 ms 掛かる
+    d = cv2.sqrt(cv2.multiply(b_, b_) + cv2.multiply(g_, g_) + cv2.multiply(r_, r_))
     m = (cv2.GaussianBlur(d, (0, 0), 1.5) > thr).astype(np.uint8)
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     ys, xs = np.nonzero(full[:, :, 3] > 0)

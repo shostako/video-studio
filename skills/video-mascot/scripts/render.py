@@ -30,7 +30,7 @@ import json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -131,6 +131,9 @@ def legs(img, sc):
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
 if LEGS: print("下半身の差し替え:", LEGS["from"], "→", LEGS["poses"], file=sys.stderr)
+EVS = resolve_pose_names(C.get("events", []), P.poses, log=lambda m: print(m, file=sys.stderr))   # 名前の読み替えは全部の姿勢を見てから
+_used = used_poses(EVS, P.home, C.get("head"), LEGS["from"] if LEGS else None)
+P.poses = [p for p in P.poses if p in _used]      # 使う姿勢だけを読む（メモリと読み込みの時間）
 RAW = {}
 for p in P.poses:
     img = RAW[p] = P.read_pose(p)
@@ -238,7 +241,7 @@ def ib_item(item, src_pose, lerp_parts=False):
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
             if OCC: full = occlude(full, clean, ref)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
             yy, xx = np.where(full[:, :, 3] > 0)
-            if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1], int(xx.min()), int(yy.min()))
+            if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
 DRY = "--check-only" in sys.argv                  # 下見: 絵を作らず時間割だけを回して、切り替えの検査をする（RIFE・Wan を呼ばない）
@@ -294,7 +297,7 @@ def interp_pair(a_, b_):                          # コマ補間する組か（�
 
 # ---------- 時間割 ----------
 DIV = P.ib_div; NIB = DIV - 1; IBFPS = int(C.get("inbetween_fps", 15)); IBDUR = NIB / IBFPS
-EVS = resolve_pose_names(C.get("events", []), P.poses, log=lambda m: print(m, file=sys.stderr)); USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
+USE_VIA = TRANS is not None or any("via" in e for e in EVS)   # 向きの切り替えのつなぎ（書いた時だけ）
 def ib_d(a_, b_): return interp_dur(INTERP, a_, b_) if interp_pair(a_, b_) else IBDUR   # 中割りのある切り替えの秒
 def trans_of(a_, b_, via): return switch_kind(P.pair_dir(a_, b_) is not None or direct_ok(a_, b_) or wan_ok(a_, b_), via, TRANS, ib_d(a_, b_))   # Wan で動かす組も「中割りあり」（events の via は優先）
 def sw_dur(a_, b_, via):
