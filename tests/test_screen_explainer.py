@@ -247,3 +247,27 @@ def test_compose_writes_layout_json(tmp_path):
     assert r.returncode == 0, r.stderr
     lay = json.loads((tmp_path / "out.layout.json").read_text())
     assert lay["layout"] == "margin" and lay["margin"] == 1920 - 24 - 1536 and lay["panel"][2] == 1536 and lay["chapters"] is False
+
+
+@needs_font
+def test_compose_margin_captions_do_not_overlap_or_overflow(tmp_path):
+    """台詞の間が短くても字幕は 1 つだけ（Codex の指摘）。入らない長い行は文ごとに分け、1 文でも入らなければ止める。"""
+    shots, voice = tmp_path / "shots", tmp_path / "work"
+    for p in (shots, voice): p.mkdir()
+    _shots(shots); _voice(voice, gap=0.1)
+    cfg = json.loads((voice / "config.json").read_text(encoding="utf-8"))
+    cfg["voice"]["lines"][1]["text"] = "長い台詞の一つ目の文で、画面を大きくしたときに字幕が下の空きに入るかを見る。" * 3 + "二つ目の文だ。"
+    (voice / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    env = dict(os.environ, SCREEN_EXPLAINER_FONT=FONT)
+    base = [sys.executable, str(SK / "scripts" / "compose.py"), "--shots", str(shots), "--voice", str(voice),
+            "--scenes", str(SK / "assets" / "example_scenes.py"), "--out", str(tmp_path / "out.mp4"), "--layout", "margin"]
+    t = 2.05                                                        # 行 1 の終わり（2.0）と行 2 の頭（2.1）の間
+    r = subprocess.run(base + ["--scale", "0.85", "--preview", f"{t}"], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    a = _png(tmp_path, t)
+    pw = int(1920 * 0.85 / 2) * 2; ph = int(round(pw * 1020 / 1920 / 2)) * 2; top = 34 + ph + 30
+    assert a[top + 80:, :].min() >= 0 and (a[top:1080, 1920 - 24 - pw:1896] < 120).any()   # 字幕が出ている
+    cfg["voice"]["lines"][2]["text"] = "区切りの無いとても長い一つの文" * 30 + "。"
+    (voice / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    r = subprocess.run(base + ["--scale", "0.88", "--preview", "3.0"], capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "行 3 の字幕" in r.stderr and "入らない" in r.stderr

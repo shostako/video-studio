@@ -167,6 +167,7 @@ def test_heading_block_and_flash_alpha():
 
 
 def test_layout_reads_margin_from_layout_json(tmp_path, env):
+    font_or_skip()
     root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
     (root / "main.layout.json").write_text(json.dumps({"layout": "margin", "margin": 384, "chapters": True}))
     json.dump({"chapters": [{"at": 0, "title": "x"}]}, open(root / "ch.json", "w"))

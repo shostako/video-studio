@@ -178,17 +178,37 @@ if MARGIN:
     BGM.paste((0, 0, 0), (0, 0), shd.filter(ImageFilter.GaussianBlur(18)))
     PMASK = Image.new("L", (PW * 2, PH * 2), 0); ImageDraw.Draw(PMASK).rounded_rectangle([0, 0, PW * 2 - 1, PH * 2 - 1], radius=32, fill=255)
     PMASK = PMASK.resize((PW, PH), Image.LANCZOS)
-    # 字幕: 行ごとに全文を、画面の下の空きに収まる大きさで（字が多ければ小さく）
-    CAP_TOP = PY + PH + 30; room = H - CAP_TOP - 12; CAPS = []
-    for tx in texts:
+    # 字幕: 行ごとに全文を、画面の下の空きに収まる大きさで（字が多ければ小さく）。出す時間は隣の行と重ならない窓にし、
+    # 18px でも入らない行は文（。）ごとに分けて、声の長さを字数で割り振る。1 文でも入らなければ止める
+    CAP_TOP = PY + PH + 30; room = H - CAP_TOP - 12
+
+    def cap_img(tx):
         size = 40
         while True:
             f = ImageFont.truetype(FONT, size, index=0); rows = wrap(tx, f, PW - 120); lh = int(size * 1.45)
-            if lh * len(rows) <= room or size <= 24: break
+            if lh * len(rows) <= room: break
+            if size <= 18: return None
             size -= 2
         im = Image.new("RGBA", (PW, lh * len(rows)), (0, 0, 0, 0)); d_ = ImageDraw.Draw(im)
         for k, r in enumerate(rows): d_.text(((PW - text_w(f, r)) / 2, k * lh), r, font=f, fill=INK + (255,))
-        CAPS.append(im)
+        return im
+
+    CAPS = []                                                       # [(出し始め, 消す, 絵)]。時刻の順で、重ならない
+    prev_end = -1e9
+    for i, (tx, l) in enumerate(zip(texts, LINES)):
+        s0, s1 = l["start"], l["start"] + l["dur"]
+        ws = max(s0 - 0.15, prev_end)
+        we = min(s1 + 0.35, LINES[i + 1]["start"] - 0.15) if i + 1 < len(LINES) else s1 + 0.35
+        im = cap_img(tx)
+        if im is not None: CAPS.append((ws, we, im))
+        else:
+            parts = [p_ + "。" for p_ in tx.split("。") if p_]; tot = sum(len(p_) for p_ in parts) or 1; t_ = s0
+            for j, p_ in enumerate(parts):
+                pim = cap_img(p_)
+                if pim is None: sys.exit(f"ERROR: 行 {i + 1} の字幕が --scale {A.scale} の画面の下（{room}px）に入らない。台詞を短く切るか --scale を下げる")
+                t1_ = t_ + (s1 - s0) * len(p_) / tot
+                CAPS.append((ws if j == 0 else t_, we if j == len(parts) - 1 else t1_, pim)); t_ = t1_
+        prev_end = we
     # 章の見出し（余白の左上に出し続ける）とサンプルの出どころ
     HMAX = PX - 80
     HEADS = []                                                      # (番号, [(行の絵, y)], 下線の長さ, 下線の y)。長い見出しは 2 行に折る
@@ -342,10 +362,9 @@ def frame(t):
     fr.alpha_composite(CUR, (int(cx - HOT[0]), int(cy - HOT[1])))
     if MARGIN:                                                       # 画面を縮めて右に寄せ、字幕は画面の下、見出しは余白の左上
         out = BGM.copy(); out.paste(fr.convert("RGB").resize((PW, PH), Image.LANCZOS), (PX, PY), PMASK)
-        for i, l in enumerate(LINES):
-            s0, s1 = l["start"], l["start"] + l["dur"]
-            if s0 - 0.15 <= t <= s1 + 0.35:
-                a = min(1, (t - s0 + 0.15) / 0.12, (s1 + 0.35 - t) / 0.12); out.paste(CAPS[i], (PX, CAP_TOP), faded(CAPS[i], a))
+        for a0, a1, im in CAPS:                                      # 字幕は 1 つだけ（窓は重ならない）
+            if a0 <= t < a1:
+                a = max(0.0, min(1, (t - a0) / 0.12, (a1 - t) / 0.12)); out.paste(im, (PX, CAP_TOP), faded(im, a)); break
         k = CH.chapter_at(t, CHP)
         if k is not None:
             nu, ims, rule, ry = HEADS[k]; out.paste(nu, (40, 44), nu)
