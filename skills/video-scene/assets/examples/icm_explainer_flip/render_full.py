@@ -5,7 +5,6 @@
 import difflib, json, math, os, random, subprocess, sys
 import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); os.chdir(HERE)
-sys.path.insert(0, "/tmp/claude-1000/-home-shostako-ClaudeCode-lab/541c4cad-da5d-4f54-a790-3d59b100c57d/scratchpad/pylib")
 OUT = sys.argv[1]; T0 = float(sys.argv[sys.argv.index("--from") + 1]) if "--from" in sys.argv else 0.0
 FPS = 30; OW, OH = 720, 1280; random.seed(5)
 L = {int(k): v for k, v in json.load(open("line_offsets.json")).items()}; END = 69.0

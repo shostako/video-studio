@@ -15,8 +15,8 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 
 | 道具 | 動かす Python | 役目 |
 |---|---|---|
-| `excel_capture.py` | Windows 側の Python（pywin32・Pillow） | Excel の写しを開いて場面ごとに撮り、セルの画面座標を `rects.json` に書く |
-| `web_capture.py` | Playwright の入った Python | Web アプリを裏のブラウザで開いて撮り、要素の座標を `rects.json` に書く |
+| `excel_capture.py` | Windows 側の Python（3.12 以上、`pip install pywin32 pillow`。WSL の python では動かない） | Excel の写しを開いて場面ごとに撮り、セルの画面座標を `rects.json` に書く |
+| `web_capture.py` | video-scene の venv（`~/.local/share/video-scene/venv/bin/python`。video-scene の setup.sh が Playwright と Chromium を入れる） | Web アプリを裏のブラウザで開いて撮り、要素の座標を `rects.json` に書く |
 | `wipe_faces.py` | OpenCV の入った Python | 顔の絵と口の部品から、ワイプの顔 `mouth0〜3.png` を作る |
 | `word_timing.py` | faster-whisper の入った Python（video-scene の venv） | 声の語ごとの長さを測り、読み違いと溜めを見つける |
 | `compose.py` | Pillow と ffmpeg | 撮影・声・場面の割り付けから動画を組む |
@@ -38,12 +38,12 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 作業フォルダは `~/.local/share/video-scene/work/<名前>/`（声）と、撮影フォルダ（Excel なら Windows から見える `C:\Users\<you>\AppData\Local\Temp\...`）。
 
 1. **台本を書く**。1 行 = 1 場面。汎用の内容にして、案件の数字は読まない（画面に出る数字は読み上げない）。ユーザーが「詳しく」と言えば、シート・欄ごとに「何を入れる所か」「どこに効くか」「直すときの注意」まで書く。メールや会話など中身が私的な画面は、台本にも入れず、撮影でぼかす。
-2. **声を作る**。`config.json` に `{"name": ..., "fps": 30, "poses": {"none": {}}, "voice": {"lines": [{"text": ...}, ...], "gap": 0.6, "caption": ..., "seed": ..., "ref": ...}}` を書き、`vm voice <作業フォルダ> synth` → `master`。声の決まり（どの声を使うか）は利用者ごとの記憶にあるので、それに従う。声の候補探しで回数を重ねない。
+2. **声を作る**。`config.json` に `{"name": ..., "fps": 30, "poses": {"none": {}}, "voice": {"lines": [{"text": ...}, ...], "gap": 0.6, "caption": ..., "seed": ..., "ref": ...}}` を書き、`vm voice <作業フォルダ> synth` → `master`。声の決まり（どの声を使うか）は利用者ごとの記憶にあるので、それに従う。決まりが無ければ、既定の声 `"caption": "落ち着いた若い女性の声で、はきはきと説明する", "seed": 2024` で作る（README の例と同じ）。声の候補探しで回数を重ねない。
    - `synth` の「台本との一致」が低い行と、`word_timing.py` で `←` の付く語（文末・読点の前は自然に長い）を見る。読み違えた行にだけ `say`（ふりがな）を書いて、その行だけ作り直す（`vm voice <作業フォルダ> synth 3 9`）。全行に `say` を入れると抑揚が崩れる。
    - 英字・記号はカタカナに開く（Shift+Enter →「シフトエンター」）。「税抜きの」が「ぜいぬきん」になるような、漢字のままでつながる誤読は仮名に開く。
 3. **撮る**。台詞の行ごとに、見せる画面を決めて `states.json` を書く（書き方は各スクリプトの先頭）。
    - Excel: 元のブックは開かずに写しを作って撮る（`excel_capture.py <写し> <states.json> <出力>`）。撮った後に `rects.json` の枠を 1 枚の画像に描いて、ずれていないかを見る。
-   - Web: `web_capture.py <states.json> <出力>`。取り込み・削除・送信などのボタンは押さない。本物の端末や会話がつながる画面は `block_websocket` で切り、中身は `blur_css` / `frame_css` でぼかす。
+   - Web: `~/.local/share/video-scene/venv/bin/python $S/web_capture.py <states.json> <出力>`。Web アプリは手元で動かしておく（HTML 1 枚なら `python3 -m http.server 8770 --bind 127.0.0.1` で配る）。取り込み・削除・送信などのボタンは押さない。本物の端末や会話がつながる画面は `block_websocket` で切り、中身は `blur_css` / `frame_css` でぼかす。
    - 3D の画面のようにボタンで指せない所は、`click_xy`・`drag`・`wheel` か、アプリに固有の操作を `hooks.py` の関数に書いて `["call", 関数名, ...]` で呼ぶ。関数が返す枠は rects.json に入るので、クリックした点にカーソルを置ける。アプリにテスト用の窓口（3D の点を画面の座標にする関数など）があれば使う。
    - 回す・寄る・ずらすのような連続した動きは、`drag_film` / `wheel_film` で動きを 25〜30 に刻んで 1 刻みごとに撮り、`add(..., film=[(始め, 終わり, 名前)])` で流す。1 秒前後で流すと毎秒 30 コマ近くになり、なめらかに動いて見える。動きの前後を 1 枚ずつ撮って重ねるだけだと、パラパラに見える（ユーザーの指摘）。
    - 撮影に使うアプリのデータ（保存される計測・最近のファイルなど）は、普段使いと分けた場所に向ける。撮る前に消して、毎回同じ状態から撮る。
