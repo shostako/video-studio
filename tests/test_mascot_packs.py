@@ -86,3 +86,19 @@ def test_fetch_rejects_bad_hash_and_unsafe_zip(tmp_path, env):
     assert r.returncode != 0 and "置き場の外" in r.stderr and not (tmp_path / "vs" / "escape.txt").exists()
     r = run("fetch", "nope", "--manifest", write_manifest(tmp_path / "m3.json", [e1]), env=env)
     assert r.returncode != 0 and "控えに無い" in r.stderr
+
+
+
+def test_fetch_keeps_inbetween_chain_newer_than_poses(tmp_path, env):
+    """展開のあとも、中割りの続きが姿勢の絵より新しく、k の順に新しい（vm poses inbetweens が描き直さない）（Codex の指摘）。"""
+    p = make_pack(tmp_path / "src"); (p / "ib").mkdir()
+    (p / "poses" / "pose_point.png").write_bytes(b"png")
+    for k in range(1, 6): (p / "ib" / f"ib_home_point_{k}.png").write_bytes(b"ib")
+    c = json.loads((p / "config.json").read_text()); c["pairs"] = [["home", "point"]]; (p / "config.json").write_text(json.dumps(c))
+    z1 = tmp_path / "v1.zip"
+    e1 = json.loads(run("export", p, z1, "--version", "v1").stdout.strip().splitlines()[-1]); e1["url"] = str(z1)
+    assert run("fetch", "--manifest", write_manifest(tmp_path / "m.json", [e1]), env=env).returncode == 0
+    dst = tmp_path / "vs" / "packs" / "rin"
+    mt = lambda f: os.path.getmtime(dst / f)
+    ks = [mt(f"ib/ib_home_point_{k}.png") for k in range(1, 6)]
+    assert max(mt("poses/pose_home.png"), mt("poses/pose_point.png")) < ks[0] and ks == sorted(ks)

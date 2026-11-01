@@ -91,8 +91,11 @@ def install(e, root=None):
         src = os.path.join(ex, name)
         if not os.path.exists(os.path.join(src, "pack.json")): die(f"{name}: zip の中に {name}/pack.json が無い")
         if installed_version(name, ex) != e["version"]: die(f"{name}: zip の版（{installed_version(name, ex)}）が控え（{e['version']}）と違う")
+        import pack as P_                          # 展開で更新時刻が展開の時刻になる。中割りの続き（chain）が古く見えないよう、vm pack と同じにそろえる
+        try: pairs = [tuple(p_) for p_ in json.load(open(os.path.join(src, "config.json"), encoding="utf-8")).get("pairs", [])]
+        except (OSError, ValueError): pairs = []
+        P_.settle_mtimes(src, pairs)
         if os.path.exists(dst):
-            import pack as P_
             old = P_.unique(dst + ".old-" + time.strftime("%Y%m%d_%H%M%S")); os.rename(dst, old)
             print(f"{name}: 前の版を {old} に退避した", flush=True); P_.repin(dst, old)
         os.rename(src, dst)
