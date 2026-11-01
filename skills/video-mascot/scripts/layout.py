@@ -1,6 +1,9 @@
 """解説の画面を縮めた主動画（1920x1080、左に余白）の余白にマスコットを置き、左上に章の見出しを出して1本にする。
-  vm layout <主動画.mp4> <作業フォルダ> --out 出力.mp4 [--mascot 動画] [--frame full|bust] [--size S|L] [--bg-from 秒]
-            [--audio 声.wav] [--full] [--chapters 章.json] [--margin 496] [--place-only]
+  vm layout <主動画.mp4> <作業フォルダ> --out 出力.mp4 [--style full|wipe] [--mascot 動画] [--frame full|bust] [--size S|L]
+            [--wipe-size 400] [--wipe-box x,y,辺] [--bg-from 秒] [--audio 声.wav] [--full] [--chapters 章.json] [--margin 496] [--place-only]
+  --style    full（既定。全身を余白の下に立たせる）か wipe（顔の周りを丸く切り抜いて余白の左下に置く）
+  --wipe-size  ワイプの直径（既定は余白の幅 − 80 で、400 まで）
+  --wipe-box   マスコットの動画のどこを切り抜くか（x,y,辺。画素）。既定は最初のコマの人物から顔の周りを測る
   --mascot   重ねるマスコット（既定 <作業フォルダ>/out/mascot.webm）。.webm は透明で、.mp4 は白背景を乗算で重ねる
   --frame    full（全身。既定）か bust（胸から上）。--size は大きさ（全身は S=高さ 560px・L=880px、胸から上は S=幅 340・L=496）
   --bg-from  主動画のどこから使うか（秒、既定 0）
@@ -148,6 +151,42 @@ def place(mp, frame, size, margin):
     return sw, sh, round(cx_m - sw / 2), H - sh, H - sh
 
 
+def first_frame(mp):
+    """最初のコマの (幅, 高さ, 人物の画素の真偽の配列)。透明の webm はアルファ、白背景の mp4 は白でない所。"""
+    mw, mh, _ = probe(mp); alpha = mp.endswith(".webm")
+    raw = subprocess.run(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if alpha else []) + ["-i", mp, "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgba" if alpha else "rgb24", "-"], capture_output=True).stdout
+    nc = 4 if alpha else 3
+    if len(raw) != mw * mh * nc: die(f"最初のコマが読めない: {mp}")
+    a = np.frombuffer(raw, np.uint8).reshape(mh, mw, nc)
+    return mw, mh, (a[:, :, 3] > 128) if alpha else (a.min(axis=2) < 235)
+
+
+def face_box(fg):
+    """人物の画素（真偽の配列）から、ワイプに切り抜く正方形 (x, y, 辺)。辺は背の 0.44 倍、横は頭（上 25%）の真ん中、
+    上は頭の少し上。3 頭身のキャラで、顔と肩の上が丸に収まる（凜で合わせた）。画面の外に出る分は内側へ寄せる。"""
+    mh, mw = fg.shape; ys, xs = np.where(fg)
+    if not len(ys): die("最初のコマに人物が無い（--wipe-box で切り抜く所を渡す）")
+    top, fh = int(ys.min()), int(ys.max() - ys.min())
+    cx = float(np.median(xs[ys < top + 0.25 * fh])); side = min(mw, mh, int(0.44 * fh) // 2 * 2)
+    x = int(round(cx - side / 2)); y = int(round(top - 0.01 * fh))
+    return max(0, min(mw - side, x)), max(0, min(mh - side, y)), side
+
+
+def wipe_layers(d, pad=26):
+    """ワイプの (下に敷く影の RGBA, 上に重ねる縁の RGBA, 丸の濃さ d x d)。影と縁の絵は (d+2pad) 角。screen-explainer の
+    ワイプと同じ見た目（橙の太い縁と白の細い縁、下に影）。"""
+    from PIL import Image, ImageDraw, ImageFilter
+    n = d + 2 * pad
+    sh = Image.new("RGBA", (n, n), (0, 0, 0, 0)); ImageDraw.Draw(sh).ellipse([pad - 2, pad + 6, pad + d + 2, pad + d + 14], fill=(0, 0, 0, 150))
+    ring = Image.new("RGBA", (n, n), (0, 0, 0, 0)); dr = ImageDraw.Draw(ring)
+    dr.ellipse([pad - 4, pad - 4, pad + d + 4, pad + d + 4], outline=ACC + (255,), width=8)
+    dr.ellipse([pad + 4, pad + 4, pad + d - 4, pad + d - 4], outline=(255, 255, 255, 230), width=3)
+    m = Image.new("L", (d * 4, d * 4), 0); ImageDraw.Draw(m).ellipse([0, 0, d * 4 - 1, d * 4 - 1], fill=255)
+    return (np.asarray(sh.filter(ImageFilter.GaussianBlur(9))).copy(), np.asarray(ring).copy(),
+            np.asarray(m.resize((d, d), Image.LANCZOS)).astype(np.float32)[:, :, None] / 255.0)
+
+
 def main():
     a = [x for x in sys.argv[1:] if not x.startswith("--")]
     vals = {sys.argv[i + 1] for i, x in enumerate(sys.argv[:-1]) if x.startswith("--") and x not in ("--full", "--place-only")}
@@ -161,11 +200,22 @@ def main():
     lp = os.path.splitext(bg)[0] + ".layout.json"
     if os.path.exists(lp): lay = json.load(open(lp))
     frame, size, margin = opt("--frame", "full"), opt("--size", "S"), opt("--margin", int(lay.get("margin", 496)), int)
-    if frame not in ("full", "bust") or size not in ("S", "L"): die("--frame は full|bust、--size は S|L")
+    style = opt("--style", "full")
+    if frame not in ("full", "bust") or size not in ("S", "L") or style not in ("full", "wipe"): die("--frame は full|bust、--size は S|L、--style は full|wipe")
     for p in (bg, mp):
         if not os.path.exists(p): die(f"無い: {p}")
-    sw, sh, x, y, fig_top = place(mp, frame, size, margin)
-    print(f"{frame} {size}: → {sw}x{sh} at ({x},{y})", flush=True)
+    WIPE = style == "wipe"
+    if WIPE:                                      # 顔の周りの正方形を切り抜き、直径 d の丸にして余白の左下（下から 48px）に置く
+        mw_, mh_, fg = first_frame(mp)
+        box = tuple(int(v) for v in opt("--wipe-box").split(",")) if opt("--wipe-box") else face_box(fg)
+        if len(box) != 3 or box[2] <= 0: die("--wipe-box は x,y,辺")
+        sw = sh = opt("--wipe-size", min(400, (margin - 80) // 2 * 2), int)
+        if sw < 120: die(f"余白が狭すぎてワイプを置けない（直径 {sw}px）。--scale を下げるか --wipe-size を渡す")
+        x, y = round(margin / 2 - sw / 2), H - 48 - sw; fig_top = y
+        print(f"wipe: 切り抜き {box[0]},{box[1]} 辺 {box[2]} → 直径 {sw} at ({x},{y})", flush=True)
+    else:
+        sw, sh, x, y, fig_top = place(mp, frame, size, margin)
+        print(f"{frame} {size}: → {sw}x{sh} at ({x},{y})", flush=True)
     x0, y0 = max(0, x), max(0, y); cw, ch_ = min(x + sw, W) - x0, min(y + sh, H) - y0
     print(f"CROP {x0},{y0},{cw},{ch_}", flush=True)
     plan, credits, heads, creds, cred_y = [], [], [], [], CREDIT_Y
@@ -186,7 +236,9 @@ def main():
     rd_bg = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(bg_from)] + ([] if full_len else ["-t", f"{dur:.3f}"]) + ["-i", bg, "-vf", f"scale={W}:{H}",
                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
     ALPHA = mp.endswith(".webm"); ch = 4 if ALPHA else 3
-    rd_m = subprocess.Popen(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if ALPHA else []) + ["-i", mp, "-vf", f"scale={sw}:{sh}:flags=lanczos",
+    vf = (f"crop={box[2]}:{box[2]}:{box[0]}:{box[1]}," if WIPE else "") + f"scale={sw}:{sh}:flags=lanczos"
+    if WIPE: w_under, w_over, w_mask = wipe_layers(sw); WP = 26
+    rd_m = subprocess.Popen(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if ALPHA else []) + ["-i", mp, "-vf", vf,
                             "-f", "rawvideo", "-pix_fmt", "rgba" if ALPHA else "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
     tmp = outp + ".part.mp4"
     wr = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
@@ -203,7 +255,16 @@ def main():
         last_m = m
         img = np.frombuffer(b, np.uint8).reshape(H, W, 3).copy()
         if plan or credits: draw_heading(img, n / FPS, plan, heads, credits, creds, cred_y)
-        if ALPHA:
+        if WIPE:                                  # 影 → 白地に重ねた顔を丸く → 縁
+            blend(img, w_under, x - WP, y - WP)
+            if ALPHA:
+                rgba = np.frombuffer(m, np.uint8).reshape(sh, sw, 4).astype(np.float32); al = rgba[:, :, 3:] / 255.0
+                face = rgba[:, :, :3] * al + 255.0 * (1 - al)
+            else:
+                face = np.frombuffer(m, np.uint8).reshape(sh, sw, 3).astype(np.float32)
+            reg = img[y:y + sh, x:x + sw].astype(np.float32); img[y:y + sh, x:x + sw] = (face * w_mask + reg * (1 - w_mask)).astype(np.uint8)
+            blend(img, w_over, x - WP, y - WP)
+        elif ALPHA:
             rgba = np.frombuffer(m, np.uint8).reshape(sh, sw, 4)[Y0 - y:Y1 - y, X0 - x:X1 - x].astype(np.float32)
             al = rgba[:, :, 3:] / 255.0; reg = img[Y0:Y1, X0:X1].astype(np.float32)
             img[Y0:Y1, X0:X1] = (rgba[:, :, :3] * al + reg * (1 - al)).astype(np.uint8)
