@@ -34,7 +34,7 @@ Sound: <効果音を順に>. <声の印象>, speaking Japanese.
 ## 実行
 
 ```bash
-vs veo --prompt-file prompt.txt --first start.png --model lite --name Monday_Deploy
+vs veo --prompt-file prompt.txt --first start.png --model lite --name Ran_Deploy
 ```
 - `--first` の絵は縦横比が違えば白（端の色）を足して 16:9 にする。元の絵の位置は作業フォルダ（指示文と同じ所）の `*_pad.json`
 - `--last` で最後の絵も指定できるが、終わりの0.2〜0.3秒でそこへ無理に寄せて崩れる疑いがある（未確認）。まずは付けずに作り、終わりは `cut` で止める

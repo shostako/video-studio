@@ -1,5 +1,5 @@
 {
- "name": "Monday_Figure_Deploy_Flipbook_videoscene",
+ "name": "Ran_Figure_Deploy_Flipbook_videoscene",
  "fps": 30,
  "duration": 10.0,
  "bg": "#fefdfd",
@@ -128,7 +128,7 @@
     770,
     700
    ],
-   "title": "monday@vaio: ~/app",
+   "title": "ran@vaio: ~/app",
    "typing": [
     {
      "text": "export const ship = async () => {\n  await build();\n  await test();   // たぶん通る\n  await deploy(\"production\");\n};\n$ git push origin main",

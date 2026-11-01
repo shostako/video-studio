@@ -1,5 +1,5 @@
 {
- "name": "Monday_Real_BuildDoze_VeoLite",
+ "name": "Ran_Real_BuildDoze_VeoLite",
  "fps": 30,
  "duration": 8.0,
  "bg": "#ffffff",
@@ -39,7 +39,7 @@
     780,
     600
    ],
-   "title": "monday@vaio: ~/app",
+   "title": "ran@vaio: ~/app",
    "prefill": "$ npm run build\n> app@2.4.0 build\n> vite build",
    "lines": [
     {

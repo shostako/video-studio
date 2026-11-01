@@ -1,5 +1,5 @@
 {
- "name": "Monday_Chibi2_GitBlame_Vids",
+ "name": "Ran_Chibi2_GitBlame_Vids",
  "fps": 30,
  "duration": 11.3,
  "size": [
@@ -40,7 +40,7 @@
     1000,
     480
    ],
-   "title": "monday@vaio: ~/app  (review)",
+   "title": "ran@vaio: ~/app  (review)",
    "font_size": 26,
    "line_height": 38,
    "prefill": "export async function retry(fn) {\n  for (;;) {\n    try { return await fn(); }\n    catch (e) {}  // たぶん大丈夫\n  }\n}\n",
@@ -55,23 +55,23 @@
    "lines": [
     {
      "t": 5.0,
-     "text": "7be04d1 (monday 2026-07-11) for (;;) {",
+     "text": "7be04d1 (ran 2026-07-11) for (;;) {",
      "kind": "dim",
-     "mark": "monday",
+     "mark": "ran",
      "mark_t": 5.12
     },
     {
      "t": 5.04,
-     "text": "7be04d1 (monday 2026-07-11) try { … }",
+     "text": "7be04d1 (ran 2026-07-11) try { … }",
      "kind": "dim",
-     "mark": "monday",
+     "mark": "ran",
      "mark_t": 5.12
     },
     {
      "t": 5.08,
-     "text": "7be04d1 (monday 2026-07-11) catch (e) {}",
+     "text": "7be04d1 (ran 2026-07-11) catch (e) {}",
      "kind": "dim",
-     "mark": "monday",
+     "mark": "ran",
      "mark_t": 5.12
     }
    ]
