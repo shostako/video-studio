@@ -7,7 +7,7 @@ config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
 import difflib, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import Proj, die
+from lib import Proj, die, partial_voice_ref
 
 IRO = os.environ.get("IRODORI_DIR", os.path.expanduser("~/.local/share/voice-engines/Irodori-TTS"))
 _VENV = os.path.join(os.environ.get("VIDEO_SCENE_HOME") or os.path.expanduser("~/.local/share/video-scene"), "venv")
@@ -103,6 +103,9 @@ def main():
         ff("-f", "concat", "-safe", "0", "-i", lst, "-ar", "48000", "-ac", "1", out); print("聞き比べ:", out, "（「ピッ」のあと C1 → C2 … の順）"); return
     if cmd == "synth":
         only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1)); ref = V.get("ref"); ref = P.p(ref) if ref and not os.path.isabs(ref) else ref
+        if ref is None:    # 一部の行だけ作り直すときは、残す行の声を手本にする（手本なしで作ると別の声になる）
+            k = partial_voice_ref(only, len(lines), lambda n: os.path.exists(P.p("voice", f"l{n}.wav")))
+            if k is not None: ref = P.p("voice", f"l{k}.wav"); print(f"手本: 行{k} の声", flush=True)
         jobs = [{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "caption": V["caption"], "seed": V.get("seed", 1234), "ref": ref,
                  "duration_scale": V.get("duration_scale", 1.0), "out": P.p("voice", f"l{n}.wav")} for n in only]
         if ref is None:    # 手本が無ければ、最初に作った行を手本にして残りをそろえる

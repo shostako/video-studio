@@ -372,6 +372,14 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
     return out
 
 
+def partial_voice_ref(only, n_lines, exists):
+    """vm voice synth で一部の行だけ作り直すときの手本の行番号。作り直さない行のうち、声のある最初の行。無ければ None。
+    手本なしで作ると、説明文と seed が同じでも別の声になる。"""
+    for n in range(1, n_lines + 1):
+        if n not in only and exists(n): return n
+    return None
+
+
 POSE_SAME = {"point": "point_r", "point_r": "point"}   # キャラで名前が違うだけの同じ身振り（画面の右を指す。蘭 point、凜 point_r）
 
 
