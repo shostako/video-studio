@@ -503,3 +503,21 @@ def test_render_imports_and_uses_pose_names():
     tree = ast.parse(src)
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "lib" for a in n.names}
     assert "resolve_pose_names" in imported and "resolve_pose_names(C.get(\"events\"" in src
+
+
+# ---------- partial_voice_ref ----------
+def test_partial_voice_ref_uses_a_kept_line():
+    have = {1, 2, 3, 4}.__contains__
+    assert lib.partial_voice_ref([4], 4, have) == 1
+    assert lib.partial_voice_ref([1, 3], 4, have) == 2           # 1 行目を作り直すときは、残す行の最初
+
+
+def test_partial_voice_ref_is_none_for_a_full_synth_or_no_voice():
+    assert lib.partial_voice_ref([1, 2, 3], 3, {1, 2, 3}.__contains__) is None
+    assert lib.partial_voice_ref([2], 3, set().__contains__) is None
+
+
+def test_voice_uses_partial_voice_ref():
+    src = (Path(lib.__file__).parent / "voice.py").read_text(encoding="utf-8")
+    imported = {a.name for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ImportFrom) and n.module == "lib" for a in n.names}
+    assert "partial_voice_ref" in imported and "partial_voice_ref(only" in src
