@@ -2,6 +2,7 @@
 # setup.sh — video-mascot の道具一式を入れる（機体ごとに初回だけ。何度実行してもよい）
 #   setup.sh          足りないものを入れる
 #   setup.sh --check  確かめるだけ（入れない）。足りなければ終了コード 1
+#   VM_PACKS="ran"    使うパックだけを扱う（既定は控えのパック全部。スペースで区切る）
 # 要るもの: video-scene の setup（Python の道具・ffmpeg）、Irodori-TTS（声）、/img スキル（絵）。pykakasi を video-scene の Python に足す。
 set -uo pipefail
 VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"; PY="$VS_HOME/venv/bin/python"; [ -x "$PY" ] || [ ! -x "$VS_HOME/venv/Scripts/python.exe" ] || PY="$VS_HOME/venv/Scripts/python.exe"   # Windows の venv は Scripts/python.exe
@@ -43,8 +44,8 @@ if [ -z "$why" ]; then say "ok   /img（ChatGPT の枠で絵を描く。$where�
 # 基準キャラのパック（蘭・凜。GitHub Releases から、リポの data/packs.json の版を取る。リポを同期して回せば、どの PC にも同じ版がそろう）
 SD="$(cd "$(dirname "$0")" && pwd)"
 if [ -x "$PY" ]; then
-  if [ $CHECK -eq 1 ]; then out_="$("$PY" -B "$SD/packs.py" status 2>&1)"; rc_=$?; printf '%s\n' "$out_" | sed 's/^/     /'
+  if [ $CHECK -eq 1 ]; then out_="$("$PY" -B "$SD/packs.py" status ${VM_PACKS-} 2>&1)"; rc_=$?; printf '%s\n' "$out_" | sed 's/^/     /'
     [ $rc_ -eq 0 ] && say "ok   パック（data/packs.json の版）" || { say "NG   パックが足りないか古い（vm packs fetch か setup.sh）"; ok=0; }
-  else "$PY" -B "$SD/packs.py" fetch && say "ok   パック（data/packs.json の版）" || { say "NG   パックを取れない（vm packs fetch で取り直す）"; ok=0; }; fi
+  else "$PY" -B "$SD/packs.py" fetch ${VM_PACKS-} && say "ok   パック（data/packs.json の版）" || { say "NG   パックを取れない（vm packs fetch で取り直す）"; ok=0; }; fi
 fi
 [ $ok -eq 1 ] && say "全部そろっている" || say "足りないものがある"; [ $ok -eq 1 ]
