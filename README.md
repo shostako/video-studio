@@ -69,7 +69,7 @@ vm explain ~/.local/share/video-scene/work/my-howto --shots <撮影> --scenes sc
 - パック（キャラの絵・部品・切り替えの作り置き）: CC0（公開するとき）
 - 使っているモデルの許諾: Irodori-TTS・DACVAE は MIT、Wan2.2・Lightning の LoRA は Apache 2.0、RIFE は MIT。出力の商用利用はできる
 - **Irodori-TTS の利用条件**: 実在の人物のなりすまし・誤情報の作成に使わない。生成した声には聞こえない電子透かしが入る（消さない）
-- このリポのコードの許諾: 未定
+- このリポのコード: MIT（`LICENSE`）。パックの絵・部品・作り置きは CC0 で別
 
 ## 開発の決まり
 
