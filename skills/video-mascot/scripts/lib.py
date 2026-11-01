@@ -390,6 +390,8 @@ def tail_blip(x, sr, gap=0.25, max_len=0.1, end_tol=0.1, hop=0.01):
     x = np.asarray(x, dtype=np.float32); h = max(1, int(sr * hop)); n = len(x) // h
     if n < 4: return None
     env = np.sqrt(np.mean(x[:n * h].reshape(n, h) ** 2, axis=1))
+    if len(x) > n * h:                            # 端の半端な区切りも、その中の標本だけで測る（そこだけで鳴る短い音を落とさない）
+        env = np.append(env, np.sqrt(np.mean(x[n * h:] ** 2))); n += 1
     thr = max(0.01, 0.03 * float(env.max()))
     on = env >= thr
     tol = max(2, int(round(end_tol / hop)))
