@@ -1,0 +1,20 @@
+{
+ "packs": [
+  {
+   "name": "rin",
+   "desc": "凜（まとめ髪）。姿勢 26・Wan の切り替え 43 組・頭の向きと会釈の列 7",
+   "version": "2026-11-01",
+   "url": "https://github.com/shostako/video-studio/releases/download/packs-2026-11-01/rin-pack.zip",
+   "size": 408881464,
+   "sha256": "1cb598aec1aec10bb06a74750ed4593be53a15a5b5292772dc9554a51f8a4d0e"
+  },
+  {
+   "name": "ran",
+   "desc": "蘭（ボブ）。姿勢 36・Wan の切り替え 52 組・会釈の列 1",
+   "version": "2026-11-01",
+   "url": "https://github.com/shostako/video-studio/releases/download/packs-2026-11-01/ran-pack.zip",
+   "size": 699357595,
+   "sha256": "2311a070ef78b03fdf83e9f9ad6e48eb6344729aba1a8ee97fd82d836d1550bd"
+  }
+ ]
+}
