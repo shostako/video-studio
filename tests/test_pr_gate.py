@@ -81,18 +81,31 @@ def test_same_prefix_different_commit_waits():
 CLEAN = "Codex Review: Didn't find any major issues. Bravo.\n\n**Reviewed commit:** `{}`"
 
 
+def to_head(abbr):
+    return HEAD if HEAD.startswith(abbr) else None
+
+
 def test_running_summary_with_later_clean_comment_on_head_passes():
     """要約は running のまま、別のコメントで「指摘なし」と先頭の接頭辞を返したら完了とみなす（#70 で起きた）。"""
-    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD)[0] == 0
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD, resolve=to_head)[0] == 0
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD)], HEAD)[0] == 0        # SHA の全体なら引かなくてよい
+
+
+def test_clean_comment_with_ambiguous_or_other_commit_waits():
+    """短い SHA が先頭のコミットに引けない（曖昧・別のコミット・引けない）なら待つ（Codex の指摘）。"""
+    older = HEAD[:7] + "f" * 33
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:7])], HEAD, resolve=lambda a: older)[0] == 2
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:7])], HEAD, resolve=lambda a: None)[0] == 2
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:7])], HEAD)[0] == 2
 
 
 def test_clean_comment_needs_running_summary_on_full_head_sha():
     other = HEAD[:10] + "f" * 30                                     # 接頭辞は同じでも、要約の SHA の全体が先頭と違えば通さない
-    assert pr_gate.evaluate([body(status="running", sha=other, unresolved=None), CLEAN.format(HEAD[:10])], HEAD)[0] == 2
-    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format("3740a55aaa")], HEAD)[0] == 2   # 別のコミットへの結果
-    assert pr_gate.evaluate([CLEAN.format(HEAD[:10]), body(status="running", unresolved=None)], HEAD)[0] == 2      # 要約より前の結果は使わない
+    assert pr_gate.evaluate([body(status="running", sha=other, unresolved=None), CLEAN.format(HEAD[:10])], HEAD, resolve=to_head)[0] == 2
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format("3740a55aaa")], HEAD, resolve=to_head)[0] == 2   # 別のコミットへの結果
+    assert pr_gate.evaluate([CLEAN.format(HEAD[:10]), body(status="running", unresolved=None)], HEAD, resolve=to_head)[0] == 2      # 要約より前の結果は使わない
     assert pr_gate.evaluate([body(status="running", unresolved=None), "Codex Review: found issues\n**Reviewed commit:** `%s`" % HEAD[:10]], HEAD)[0] == 2
 
 
 def test_clean_comment_still_blocked_by_unresolved_threads():
-    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD, unresolved_threads=1)[0] == 1
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD, unresolved_threads=1, resolve=to_head)[0] == 1
