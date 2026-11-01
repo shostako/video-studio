@@ -42,9 +42,12 @@ A = ap.parse_args()
 
 W, H, VIEW_H, FPS = 1920, 1080, 1020, 30
 BAND = H - VIEW_H
+_WINFONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts") if os.name == "nt" else "/mnt/c/Windows/Fonts"
+# Noto Sans CJK Bold が無いとき（Windows で直に動かすとき、WSL に fonts-noto-cjk を入れていないとき）は Windows の太字を使う
+WIN_BOLD = tuple(os.path.join(_WINFONTS, f) for f in ("YuGothB.ttc", "BIZ-UDGothicB.ttc", "meiryob.ttc"))
 FONT = next((p for p in (os.environ.get("SCREEN_EXPLAINER_FONT"), "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-                          "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc") if p and os.path.exists(p)), None)
-if not FONT: sys.exit("ERROR: 日本語の太字フォント（Noto Sans CJK Bold）が無い。fonts-noto-cjk を入れるか、SCREEN_EXPLAINER_FONT に太字のフォントを指定する")
+                          "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc") + WIN_BOLD if p and os.path.exists(p)), None)
+if not FONT: sys.exit("ERROR: 日本語の太字フォント（Noto Sans CJK Bold か、Windows の游ゴシック・メイリオの太字）が無い。fonts-noto-cjk を入れるか、SCREEN_EXPLAINER_FONT に太字のフォントを指定する")
 
 # 割り付け。margin: 画面を縮めて右に寄せ（右の隙間 24、上 34）、左の余白にマスコットを置く。字幕は画面の下に濃い字で
 MARGIN = A.layout == "margin"

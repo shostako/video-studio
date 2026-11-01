@@ -1139,10 +1139,45 @@ def win_decode(b):
     return b.decode("utf-8", errors="replace")
 
 
+# ---------- フォルダのリンク（パックの作り置きを作業フォルダから読む）----------
+# Linux・WSL はシンボリックリンク。Windows の Python はフォルダのシンボリックリンクに権限（管理者か開発者モード）が要るので、
+# ジャンクション（同じ PC のフォルダを指すリンク。権限が要らない）にする。ジャンクションは os.path.islink では見えない
+def dir_link(src, dst):
+    """dst に src を指すフォルダのリンクを作る。"""
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(os.path.abspath(src), os.path.abspath(dst))
+    else:
+        os.symlink(src, dst)
+
+
+def is_dir_link(p):
+    """p がフォルダのリンク（シンボリックリンクかジャンクション）か。"""
+    return os.path.islink(p) or bool(getattr(os.path, "isjunction", lambda _: False)(p))
+
+
+def read_dir_link(p):
+    """リンクの指す先（Windows の「\\\\?\\」の頭は外す）。"""
+    t = os.readlink(p)
+    return t[4:] if os.name == "nt" and t.startswith("\\\\?\\") else t
+
+
+def same_path(a, b):
+    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+
+
+def remove_dir_link(p):
+    """リンクだけを消す（指す先の中身は消さない）。Windows のジャンクションは rmdir で消す。"""
+    if os.name == "nt" and not os.path.islink(p): os.rmdir(p)
+    else: os.remove(p)
+
+
 def win_home():
     """Windows のユーザーのフォルダを WSL から見たパス（例 /mnt/c/Users/<名前>）。環境変数 VM_WIN_HOME → cmd.exe の %USERPROFILE%。
     Windows の無い所（CI など）では None。1 回調べたら覚えておく。"""
     global _WIN_HOME
+    if _WIN_HOME is None and os.name == "nt":     # Windows で直に動いているとき（Git Bash など）は自分の家
+        _WIN_HOME = os.environ.get("VM_WIN_HOME") or os.environ.get("USERPROFILE") or os.path.expanduser("~")
     if _WIN_HOME is None:
         v = os.environ.get("VM_WIN_HOME", "")
         if not v:
@@ -1176,14 +1211,14 @@ INTERP_DEFAULTS = {
     "pairs": None,          # 補間する組 ["gap>gassho", ...]（None は中割りのある全部の組）
     "direct": False,        # 中割りの無い組も、端の姿勢2枚の間を直に補間する（向きの同じ組だけ。溶かしの代わり）
     "model": "rife-v4.6",
-    "exe": os.environ.get("VM_RIFE_EXE", "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe"),   # 環境変数 VM_RIFE_EXE で変えられる
+    "exe": os.environ.get("VM_RIFE_EXE", ("C:" if os.name == "nt" else "/mnt/c") + "/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe"),   # 環境変数 VM_RIFE_EXE で変えられる
     "tmp": os.environ.get("VM_RIFE_TMP") or None,   # Windows の exe が読み書きできる所。無ければ Windows の %TEMP%/vm_rife（rife_tmp）
     "wan": None,            # engine: wan の設定（WAN_DEFAULTS を上書きする辞書）
 }
 
 # engine: wan の既定。新PC の ComfyUI（portable）と、その models に置いた Wan2.2 I2V-A14B（GGUF）・Lightning の LoRA を使う
 WAN_DEFAULTS = {
-    "comfy": os.environ.get("VM_COMFY_ROOT") or os.environ.get("VS_COMFY_ROOT") or "/mnt/c/ComfyUI/ComfyUI_windows_portable",   # ComfyUI portable の場所（python_embeded と ComfyUI/ がある所）
+    "comfy": os.environ.get("VM_COMFY_ROOT") or os.environ.get("VS_COMFY_ROOT") or ("C:" if os.name == "nt" else "/mnt/c") + "/ComfyUI/ComfyUI_windows_portable",   # ComfyUI portable の場所（python_embeded と ComfyUI/ がある所）
     "url": "http://127.0.0.1:8188",
     "width": 704, "height": 1248,   # Wan に渡す大きさ（16 の倍数。縦横比は姿勢の絵に近く）
     "length": 13,           # Wan のコマ数（4n+1）。16fps で 0.75 秒分。再生の秒は interp.dur / durs で決まる

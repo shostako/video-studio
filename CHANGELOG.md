@@ -4,6 +4,12 @@
 
 ## 未リリース
 
+- **WSL を使わない Windows（Git Bash）で動く**: Windows 版の Claude Code と同じ Git Bash で、入れるところから蘭の解説動画を作るまで通した（#77）
+  - `link-skills.sh` とパックの作り置きは、Windows ではジャンクション（管理者権限の要らないフォルダのリンク）を張る
+  - venv の Python を `Scripts/python.exe` からも探す。Windows では uv で Python 3.12 の venv を作る
+  - 入口（`vm`・`vs`）で Python の UTF-8 モード（`PYTHONUTF8=1`）を付ける。`.gitattributes` で改行を LF にそろえる
+  - Windows で直に動くときの既定のパス（家・出力先・ComfyUI・RIFE）、日本語の太字フォントの候補に游ゴシック・BIZ UD ゴシック・メイリオ
+  - README に「確かめた環境」の表と「WSL を使わない Windows」の節
 - **まっさらな環境で入れられるように**: 新しい WSL（Ubuntu 24.04、何も入っていない）で README の手順だけを流し、蘭の解説動画を 1 本作って見つかった穴を直した（#76）
   - README: apt の前に `apt update`、`python3-venv` を足した。Web・Excel の撮影に要る物を書いた
   - video-scene の `setup.sh`: Web の撮影に使う Playwright と Chromium を venv に入れ、ブラウザが起動するかまで確かめる。前回作り損ねた pip の無い venv は退避して作り直す

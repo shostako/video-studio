@@ -4,7 +4,7 @@
 #   setup.sh --check  確かめるだけ（入れない）。足りなければ終了コード 1
 # 要るもの: video-scene の setup（Python の道具・ffmpeg）、Irodori-TTS（声）、/img スキル（絵）。pykakasi を video-scene の Python に足す。
 set -uo pipefail
-VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"; PY="$VS_HOME/venv/bin/python"
+VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"; PY="$VS_HOME/venv/bin/python"; [ -x "$PY" ] || [ ! -x "$VS_HOME/venv/Scripts/python.exe" ] || PY="$VS_HOME/venv/Scripts/python.exe"   # Windows の venv は Scripts/python.exe
 IRO="${IRODORI_DIR:-$HOME/.local/share/voice-engines/Irodori-TTS}"
 CHECK=0; [ "${1-}" = "--check" ] && CHECK=1; ok=1; say() { printf '%s\n' "$*"; }
 if [ -x "$PY" ] && "$PY" -c "import cv2, numpy, faster_whisper" 2>/dev/null; then say "ok   video-scene の Python"

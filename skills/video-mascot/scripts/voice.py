@@ -10,7 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, die
 
 IRO = os.environ.get("IRODORI_DIR", os.path.expanduser("~/.local/share/voice-engines/Irodori-TTS"))
-WS = os.path.join(os.environ.get("VIDEO_SCENE_HOME") or os.path.expanduser("~/.local/share/video-scene"), "venv", "bin", "python")
+_VENV = os.path.join(os.environ.get("VIDEO_SCENE_HOME") or os.path.expanduser("~/.local/share/video-scene"), "venv")
+WS = next((p_ for p_ in (os.path.join(_VENV, "bin", "python"), os.path.join(_VENV, "Scripts", "python.exe")) if os.path.exists(p_)), sys.executable)   # 聞き取り（faster-whisper）の Python。Windows の venv は Scripts/python.exe
 
 
 def ff(*a): subprocess.run(["ffmpeg", "-v", "error", "-y", *a], check=True)
@@ -19,7 +20,7 @@ def dur(p): return float(subprocess.run(["ffprobe", "-v", "error", "-show_entrie
 
 RUNNER = r'''
 import json, os, sys
-sys.path.insert(0, "%IRO%")
+sys.path.insert(0, %IRO%)
 from irodori_tts.inference_runtime import InferenceRuntime, RuntimeKey, SamplingRequest, default_runtime_device, download_hf_checkpoint, save_wav
 jobs = json.load(open(sys.argv[1], encoding="utf-8")); dev = default_runtime_device()
 rt = InferenceRuntime.from_key(RuntimeKey(checkpoint=download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small"), model_device=dev,
@@ -35,10 +36,10 @@ for j in jobs:
 
 def run_irodori(jobs, tmp):
     if not os.path.isdir(IRO): die(f"Irodori-TTS が無い: {IRO}（vm の setup.sh を実行）")
-    src = os.path.join(tmp, "runner.py"); open(src, "w", encoding="utf-8").write(RUNNER.replace("%IRO%", IRO))
+    src = os.path.join(tmp, "runner.py"); open(src, "w", encoding="utf-8").write(RUNNER.replace("%IRO%", json.dumps(IRO)))   # Python の文字列として埋める（Windows の \U などをエスケープと読ませない）
     jf = os.path.join(tmp, "jobs.json"); json.dump(jobs, open(jf, "w", encoding="utf-8"), ensure_ascii=False)
     env = dict(os.environ, HF_HUB_DISABLE_TELEMETRY="1")
-    r = subprocess.run(["uv", "run", "--no-sync", "python", src, jf], cwd=IRO, env=env, capture_output=True, text=True)
+    r = subprocess.run(["uv", "run", "--no-sync", "python", src, jf], cwd=IRO, env=dict(env, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8", errors="replace")
     for l in r.stdout.splitlines():
         if l.startswith("ok"): print(l)
     if r.returncode != 0: die("Irodori の実行に失敗:\n" + "\n".join(r.stderr.splitlines()[-12:]), 6)
@@ -49,7 +50,8 @@ def hear(path):
             "from ear import read_audio; from faster_whisper import WhisperModel;"
             "m=WhisperModel('medium',device='cpu',compute_type='int8');"
             f"s,_=m.transcribe(read_audio({path!r}),language='ja',vad_filter=False,condition_on_previous_text=False); print(''.join(x.text for x in s))")
-    out = subprocess.run([WS, "-c", code], capture_output=True, text=True).stdout.strip().splitlines()
+    out = subprocess.run([WS, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                         env=dict(os.environ, PYTHONUTF8="1")).stdout.strip().splitlines()
     return out[-1] if out else ""
 
 

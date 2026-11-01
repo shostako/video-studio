@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# このリポの skills/<名前> を ~/.claude/skills/<名前> から symlink で指す。何度実行してもよい。
+# このリポの skills/<名前> を ~/.claude/skills/<名前> から symlink（Windows の Git Bash ではジャンクション）で指す。何度実行してもよい。
 #   scripts/link-skills.sh           リンクを張る（済んでいれば何もしない）
 #   scripts/link-skills.sh --check   確かめるだけ（張っていない・ずれているものがあれば終了コード 1）
 # 置き換えてよいのは「リポに無い内容を持たない」ディレクトリだけ（同期で中身が消えた跡、リポと同じ中身）。
@@ -18,6 +18,13 @@ DEST="${VIDEO_STUDIO_SKILLS_DEST:-$HOME/.claude/skills}"
 BACKUP="$HOME/.local/share/video-studio/replaced/$(date +%Y%m%d-%H%M%S)"
 rc=0
 say() { printf '%s\n' "$*"; }
+# Windows（Git Bash）の ln -s は、既定では中身を写すだけで、リポを更新してもスキルが古いまま残る。
+# Windows ではジャンクション（フォルダのリンク。管理者権限も開発者モードも要らない）を張る
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WIN=1 ;; *) WIN=0 ;; esac
+link_dir() {   # link_dir <元> <置く所>
+  if [ "$WIN" = 1 ]; then MSYS2_ARG_CONV_EXCL='*' cmd /c mklink /J "$(cygpath -w "$2")" "$(cygpath -w "$1")" >/dev/null
+  else ln -s "$1" "$2"; fi
+}
 ng()  { say "NG   $*"; rc=1; }
 
 # worktree から張ると、worktree を片付けた時にリンクが切れる。本体のチェックアウトから張る
@@ -69,7 +76,7 @@ for src in "$REPO"/skills/*/; do
   fi
 
   tmp="$DEST/.$name.link.$$"
-  if ln -s "$src" "$tmp" && mv -T -- "$tmp" "$dst"; then say "張った $name -> $src"
+  if link_dir "$src" "$tmp" && mv -T -- "$tmp" "$dst"; then say "張った $name -> $src"
   else rm -f -- "$tmp"; ng "$name: リンクを張れなかった"; fi
 done
 
