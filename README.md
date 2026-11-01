@@ -6,7 +6,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 [![蘭の全身の型の解説動画。左の余白で蘭が身振りしながら話し、右の画面でカーソルと赤い枠が操作を示す](https://github.com/shostako/video-studio/releases/download/samples-2026-11-02/unit-howto-ran-full.jpg)](https://github.com/shostako/video-studio/releases/download/samples-2026-11-02/unit-howto-ran-full.mp4)
 
-サンプル: 単位換算の小さな Web アプリの解説（全身の型、49 秒、mp4 4.7MB。画像を押すと開く）。声は合成音声。
+サンプル: 単位換算の小さな Web アプリの解説（全身の型、49 秒、mp4 4.7MB。画像を押すと保存される）。声は合成音声。
 
 画面操作の解説動画は、次の 3 つの型から選ぶ（同じ撮影・台本・声から出せる）。
 
