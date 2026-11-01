@@ -28,7 +28,7 @@ CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 
 usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; }
 
-PROMPT=""; OUT=""; NAME=""; FORCE=0; REFS=()
+PROMPT=""; OUT=""; NAME=""; FORCE=0; EXPLICIT=0; REFS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -p|--prompt) PROMPT="${2-}"; shift 2 || { usage >&2; exit 2; } ;;
@@ -48,6 +48,7 @@ for r in ${REFS[@]+"${REFS[@]}"}; do
 done
 
 # 保存先を決める
+if [ -n "$OUT" ]; then EXPLICIT=1; fi
 if [ -z "$OUT" ]; then
   stamp="$(date +%Y%m%d-%H%M%S)"
   safe_name="$(printf '%s' "$NAME" | tr '/\\:*?"<>| ' '__________')"
@@ -112,25 +113,38 @@ if [ -z "$SRC" ]; then
   fail "ERROR(no-image): 画像が出てこなかった。Codex の最後の返事: ${msg:-（なし）}" 6
 fi
 
-# 中身の形式に合わせて拡張子をそろえる
-case "$(file -b --mime-type "$SRC")" in
-  image/png)  ext=png ;;
-  image/jpeg) ext=jpg ;;
-  image/webp) ext=webp ;;
+# 中身の形式を先頭のバイトで見る（file コマンドは最小の環境に無いことがある）
+magic="$(head -c 12 "$SRC" | od -An -tx1 | tr -d ' \n')"
+case "$magic" in
+  89504e470d0a1a0a*)      ext=png ;;
+  ffd8ff*)                ext=jpg ;;
+  52494646????????57454250*) ext=webp ;;
   *) fail "ERROR(no-image): 画像ではないファイルが出てきた: $SRC" 6 ;;
 esac
-OUT="${OUT%.*}.$ext"
+# -o で頼まれたパスは変えない（呼び出し側はそのパスを見る）。形式が違えば ffmpeg で変換する。
+# -o が無いときは中身の形式に拡張子をそろえる
+want="$ext"
+if [ "$EXPLICIT" -eq 1 ]; then
+  req="$(printf '%s' "${OUT##*.}" | tr '[:upper:]' '[:lower:]')"
+  case "$req" in png|webp) want="$req" ;; jpg|jpeg) want="jpg" ;; *) fail "ERROR: -o の拡張子は png・jpg・webp のどれか: $OUT" 2 ;; esac
+else
+  OUT="${OUT%.*}.$ext"
+fi
 
 # 上書きしない（--force の時だけ上書き）
 if [ -e "$OUT" ] && [ "$FORCE" -eq 0 ]; then
-  base="${OUT%.*}"; i=2
-  while [ -e "${base}-v${i}.${ext}" ]; do i=$((i+1)); done
-  OUT="${base}-v${i}.${ext}"
+  base="${OUT%.*}"; oext="${OUT##*.}"; i=2
+  while [ -e "${base}-v${i}.${oext}" ]; do i=$((i+1)); done
+  OUT="${base}-v${i}.${oext}"
 fi
 
 # 同じフォルダに一時名で書いてから rename する（途中で落ちても壊れたファイルを残さない）
-tmp="$(dirname "$OUT")/.img-tmp-$$.$ext"
-cp "$SRC" "$tmp" && mv -f "$tmp" "$OUT" || { rm -f "$tmp"; fail "ERROR: 保存に失敗した: $OUT" 2; }
+tmp="$(dirname "$OUT")/.img-tmp-$$.$want"
+if [ "$want" = "$ext" ]; then
+  cp "$SRC" "$tmp"
+else
+  ffmpeg -y -loglevel error -i "$SRC" -frames:v 1 -update 1 "$tmp" >> "$LOG" 2>&1
+fi && mv -f "$tmp" "$OUT" || { rm -f "$tmp"; fail "ERROR: 保存に失敗した: $OUT" 2; }
 
 rm -rf "$WORK"
 echo "$OUT"
