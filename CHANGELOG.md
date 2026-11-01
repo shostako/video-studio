@@ -4,6 +4,7 @@
 
 ## 未リリース
 
+- **キャラ作りの絵を `img` スキルなしで描ける**: 呼び出しの道具（Codex CLI と ChatGPT Plus で動く）を video-mascot に同梱した。別の画像生成に替えるなら `VM_IMG_CMD`。`img` スキルが入っている PC は今まで通り
 - **WSL を使わない Windows（Git Bash）で動く**: Windows 版の Claude Code と同じ Git Bash で、入れるところから蘭の解説動画を作るまで通した（#77）
   - `link-skills.sh` とパックの作り置きは、Windows ではジャンクション（管理者権限の要らないフォルダのリンク）を張る
   - venv の Python を `Scripts/python.exe` からも探す。Windows では uv で Python 3.12 の venv を作る

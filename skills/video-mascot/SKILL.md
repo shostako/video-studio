@@ -11,7 +11,7 @@ description: 喋るマスコットの動画を作る。キャラの絵・口と�
 |---|---|
 | 主動画（別に用意）、台詞、マスコットの絵1枚 | 主動画の上でマスコットが喋る動画（`out/mascot.webm` は背景透明の素材、重ねた完成品は `--out` で指定） |
 
-費用: **追加の支払いなし**。声 = 手元の Irodori-TTS、絵 = `/img`（ChatGPT Plus の Codex の枠。Codex の作業・燕と共有）。生成した声には、聞こえない電子透かしが自動で入る（消さない）。
+費用: **追加の支払いなし**。声 = 手元の Irodori-TTS、絵 = `/img`（ChatGPT Plus の Codex の枠。Codex の作業・燕と共有。`img` スキルが無ければ同梱の `scripts/img/img.sh`、別の道具は `VM_IMG_CMD`）。生成した声には、聞こえない電子透かしが自動で入る（消さない）。
 
 Codex の枠を使いたくないときは、絵を ChatGPT の通常 Chat 画面で描ける（opt-in、`vm poses ... --img chat` か `--img chat+codex`。準備と注意は `references/chatgpt-chat.md`）。
 

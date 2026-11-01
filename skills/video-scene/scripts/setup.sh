@@ -100,8 +100,7 @@ if "$(vpy)" "$(dirname "$0")/common.py" --check-key 2>/dev/null; then say "ok   
 
 # /img（flipbook の素材づくり。ChatGPT のサブスク枠）
 CX="$(command -v codex 2>/dev/null || true)"; ND="$(command -v node 2>/dev/null || true)"
-if [ -x "$HOME/.claude/skills/img/scripts/img.sh" ] && [ -n "$CX" ] && [ -n "$ND" ] && { [ "$WIN" = 1 ] || { [ "${CX#/mnt/}" = "$CX" ] && [ "${ND#/mnt/}" = "$ND" ]; }; }; then say "ok   /img（codex: $CX、node: $ND）"
-elif [ ! -x "$HOME/.claude/skills/img/scripts/img.sh" ]; then say "--   /img が使えない: img スキルが無い（flipbook の素材は別途用意）"
+if [ -n "$CX" ] && [ -n "$ND" ] && { [ "$WIN" = 1 ] || { [ "${CX#/mnt/}" = "$CX" ] && [ "${ND#/mnt/}" = "$ND" ]; }; }; then say "ok   /img（codex: $CX、node: $ND）"
 elif [ -n "$CX" ] && [ "$WIN" = 0 ]; then say "--   /img が使えない: codex か node が無いか Windows 側を指している（codex: $CX、node: ${ND:-無し}）。WSL の node（nvm など）の bin を PATH の先頭に足す"
 else say "--   /img が使えない（flipbook の素材は別途用意）"; fi
 

@@ -103,3 +103,33 @@ def test_chat_plus_codex_falls_back(env, monkeypatch, rc):
     assert who[:2] == ["chat", "chat"] and set(who[2:]) == {"codex"}     # 上限の後は全部 /img
     assert poses.FELL_BACK.is_set() and not poses.LIMIT.is_set()
     assert sum(l == "start chat p2.png" for l in log(env)) == 1          # 上限を返した枚は chat で何度も試さない
+
+
+def test_find_img_order(tmp_path):
+    skill = tmp_path / "skill.sh"; bundled = tmp_path / "bundled.sh"
+    find = lambda env: poses.find_img(env, str(skill), str(bundled))
+    assert find({}) == str(bundled)                                 # img スキルが無ければ同梱
+    skill.write_text("x")
+    assert find({}) == str(skill)                                   # 入っていれば今まで通り
+    assert find({"VM_IMG_CMD": "/opt/my-img"}) == "/opt/my-img"     # 環境変数が最優先
+    assert find({"VM_IMG_CMD": ""}) == str(skill)                   # 空は無いのと同じ
+
+
+def test_bundled_img_exists_and_has_no_user_path():
+    assert os.access(poses.BUNDLED_IMG, os.X_OK)
+    text = open(poses.BUNDLED_IMG, encoding="utf-8").read()
+    assert "/mnt/c/Users" not in text
+
+
+def test_tool_argv_runs_sh_through_path_bash_on_windows():
+    assert poses.tool_argv("/x/img.sh", nt=False) == ["/x/img.sh"]
+    assert poses.tool_argv("C:\\x\\my.exe", nt=True) == ["C:\\x\\my.exe"]
+    assert poses.tool_argv("C:\\x\\img.sh", nt=True, which=lambda n: "C:\\Git\\bin\\bash.exe") == ["C:\\Git\\bin\\bash.exe", "C:\\x\\img.sh"]
+    with pytest.raises(SystemExit):
+        poses.tool_argv("C:\\x\\img.sh", nt=True, which=lambda n: None)
+
+
+def test_missing_tool_stops_before_drawing(env, monkeypatch, capsys):
+    monkeypatch.setattr(poses, "IMG", str(env / "none.sh"))
+    assert not poses.run_jobs(jobs(env, 1), 1, False)
+    assert "絵を描く道具が無い" in capsys.readouterr().out

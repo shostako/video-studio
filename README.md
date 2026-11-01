@@ -45,7 +45,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 - Node.js 22 以上（字幕・吹き出しの重ねに使う HyperFrames の要件。nvm などで入れる）
 - `uv`（音声合成 Irodori-TTS を入れて動かすのに使う）: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - スキルの Python（3.12 以上）と音声合成 Irodori-TTS: 上がそろっていれば `setup.sh` が入れる（Irodori-TTS は数 GB。GPU が無ければ CPU 版）
-- 絵を描くとき（キャラ作り）: ChatGPT Plus（Codex の画像生成）と、それを呼ぶ `img` スキル（`~/.claude/skills/img`）。`img` スキルはまだこのリポに入っていない（作者の手元にだけある）。蘭・凜のパックで動画を作るだけなら要らない
+- 絵を描くとき（キャラ作り）: Codex CLI と ChatGPT Plus（Codex の画像生成）。呼び出しの道具はスキルに同梱している（`skills/video-mascot/scripts/img/img.sh`）。別の画像生成に替えるなら `VM_IMG_CMD`（`references/new-character.md`）。蘭・凜のパックで動画を作るだけなら要らない
 - Web アプリの画面を撮るとき: Playwright と Chromium（video-scene の `setup.sh` が venv に入れる。ブラウザの部品が足りないと出たら、その行のとおり `sudo ... playwright install-deps chromium`）
 - Excel の画面を撮るとき: Windows の Excel と、Windows 側の Python（3.12 以上）に `pip install pywin32 pillow`
 - 姿勢の切り替えを新しく作るとき（キャラ作り）: NVIDIA の GPU（8GB 以上）、ComfyUI portable と Wan2.2 I2V・Lightning の LoRA、RIFE（rife-ncnn-vulkan）。パックの作り置きを使うだけなら要らない
@@ -61,7 +61,7 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 ~/.claude/skills/video-mascot/scripts/setup.sh                   # 音声合成とマスコットのパック（蘭・凜）を入れる
 ```
 
-場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）。
+場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）、`VM_IMG_CMD`（絵を描く道具）。
 
 ### WSL を使わない Windows
 

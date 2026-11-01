@@ -10,12 +10,30 @@
               chat+codex は chat で描き、Chat の上限かログイン切れで止まったら残りを /img に切り替える。
               qwen は新PC の ComfyUI の Qwen-Image-Edit-2511 で1枚ずつ（qwenimg/qwenimg.py。手のアップ向き。Codex の枠を使わない））
 使用量の上限（img の終了コード 4）が出たら止める。止まったら時間をおいて同じコマンドをもう一度（描けた分は飛ばす）。"""
-import os, subprocess, sys, threading, time
+import os, shutil, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, die, gaze_keys, pose_view
 
-IMG = os.path.expanduser("~/.claude/skills/img/scripts/img.sh")
+BUNDLED_IMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img", "img.sh")
+
+
+def find_img(env=os.environ, skill=os.path.expanduser("~/.claude/skills/img/scripts/img.sh"), bundled=BUNDLED_IMG):
+    """絵を描く道具: VM_IMG_CMD → img スキル（入っていれば今まで通り）→ リポに同梱の img.sh。"""
+    if env.get("VM_IMG_CMD"): return env["VM_IMG_CMD"]
+    return skill if os.path.isfile(skill) else bundled
+
+
+def tool_argv(tool, nt=os.name == "nt", which=shutil.which):
+    """Windows の Python は .sh を直に起動できない。名前だけの bash は CreateProcess が System32（WSL の bash）を先に拾うので、PATH で引いた絶対パスで呼ぶ。"""
+    if nt and tool.lower().endswith(".sh"):
+        bash = which("bash")
+        if not bash: die("bash が見つからない（Windows では Git Bash から動かす）")
+        return [bash, tool]
+    return [tool]
+
+
+IMG = find_img()
 CHATIMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chatimg", "chatimg.sh")
 QWENIMG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qwenimg", "qwenimg.sh")
 BACKENDS = ("codex", "chat", "chat+codex", "qwen")
@@ -213,6 +231,8 @@ def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
     if backend == "qwen":                          # Qwen の参照は3枚まで（mascot.png と手本2つ）
         many = [os.path.basename(j[0]) for j in todo if len(j[2]) > 3]
         if many: print(f"--img qwen では参照が3枚までなので描けない（refs を2つまでにする）: {many}", flush=True); return False
+    if backend in ("codex", "chat+codex") and not os.path.isfile(IMG):
+        print(f"絵を描く道具が無い: {IMG}（VM_IMG_CMD を確かめる）", flush=True); return False
     stop = threading.Event(); lock = threading.Lock(); done = [0]
     def run(job):
         out, prompt, refs = job
@@ -221,7 +241,7 @@ def run_jobs(jobs, nworkers, dry, only=None, backend="codex"):
         tries = 0
         while tries < 2:
             tool, _ = img_tool(backend, FELL_BACK.is_set())
-            cmd = [tool, "-p", prompt] + sum([["-r", r] for r in refs], []) + ["-o", out]
+            cmd = tool_argv(tool) + ["-p", prompt] + sum([["-r", r] for r in refs], []) + ["-o", out]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=700)
             if r.returncode == 0 and os.path.exists(out): break
             if tool == CHATIMG and chat_should_fall_back(backend, r.returncode):

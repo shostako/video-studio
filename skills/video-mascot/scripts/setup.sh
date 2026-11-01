@@ -28,9 +28,10 @@ else
 fi
 # /img（img スキル）は codex（node）で動く。WSL で Windows 側の codex・node（/mnt/c/...）を拾うと、絵を出さずに落ちる（bash -lc で PATH の順が変わる時など）
 # 結果は1行にまとめる（「ok img スキル」と NG が並んで紛らわしかった）
-why=""; [ -x "$HOME/.claude/skills/img/scripts/img.sh" ] || why="img スキルが無い"
+# VM_IMG_CMD で別の道具を指しているときは、その道具があるかだけを見る（codex は要らない）
+why=""; [ -z "${VM_IMG_CMD:-}" ] || [ -x "$VM_IMG_CMD" ] || why="VM_IMG_CMD の道具が無い（$VM_IMG_CMD）"
 where=""
-for t in codex node; do
+for t in $([ -n "${VM_IMG_CMD:-}" ] || echo codex node); do
   p_="$(command -v "$t" 2>/dev/null || true)"; where="$where $t: ${p_:-無し}"
   case "$p_" in
     "") why="${why:+$why、}$t が無い" ;;
