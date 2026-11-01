@@ -372,6 +372,24 @@ def resolve_events(events, home, starts, durs, ibdur, hira_stream, words_hira, l
     return out
 
 
+POSE_SAME = {"point": "point_r", "point_r": "point"}   # キャラで名前が違うだけの同じ身振り（画面の右を指す。蘭 point、凜 point_r）
+
+
+def resolve_pose_names(events, poses, log=None):
+    """events の姿勢を、このキャラにある名前へそろえる。同じ身振りの別名だけを読み替え、別の姿勢へは置き換えない。
+    このキャラに無い姿勢は、使える名前を出して止める。元の events は書き換えない。"""
+    out = []; miss = []
+    for e in events:
+        p = e.get("pose"); same = POSE_SAME.get(p)
+        if p in poses: out.append(e)
+        elif same in poses:
+            out.append({**e, "pose": same})
+            if log: log(f"姿勢 {p} はこのキャラに無いので、同じ身振りの {same} を使う")
+        else: miss.append(p)
+    if miss: die(f"events の姿勢がこのキャラに無い: {sorted(set(map(str, miss)))}。使える姿勢: {' '.join(sorted(poses))}")
+    return out
+
+
 def _resolve(events, home, starts, durs, ibdur, hira_stream, words_hira, log, dur_of, route, off):
     """resolve_events の1回分。[(開始秒, 前, 次, via, home 経由の (秒, hold, 秒) か None, events の何番目か,
     経由しない時の切り替えの秒), ...]（開始の早い順）。"""
