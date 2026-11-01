@@ -316,9 +316,10 @@ def test_pack_with_cache_holds_webp_without_raw_and_new_links_it(tmp_path):
     assert (nw / "ib_wan").is_symlink() and os.path.realpath(nw / "ib_wan") == os.path.realpath(pk / "ib_wan")
     shutil.rmtree(nw / "voice"); shutil.copytree(p / "voice", nw / "voice")
     c = cfg(nw); c["voice"] = cfg(p)["voice"]; c["events"] = [{"at": 0.6, "pose": "point"}, {"at": 2.0, "pose": "home"}]; put(nw, c)
-    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only", env=ffmpeg_env(tmp_path))
+    fenv = ffmpeg_env(tmp_path)
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only", env=fenv)
     assert r.returncode == 0 and "Wan で新しく作る組: 0" in r.stderr, r.stderr[-1500:]
-    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--strict", env=ffmpeg_env(tmp_path))   # ComfyUI は無いので、作ろうとすれば落ちる
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--strict", env=fenv)   # ComfyUI は無いので、作ろうとすれば落ちる
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     own = tmp_path / "video_own"
     assert run("pack.py", pk, "--new", own, "--own-cache").returncode == 0
