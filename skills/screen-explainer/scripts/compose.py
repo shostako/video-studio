@@ -393,7 +393,7 @@ if A.preview:
 t_to = A.t_to if A.t_to is not None else END
 cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
        "-ss", str(A.t_from), "-t", str(t_to - A.t_from), "-i", os.path.join(A.voice, "voice", "master.wav"),
-       "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest",
+       "-af", "apad", "-t", f"{t_to - A.t_from:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest",   # 声が絵より短くても、末尾を無音で伸ばして絵の長さ（-t）で終える（声の終わりで止まって書き込みが落ちていた。-shortest だけでは古い ffmpeg で無音を書き続けた）
        "-f", "mp4", A.out + ".part"]                                  # 書き終えてから名前を付け替える（途中で止まっても前の動画を壊さない）
 pr = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 for n in range(int(A.t_from * FPS), int(t_to * FPS)):

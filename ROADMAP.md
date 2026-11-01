@@ -13,12 +13,10 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 
 解説動画の 3 つの型（2026-11-01 ユーザーと決めた。DECISIONS.md の同じ日）を、新PC でも旧PC でも、パックのマスコットの動きを組み合わせるだけで作れるようにする。上から順に:
 
-1. パックを作り直す: 凜・蘭に、全姿勢 ⇄ home の切り替え（Wan）と頭の向きの列（RIFE）を作り置きで入れ、`via_home` でつなぐ。Wan も RIFE も無い PC で書き出せること。作り置きが足りなければ下見で「GPU が要る」と止める。作り置きの保存の形式を詰める（凜の一部の組だけで 2.6GB ある）
-2. 型を指定すれば、声・書き出し・重ね・検査まで通す入口のコマンドを作る（撮影と scenes.py と台本と、型・キャラ・倍率を渡す）
-3. 手元の PC だけの決め打ちを外す: `~/.local/share/video-scene` を環境変数で変えられることを全コマンドで揃える、RIFE・ComfyUI の Windows のパスを config か環境変数に出す。無いときは分かる言葉で止める
-4. スキルの入口（SKILL.md）を「キャラ作り」と「動画作り」の 2 段に分ける
-5. 公開物から A の元の呼び名を外し、蘭・凜にする（過去の logs・DECISIONS の前の節・handoff は書き換えない）
-6. README を利用者向けに書き直す（入れ方、3 つの型、パックの取り方、許諾、Veo は別料金、Irodori-TTS の倫理の制限）
+1. 蘭のパックを凜と同じ形にする（凜は済み: `~/.local/share/video-scene/packs/rin`、Wan 43 組・RIFE 7、Wan も RIFE も無い条件で cad を最後まで書き出せた）。蘭は今 RIFE の中割りで動くので、Wan の切り替えを全姿勢 ⇄ home で作るか（`interp.engine: "wan"` を蘭の既定にするか。DECISIONS の未決）を決めてから
+2. スキルの入口（SKILL.md）を「キャラ作り」と「動画作り」の 2 段に分ける
+3. 公開物から A の元の呼び名を外し、蘭・凜にする（過去の logs・DECISIONS の前の節・handoff は書き換えない）
+4. README を利用者向けに書き直す（入れ方、3 つの型、パックの取り方、許諾、Veo は別料金、Irodori-TTS の倫理の制限）
 
 ## 手元待ち（クラウドでは動かない。スレッドは手を出さず、必要なら `DECISIONS.md` の「未決」に書く）
 
@@ -44,6 +42,11 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 姿勢の切り替えを Wan で動かす（`interp.engine: "wan"`）を、実際の作業フォルダで `vm render` から通す（新PC。これまでは research の `render_wan.py` で作った）。止めて話す所・切り替え・口の重ね・足元が、research 版と同じに出るか。旧PC の「Claude Code デスクトップの使い方」のマスコット部分の作り直しで使う
 
 ## 済んだこと
+
+- 手元の PC だけの決め打ちを外す（2026-11-01、#62）: RIFE の exe・一時フォルダ・ComfyUI の場所を環境変数（VM_RIFE_EXE・VM_RIFE_TMP・VM_COMFY_ROOT・VM_WIN_HOME）で、Windows のユーザーのフォルダは cmd.exe で調べる（CP932 も読む）。voice.py は VIDEO_SCENE_HOME、video-scene の出力先も同じ調べ方
+
+- 入口のコマンド `vm explain`（2026-11-01）: 型（cursor・wipe・full）を選ぶと、screen-explainer の組み立て → マスコットの下見・書き出し → 余白に置く → 身振りの測定まで回す。screen-explainer の組み立ては声が絵より短くても落ちない（apad）
+- 凜のパック（2026-11-01）: `vm pack rin --from b-cad --with-cache`（396MB）。Wan も RIFE も呼べない条件で cad を最後まで書き出し、63 件全部動いた
 
 - パックに作り置きを入れる（2026-11-01）: `vm pack --with-cache`（使える組だけを WebP で、元のコマは外し raw_stamp は残し、`.readonly`）、`vm pack --new` は作り置きをパックへのリンクに（`--own-cache` で写す）。頭の動きの予定（head.events）はパックに持ってこない
 
