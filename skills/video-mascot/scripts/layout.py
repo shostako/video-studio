@@ -211,6 +211,8 @@ def main():
         if len(box) != 3 or box[2] <= 0: die("--wipe-box は x,y,辺")
         sw = sh = opt("--wipe-size", min(400, (margin - 80) // 2 * 2), int)
         if sw < 120: die(f"余白が狭すぎてワイプを置けない（直径 {sw}px）。--scale を下げるか --wipe-size を渡す")
+        lim = min(margin - 2 * 30, H - 48 - 300)  # 縁と影（26px）が余白の中、上は見出しの区画（〜300px）より下
+        if sw > lim: die(f"--wipe-size {sw} が余白 {margin}px に入らない（{lim} まで）")
         x, y = round(margin / 2 - sw / 2), H - 48 - sw; fig_top = y
         print(f"wipe: 切り抜き {box[0]},{box[1]} 辺 {box[2]} → 直径 {sw} at ({x},{y})", flush=True)
     else:

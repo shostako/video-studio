@@ -221,3 +221,13 @@ def test_layout_wipe_puts_round_face_bottom_left(tmp_path, env):
     assert f[632 + 30, 48 + 30].min() > 200                                        # 丸の外の角は余白の地のまま（四角く出ない）
     r = run_layout(root, env, "--place-only", "--style", "wipe", "--margin", "150")
     assert r.returncode != 0 and "ワイプを置けない" in r.stderr
+
+
+
+def test_layout_rejects_wipe_size_larger_than_margin(tmp_path, env):
+    """--wipe-size が余白に入らなければ書き出す前に止める（Codex の指摘。負の x で NumPy が落ちていた）。"""
+    root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
+    r = run_layout(root, env, "--out", str(tmp_path / "o.mp4"), "--style", "wipe", "--margin", "384", "--wipe-size", "400")
+    assert r.returncode != 0 and "入らない" in r.stderr and not (tmp_path / "o.mp4").exists()
+    r = run_layout(root, env, "--place-only", "--style", "wipe", "--margin", "384", "--wipe-size", "320")
+    assert r.returncode == 0 and "CROP 32,712,320,320" in r.stdout
