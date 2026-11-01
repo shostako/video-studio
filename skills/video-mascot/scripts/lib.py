@@ -43,6 +43,36 @@ class Proj:
         return None
 
 
+def file_sig(paths):
+    """作り置きの判定に使うファイルの中身の印 [[名前, 大きさ, md5], ...]。更新時刻を使わないので、パックを zip で
+    別の PC に運んでも、元の絵が同じなら作り置きをそのまま使える。"""
+    import hashlib
+    out = []
+    for p in paths:
+        h = hashlib.md5()
+        with open(p, "rb") as f:
+            for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+        out.append([os.path.basename(p), os.path.getsize(p), h.hexdigest()])
+    return out
+
+
+def file_sig_mtime(paths):
+    """前の形の印 [[名前, 更新時刻, 大きさ], ...]。前に作った作り置きを捨てずに、中身の印へ書き換えるために比べる。"""
+    return [[os.path.basename(p), os.path.getmtime(p), os.path.getsize(p)] for p in paths]
+
+
+def stamp_ok(path, make):
+    """作り置きの stamp.json が今の元の絵と設定に合うか。make(sig) は印の関数を受けて stamp の dict を返す。
+    中身の印で合えば真。前の形（更新時刻）で合えば、中身の印に書き換えて真。どちらでもなければ偽。"""
+    try: old = json.load(open(path))
+    except (OSError, ValueError): return False
+    new = json.loads(json.dumps(make(file_sig)))
+    if old == new: return True
+    if old == json.loads(json.dumps(make(file_sig_mtime))):
+        json.dump(new, open(path, "w")); return True
+    return False
+
+
 def die(msg, code=2):
     print("ERROR:", msg, file=sys.stderr); sys.exit(code)
 

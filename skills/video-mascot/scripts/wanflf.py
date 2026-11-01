@@ -12,7 +12,7 @@ import glob, json, os, shutil, subprocess
 import cv2
 import numpy as np
 
-from lib import die, edge_weight, motion_positions, wan_cut
+from lib import die, edge_weight, motion_positions, wan_cut, file_sig, stamp_ok
 
 _GEN_KEYS = ("width", "height", "length", "seed", "style", "head_poses", "unet_high", "unet_low", "lora_high", "lora_low", "clip", "vae", "clip_vision")
 _POST_KEYS = ("rife_mult", "cut_tol", "edge", "blink_tol")
@@ -24,7 +24,7 @@ def _winpath(p):
 
 
 def _file_stamp(paths):
-    return [[os.path.basename(p), os.path.getmtime(p), os.path.getsize(p)] for p in paths]
+    return file_sig(paths)
 
 
 def _read_stamp(path):
@@ -119,13 +119,13 @@ def eye_patches(P, pose, size):
     return g(base), g(closed), (Y0, Y1)
 
 
-def blink_stamp(P, poses):
+def blink_stamp(P, poses, sig=None):
     """瞬きの照合に使うもの（目の部品・置き場所・目の範囲）。変われば書き出しに渡す列を作り直す（Wan の生成はやり直さない）。"""
-    out = []
+    sig = sig or file_sig; out = []
     for p in poses:
         fs = [P.p(f"parts_{p}", n) for n in ("e2.png", "parts.json")]
         fc = P.cfg["poses"].get(p, {}).get("face"); er = (fc if isinstance(fc, dict) else P.cfg.get("face", {})).get("eye_roi")
-        out.append([p, _file_stamp([f for f in fs if os.path.exists(f)]), er])
+        out.append([p, sig([f for f in fs if os.path.exists(f)]), er])
     return out
 
 
@@ -190,16 +190,18 @@ def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
     wan = icfg["wan"]; gen = gen or generate; rife = rife or rife_frames
     base = P.p("ib_wan", f"{a}__{b}"); raw = os.path.join(base, "raw")
     src = [P.pose_path(a), P.pose_path(b)]
-    st_gen = {"src": _file_stamp(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "prompt": prompt_of(P.cfg, wan, a, b)}   # 描かせる文そのもの（キャラの説明・姿勢の desc・head_poses が変われば作り直す）
-    if _read_stamp(os.path.join(base, "raw_stamp.json")) != json.loads(json.dumps(st_gen)) or not glob.glob(os.path.join(raw, "w*.png")):
+    mk_gen = lambda sig: {"src": sig(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "prompt": prompt_of(P.cfg, wan, a, b)}   # 描かせる文そのもの（キャラの説明・姿勢の desc・head_poses が変われば作り直す）
+    st_gen = mk_gen(file_sig)
+    if not glob.glob(os.path.join(raw, "w*.png")) or not stamp_ok(os.path.join(base, "raw_stamp.json"), mk_gen):
         gen(P, a, b, wan, raw, log=log)
         os.makedirs(base, exist_ok=True); json.dump(st_gen, open(os.path.join(base, "raw_stamp.json"), "w"))
     out_dir = os.path.join(base, f"n{n}")
     want = [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)]
     rp = raw_frames(raw)
-    st = {"raw": _file_stamp(rp), "src": _file_stamp(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
-          "blink": blink_stamp(P, (a, b)) if wan["blink_tol"] is not None else None}
-    if _read_stamp(os.path.join(out_dir, "stamp.json")) == json.loads(json.dumps(st)) and all(os.path.exists(p) for p in want): return want
+    mk = lambda sig: {"raw": sig(rp), "src": sig(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
+                      "blink": blink_stamp(P, (a, b), sig) if wan["blink_tol"] is not None else None}
+    st = mk(file_sig)
+    if all(os.path.exists(p) for p in want) and stamp_ok(os.path.join(out_dir, "stamp.json"), mk): return want
     img_a, img_b = P.read_pose(a), P.read_pose(b)
     H, W = img_a.shape[:2]
     if img_b.shape != img_a.shape: img_b = cv2.resize(img_b, (W, H), interpolation=cv2.INTER_AREA)

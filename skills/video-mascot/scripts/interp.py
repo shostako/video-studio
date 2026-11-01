@@ -7,7 +7,7 @@ import json, os, shutil, subprocess
 
 import cv2
 
-from lib import die
+from lib import die, file_sig, stamp_ok
 
 
 def _winpath(p):
@@ -15,9 +15,8 @@ def _winpath(p):
     return r.stdout.strip() if r.returncode == 0 else p
 
 
-def _stamp(srcs, cfg):
-    return {"src": [[os.path.basename(p), os.path.getmtime(p), os.path.getsize(p)] for p in srcs],
-            "mult": cfg["mult"], "model": cfg["model"]}
+def _stamp(srcs, cfg, sig=None):
+    return {"src": (sig or file_sig)(srcs), "mult": cfg["mult"], "model": cfg["model"]}
 
 
 def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
@@ -30,10 +29,7 @@ def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
     out = proj.p("ib_interp", f"{pa}_{pb}_{'direct_' if direct else ''}x{mult}_{cfg['model']}")
     want = [os.path.join(out, f"f{j}.png") for j in range(1, (len(srcs) - 1) * mult)]
     st = _stamp(srcs, cfg); sf = os.path.join(out, "stamp.json")
-    if os.path.exists(sf) and all(os.path.exists(p) for p in want):
-        try:
-            if json.load(open(sf)) == json.loads(json.dumps(st)): return want
-        except (OSError, ValueError): pass
+    if all(os.path.exists(p) for p in want) and stamp_ok(sf, lambda sig: _stamp(srcs, cfg, sig)): return want
     if not os.path.exists(cfg["exe"]): die(f"RIFE が無い: {cfg['exe']}（config.interp.exe を直すか、interp を外す）")
     imgs = [cv2.imread(p) for p in srcs]; h, w = imgs[0].shape[:2]
     imgs = [im if im.shape[:2] == (h, w) else cv2.resize(im, (w, h), interpolation=cv2.INTER_AREA) for im in imgs]
