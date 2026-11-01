@@ -31,7 +31,7 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 ### 動画作り（ふだん。パックのあるキャラで）
 
-0. **作業フォルダをパックから作る**: パックが手元に無ければ `vm packs fetch`（setup.sh も取る。リポの `data/packs.json` の版）。`vm pack ~/.local/share/video-scene/packs/<rin|ran> --new ~/.local/share/video-scene/work/<名前>`（作り置きはパックへのリンク。台本・声・動きは空）。使える姿勢の名前は作業フォルダの `config.json` の `poses`。パックに無い身振りを使うと、下見の「Wan で新しく作る組」「RIFE で新しく作る列」に出て止まる（キャラ作りで足す）
+0. **作業フォルダをパックから作る**: パックが手元に無ければ `vm packs fetch`（setup.sh も取る。リポの `data/packs.json` の版）。`vm pack <rin|ran> --new ~/.local/share/video-scene/work/<名前>`（名前だけなら置き場 `~/.local/share/video-scene/packs/` の中を使う。パスも書ける。作り置きはパックへのリンク。台本・声・動きは空）。使える姿勢の名前は作業フォルダの `config.json` の `poses`。パックに無い身振りを使うと、下見の「Wan で新しく作る組」「RIFE で新しく作る列」に出て止まる（キャラ作りで足す）
 1. **台本を決める**: 主動画の流れに合わせて、1行 6〜9 秒に区切る。**どの言葉で姿勢を変えるか**を決める（例:「そこで…」で右を指す、「バネが縮む」で合掌）。各行を場面の型（導入・図を示す・問い・列挙など）に分けてから身振りを選び、1本の中で手の形と意味を固定する（references/roles.md、型の一覧は `vm gestures --roles`）。専門用語や読みが割れる漢字は、`say`（合成に渡す文）にひらがなを混ぜる。
 2. **声を決める**: `config.voice.candidates` に声の説明文を3〜6通り書き、`vm voice <作業フォルダ> candidates` → `voice/cand/聞き比べ.wav` をユーザーに聞いてもらう。決まった声の1本を `voice.ref` に指定して `vm voice <作業フォルダ> synth` で全行を同じ声で作る。**出力の「台本との一致」が 0.9 未満の行は読み違い**なので、`say` を直して作り直す。声を決める前に絵へ進まない（時刻が全部ここで決まる）。
 3. **姿勢の切り替えを書く**: `config.events` に、台詞のキーワード（ひらがな）か語で切り替え時刻を指定。`vm render <作業フォルダ> --mode white --from 秒 --to 秒` で姿勢の移り変わりが多い範囲だけ書き出し、`vm frames`（video-scene）で並べて確かめる。標準エラーに、キーワードが見つかった時刻（声／語／推定）が出る。**推定になった所は、語に替える**（references/lessons.md）。

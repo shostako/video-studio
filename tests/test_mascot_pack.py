@@ -440,3 +440,15 @@ def test_concurrent_new_keeps_every_registration(tmp_path):
         rs = list(ex.map(lambda d: run("pack.py", pk, "--new", d), dsts))
     assert all(r.returncode == 0 for r in rs)
     assert sorted(json.loads((tmp_path / "pack_workspaces.json").read_text())[str(pk)]) == sorted(map(str, dsts))
+
+
+def test_new_accepts_bare_pack_name(tmp_path, monkeypatch):
+    """vm pack ran --new …: 名前だけなら <VIDEO_SCENE_HOME>/packs/<名前> を使う（旧PC での指摘）。今のフォルダにあればそちら。"""
+    a, b = two(tmp_path); home = tmp_path / "vs"; pk = home / "packs" / "ran"
+    assert run("pack.py", pk, "--from", a).returncode == 0
+    e = dict(os.environ, VIDEO_SCENE_HOME=str(home)); monkeypatch.chdir(tmp_path)
+    r = run("pack.py", "ran", "--new", tmp_path / "v1", env=e)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert cfg(tmp_path / "v1")["from_pack"] == str(pk)
+    r = run("pack.py", "nope", "--new", tmp_path / "v2", env=e)
+    assert r.returncode != 0 and str(home / "packs" / "nope") in r.stderr

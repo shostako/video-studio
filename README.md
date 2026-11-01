@@ -52,7 +52,7 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 ## 作り方の流れ（マスコット付きの解説動画）
 
 ```bash
-vm pack ~/.local/share/video-scene/packs/rin --new ~/.local/share/video-scene/work/my-howto   # パックから作業フォルダ
+vm pack rin --new ~/.local/share/video-scene/work/my-howto      # パックから作業フォルダ（名前だけなら ~/.local/share/video-scene/packs/ の中）
 # config.json に声の設定と台詞、身振りを書く（パックには声の設定が入っていない）。例:
 #   "voice": {"caption": "落ち着いた若い女性の声で、はきはきと説明する", "seed": 2024, "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
 #   "events": [{"line": 1, "kw": "せつめい", "pose": "open"}, ...]   （行 1 の声の「せつめい」の直前に open へ。書き方は skills/video-mascot/references/config-spec.md）
