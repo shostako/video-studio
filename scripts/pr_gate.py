@@ -11,6 +11,9 @@ import sys
 
 MARK = "codex-pull-request-review-summary"
 STATE_RE = re.compile(r"<!--\s*codex-review-state:v1\s*(\{.*?\})\s*-->", re.S)
+# 指摘が無いとき、Codex は要約の状態を running のまま、別のコメントで結果を返すことがある（2026-11-01 の #70）
+CLEAN_RE = re.compile(r"Codex Review:\s*Didn't find any major issues", re.I)
+REVIEWED_RE = re.compile(r"Reviewed commit:\**\s*`([0-9a-fA-F]{7,40})`")
 
 
 def codex_summaries(comments):
@@ -38,6 +41,8 @@ def evaluate(summaries, head_sha, unresolved_threads=0):
     bodies = [b for b in summaries if MARK in b]
     if not bodies:
         return 2, "Codex の要約コメントがまだ無い"
+    last = max(i for i, b in enumerate(summaries) if MARK in b)
+    later = summaries[last + 1:]                     # 最後の要約より後の、Codex のボットのほかのコメント
     m = STATE_RE.search(bodies[-1])
     if not m:
         return 2, "Codex の要約に状態（codex-review-state）が無い"
@@ -45,6 +50,15 @@ def evaluate(summaries, head_sha, unresolved_threads=0):
         cr = json.loads(m.group(1)).get("code_review") or {}
     except json.JSONDecodeError:
         return 1, "Codex の状態が読めない"
+    if cr.get("status") == "running" and (cr.get("commit_sha") or "").lower() == head_sha.lower():
+        # 要約が先頭コミット（SHA の全体）を running と書いたまま、その後に「大きな問題は見つからない」と、先頭の接頭辞の
+        # 「Reviewed commit」を返していれば、完了とみなす（指摘があればスレッドが残るので下で止まる）
+        for b in later:
+            r = REVIEWED_RE.search(b)
+            if CLEAN_RE.search(b) and r and head_sha.lower().startswith(r.group(1).lower()):
+                if unresolved_threads > 0:
+                    return 1, f"未解決のレビュースレッドが {unresolved_threads} 件ある。直して返信し、解決済みにする"
+                return 0, "Codex のレビューは先頭コミットに対して完了し（要約は running のまま、結果は別のコメントで「指摘なし」）、未解決のスレッドは無い"
     if cr.get("status") != "completed":
         return 2, f"Codex のレビューが終わっていない（status={cr.get('status')}）"
     sha = cr.get("commit_sha") or ""

@@ -75,3 +75,24 @@ def test_same_prefix_different_commit_waits():
     # 先頭7文字だけ同じ別のコミットを、レビュー済みとして通さない
     forged_head = HEAD[:7] + "f" * 33
     assert pr_gate.evaluate([body()], forged_head)[0] == 2
+
+
+
+CLEAN = "Codex Review: Didn't find any major issues. Bravo.\n\n**Reviewed commit:** `{}`"
+
+
+def test_running_summary_with_later_clean_comment_on_head_passes():
+    """要約は running のまま、別のコメントで「指摘なし」と先頭の接頭辞を返したら完了とみなす（#70 で起きた）。"""
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD)[0] == 0
+
+
+def test_clean_comment_needs_running_summary_on_full_head_sha():
+    other = HEAD[:10] + "f" * 30                                     # 接頭辞は同じでも、要約の SHA の全体が先頭と違えば通さない
+    assert pr_gate.evaluate([body(status="running", sha=other, unresolved=None), CLEAN.format(HEAD[:10])], HEAD)[0] == 2
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format("3740a55aaa")], HEAD)[0] == 2   # 別のコミットへの結果
+    assert pr_gate.evaluate([CLEAN.format(HEAD[:10]), body(status="running", unresolved=None)], HEAD)[0] == 2      # 要約より前の結果は使わない
+    assert pr_gate.evaluate([body(status="running", unresolved=None), "Codex Review: found issues\n**Reviewed commit:** `%s`" % HEAD[:10]], HEAD)[0] == 2
+
+
+def test_clean_comment_still_blocked_by_unresolved_threads():
+    assert pr_gate.evaluate([body(status="running", unresolved=None), CLEAN.format(HEAD[:10])], HEAD, unresolved_threads=1)[0] == 1
