@@ -13,9 +13,8 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 
 解説動画の 3 つの型（2026-11-01 ユーザーと決めた。DECISIONS.md の同じ日）を、新PC でも旧PC でも、パックのマスコットの動きを組み合わせるだけで作れるようにする。上から順に:
 
-1. 蘭のパックを凜と同じ形にする（凜は済み: `~/.local/share/video-scene/packs/rin`、Wan 43 組・RIFE 7、Wan も RIFE も無い条件で cad を最後まで書き出せた）。蘭は今 RIFE の中割りで動くので、Wan の切り替えを全姿勢 ⇄ home で作るか（`interp.engine: "wan"` を蘭の既定にするか。DECISIONS の未決）を決めてから
-2. 公開物から A の元の呼び名を外し、蘭・凜にする（過去の logs・DECISIONS の前の節・handoff は書き換えない）
-3. README を利用者向けに書き直す（入れ方、3 つの型、パックの取り方、許諾、Veo は別料金、Irodori-TTS の倫理の制限）
+1. 蘭のパックを凜と同じ形にする（2026-11-01 ユーザー決定: Wan で動かす。新PC で全姿勢 ⇄ home の 52 組を作り、`vm pack ran --with-cache`。凜は済み: `~/.local/share/video-scene/packs/rin`）。そのあと 2 つのパックを旧PC へ運んで、3 つの型を 1 本ずつ作る（完成の判定）
+2. README を利用者向けに書き直す（入れ方、3 つの型、パックの取り方、許諾、Veo は別料金、Irodori-TTS の倫理の制限）
 
 ## 手元待ち（クラウドでは動かない。スレッドは手を出さず、必要なら `DECISIONS.md` の「未決」に書く）
 
@@ -41,6 +40,8 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 姿勢の切り替えを Wan で動かす（`interp.engine: "wan"`）を、実際の作業フォルダで `vm render` から通す（新PC。これまでは research の `render_wan.py` で作った）。止めて話す所・切り替え・口の重ね・足元が、research 版と同じに出るか。旧PC の「Claude Code デスクトップの使い方」のマスコット部分の作り直しで使う
 
 ## 済んだこと
+
+- 公開物から元の呼び名を外し蘭に（2026-11-01、#63）: 例の台本・説明書・ROADMAP。蘭も Wan に揃える決定を DECISIONS に
 
 - スキルの入口を 2 段に（2026-11-01）: video-mascot の SKILL.md を「動画作り（ふだん。パックから）」と「キャラ作り（新PC。姿勢・部品・切り替えの作り置き・パック）」に分け、description を 3 つの型・パック・基準キャラに合わせた
 
@@ -70,7 +71,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 身振りの役割の体系化（2026-10-29）: 場面の型 11 種を辞書の `roles` に、使い方の決まり（意味の固定・量・時刻・つなぎ・目・H3 での書き方）を `references/roles.md` に。身振りごとに H3 の句（`h3`）を持たせ、`vm gestures --roles` と `--h3` を足した。候補5つを確かめ済みにした
 - home 経由の切り替えの見た目: 2本目（仕組み）の v9 の確定で使った（2026-10-18）
 
-- Monday のマスコットパック（2026-10-19、各PC のローカル `~/.local/share/video-scene/packs/monday-suit`）: 射出成形の `icm-v3` と仕組みの `mascot-howto-v2` を `vm pack` でまとめ、左手を `vm mirror` で作り、中割り2組（open>gassho・gassho>gap）を描き足した。point>raise_r・raise_r>think は via_home で home を通すので組から外した。足りない絵は無い。旧PC には無い（新PC で作った）
+- 蘭（基準キャラ A）のマスコットパック（2026-10-19、各PC のローカル `~/.local/share/video-scene/packs/monday-suit`）: 射出成形の `icm-v3` と仕組みの `mascot-howto-v2` を `vm pack` でまとめ、左手を `vm mirror` で作り、中割り2組（open>gassho・gassho>gap）を描き足した。point>raise_r・raise_r>think は via_home で home を通すので組から外した。足りない絵は無い。旧PC には無い（新PC で作った）
 
 - 口パクの方式と二次運動の見比べ（2026-10-19、ユーザーの判定）: 口はモーラ式、首の傾き・うなずきは採用、呼吸・体の揺れ・切り替えの予備動作は不採用。Monday のパックの config に入れた。既定は変えていない（DECISIONS.md の同じ日）
 
@@ -92,7 +93,7 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 - 新しいキャラの基本の立ち姿を「両手を前で軽く組む」にした（手順書の元の絵の決まり、`vm init --redraw-home`、2026-10-16）
 - 新PCで #18 を確かめた結果を直した: 中割りの各枚の様子 `ib_steps`（turn→present の腕の段階）、お辞儀の雛形を強め、背の比の想定 `expect_height` を `vm views` が見る（どれも opt-in、2026-10-16）
 - 絵を ChatGPT の通常 Chat 画面（専用プロファイルの Chrome を Playwright で操作）で描く道具を足した（opt-in、`vm poses --img chat|chat+codex` か `config.img`）。`chat+codex` は Chat の上限かログイン切れで残りを `/img` に切り替える。中身は `skills/video-mascot/scripts/chatimg/`（`chatimg.sh` は img.sh と同じ引数・終了コード）、手順は `references/chatgpt-chat.md`。新PCで、参照画像つきの1枚通し・Chrome を閉じた後の最小化での再実行・WSL からの呼び出しを確かめた。既定は `/img` のまま（2026-10-16）
-- Chat と Codex を Monday マスコットで見比べた（向き6枚・turn→present の中割り5枚・home→raise_r の12等分の途中まで）。Chat は斜めの姿勢と中割りで頭身が伸びて体格が崩れ、既存のキャラを保つのに向かない。ユーザーの判定で、キャラを保つ描き足しは Codex、Chat は一発出し・キャラ選びに使う（2026-10-16）
+- Chat と Codex を蘭で見比べた（向き6枚・turn→present の中割り5枚・home→raise_r の12等分の途中まで）。Chat は斜めの姿勢と中割りで頭身が伸びて体格が崩れ、既存のキャラを保つのに向かない。ユーザーの判定で、キャラを保つ描き足しは Codex、Chat は一発出し・キャラ選びに使う（2026-10-16）
 - 新PCの手組み版（手を前で組んだ home から全姿勢と中割りを描き直した作業フォルダ）で #20・#21 を確かめた。turn→present の中割りは `ib_steps` で腕が段階を追った（1枚目で手はもう組みから離れる）。お辞儀は #21 の強い文で背の比 0.958 と範囲に入った。chain だけで崩れた指し示し・お辞儀・伸びの中割りに `ib_steps` を足して描き直し、同じ文を `vm init` の雛形にした（`--gestures` の `home>point_l/r`、`--extras a` の `home>bow`・`home>stretch`。お辞儀は 4〜20 度の浅い刻み）。全18姿勢を一通り回す白背景の書き出しはマイドライブ `動画見比べ_20261016/手組み_v1`・`手組み_v2`（2026-10-16）
 - 正面の姿勢と中割りの腰から下を1つの姿勢の下半身に差し替える `legs_lock` を足した（opt-in）。手組み版は home・bow・head_l/r と他の正面8姿勢で脚の開きが2組に分かれていて、切り替えのたびに足元が動いていた。帯の中は腰の輪郭を行ごとに伸び縮みさせてから混ぜ、元の絵の手は残す。手組み版の 0〜30 秒で足首の左右の端のコマ間の跳び（3px 超）が 19 回から 5 回（残りは斜めの姿勢）に。見比べはマイドライブ `動画見比べ_20261016/下半身_v1`（2026-10-17）
 - 中割りのコマ補間を `vm render` に組み込んだ（opt-in、`config.interp` か `--interp rife`）。描いた絵の間を RIFE（rife-ncnn-vulkan）で 8 倍に細かくし、中割りのある切り替えを `dur`（既定 0.6 秒、組ごとは `durs`）と ease-in-out で出す。列は `ib_interp/` にためる。純関数（`interp_config`・`interp_dur`・`dense_ks`、`plan_at` の `ib_dur`）を `tests/test_mascot_interp.py` でテスト。付けない時の書き出しは前とコマ単位で一致（2026-10-17）

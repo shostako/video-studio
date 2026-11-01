@@ -1,4 +1,4 @@
-"""射出圧縮成形の解説（Monday フィギュア）の Veo 指示文 cut1〜8.txt を書き出す。"""
+"""射出圧縮成形の解説（蘭）の Veo 指示文 cut1〜8.txt を書き出す。"""
 import os
 
 HEAD = ("A glossy resin chibi figurine girl in a navy work uniform stands on a small clear display base "
