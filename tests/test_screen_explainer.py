@@ -271,3 +271,14 @@ def test_compose_margin_captions_do_not_overlap_or_overflow(tmp_path):
     (voice / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     r = subprocess.run(base + ["--scale", "0.88", "--preview", "3.0"], capture_output=True, text=True, env=env)
     assert r.returncode != 0 and "行 3 の字幕" in r.stderr and "入らない" in r.stderr
+
+
+@needs_font
+def test_compose_full_flash_shows_only_current_chapter(tmp_path):
+    """章が 4.3 秒より短い間隔で替わっても、札は今の章の 1 枚だけ（Codex の指摘）。"""
+    ch = _chapters(tmp_path, {"chapters": [{"at": 0.0, "title": "とても長い一つ目の章の見出し"}, {"at": 2.0, "title": "次"}]})
+    r, _ = _run(tmp_path, "--chapters", str(ch), "--preview", "3.0", wipe_on=False)
+    assert r.returncode == 0, r.stderr
+    a = _png(tmp_path, 3.0)
+    assert a[60:100, 40:120].mean() < 120                            # 今の章（次）の札
+    assert a[60:100, 400:600].mean() > 200                           # 前の長い見出しの札は残っていない

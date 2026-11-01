@@ -379,9 +379,10 @@ def frame(t):
     for a, b, txt in SUBS:                                           # 字幕の帯
         if a <= t < b:
             dd.text(((W - dd.textlength(txt, font=f_sub)) / 2, VIEW_H + (BAND - 46) / 2), txt, font=f_sub, fill=(255, 255, 255)); break
-    for (t0, _, _), card in zip(CHP, FLASH):                         # 章が替わった所だけ、左上に見出しの札
-        a = CH.flash_alpha(t, t0)
-        if a > 0: c_ = faded(card, a); out.paste(c_, (36, 36), c_)
+    k = CH.chapter_at(t, CHP)                                        # 章が替わった所だけ、左上に今の章の札（次の章が来たら前の札は消す）
+    if k is not None:
+        a = CH.flash_alpha(t, CHP[k][0])
+        if a > 0: c_ = faded(FLASH[k], a); out.paste(c_, (36, 36), c_)
     return out
 
 if A.preview:
