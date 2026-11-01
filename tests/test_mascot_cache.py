@@ -158,3 +158,17 @@ def test_packed_wan_cache_notices_prompt_change(tmp_path):
     assert wanflf.need(P, "home", "point", n, icfg2) == "wan"
     with pytest.raises(SystemExit):
         wanflf.dense_paths(P, "home", "point", n, icfg2, gen=no_call, rife=no_call)
+
+
+def test_stamp_ok_never_writes_under_readonly(tmp_path):
+    """パックの作り置き（.readonly）に前の形の stamp があっても、合っていれば使い、書き換えない（Codex の指摘）。"""
+    root = tmp_path / "ib_interp"; d = root / "k"; d.mkdir(parents=True); (root / lib.READONLY).write_text("")
+    a = write(tmp_path / "a.png", 10); sp = d / "stamp.json"
+    make = lambda sig: {"src": sig([a]), "mult": 2}
+    json.dump(make(lib.file_sig_mtime), open(sp, "w")); before = sp.read_text()
+    assert lib.stamp_ok(str(sp), make) and sp.read_text() == before
+    os.chmod(sp, 0o444); os.chmod(d, 0o555)
+    try: assert lib.stamp_ok(str(sp), make)
+    finally: os.chmod(d, 0o755); os.chmod(sp, 0o644)
+    deep = root / "x" / "n47"; deep.mkdir(parents=True); assert lib.under_readonly(str(deep / "stamp.json"))
+    assert not lib.under_readonly(str(tmp_path / "other" / "stamp.json"))

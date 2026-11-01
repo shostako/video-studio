@@ -89,7 +89,19 @@ def stamp_ok(path, make):
     new = json.loads(json.dumps(make(file_sig)))
     if old == new: return True
     if old == json.loads(json.dumps(make(file_sig_mtime))):
-        json.dump(new, open(path, "w")); return True
+        if not under_readonly(path):              # パックの作り置き（.readonly）には書かない。書けない所でも合っていれば使う
+            try: json.dump(new, open(path, "w"))
+            except OSError: pass
+        return True
+    return False
+
+
+def under_readonly(path, levels=3):
+    """path（stamp.json など）の上の levels 段のどこかに .readonly があるか（パックの作り置きの置き場か）。"""
+    d = os.path.dirname(os.path.abspath(path))
+    for _ in range(levels):
+        if os.path.exists(os.path.join(d, READONLY)): return True
+        d = os.path.dirname(d)
     return False
 
 
