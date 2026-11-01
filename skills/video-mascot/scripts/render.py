@@ -495,13 +495,32 @@ for sw, e_ in zip(SW, ev):
     k_ = sw_kind(e_); item = {"at": round(sw[0], 4), "dur": round(sw[1], 4), "from": e_[1], "to": e_[2], "kind": k_, "engine": sw_engine(e_[1], e_[2], k_)}
     if item["engine"] == "wan":
         wd = P.p("ib_wan", f"{e_[1]}__{e_[2]}", f"n{DIV * INTERP['mult'] - 1}")
-        item["wan_dir"] = wd; item["wan_ready"] = os.path.exists(os.path.join(wd, "stamp.json"))
+        from wanflf import need as wan_need
+        nd_ = wan_need(P, e_[1], e_[2], DIV * INTERP["mult"] - 1, INTERP)   # 作り置きが今の絵・設定に合うか（None）、後処理だけ（rife）、Wan で作る（wan）
+        item["wan_dir"] = wd; item["wan_ready"] = nd_ is None
+        if nd_: item["wan_need"] = nd_
     SWL.append(item)
 CHK = switch_check(TAGS, f0, FPS, SWL)
 for ln in switch_report(CHK): print(ln, file=sys.stderr)
 if DRY:                                           # 下見: これから Wan で作る組（置き場にまだ無い組）
-    todo = sorted({f"{r['from']}→{r['to']}" for r in CHK if r["status"] != "skip" and r.get("engine") == "wan" and not r.get("wan_ready")})
+    todo = sorted({f"{r['from']}→{r['to']}" for r in CHK if r["status"] != "skip" and r.get("engine") == "wan" and r.get("wan_need", "wan" if not r.get("wan_ready") else None) == "wan"})
+    post = sorted({f"{r['from']}→{r['to']}" for r in CHK if r["status"] != "skip" and r.get("engine") == "wan" and r.get("wan_need") == "rife"})
     print(f"Wan で新しく作る組: {len(todo)}{'（' + '、'.join(todo) + '）' if todo else ''}", file=sys.stderr)
+    from interp import ready as rife_ready
+    rjobs = set()                                 # RIFE で作る列（会釈などの直の補間・描いた中割りの補間・頭の向きの列）
+    for r in CHK:
+        if r["status"] == "skip" or r.get("engine") != "rife" or not INTERP: continue
+        a_, b_ = r["from"], r["to"]; d_ = P.pair_dir(a_, b_)
+        if (wan_ok(a_, b_) or (d_ is None and direct_ok(a_, b_))): rjobs.add((*sorted((a_, b_)), True, INTERP["mult"]))
+        elif d_ is not None: rjobs.add((d_[0], d_[1], False, INTERP["mult"]))
+    if HEAD_KEYS:
+        for pa_, pb_ in zip(HEADC["chain"], HEADC["chain"][1:]): rjobs.add((pa_, pb_, True, HEADC["mult"]))
+    rtodo = []
+    for pa_, pb_, dr_, m_ in sorted(rjobs):
+        cfg_ = dict(INTERP or INTERP_DEFAULTS); cfg_["mult"] = m_
+        if not rife_ready(P, pa_, pb_, DIV, cfg_, direct=dr_): rtodo.append(f"{pa_}→{pb_}")
+    rtodo += [f"{x}（Wan の後処理）" for x in post]
+    print(f"RIFE で新しく作る列: {len(rtodo)}{'（' + '、'.join(rtodo) + '）' if rtodo else ''}", file=sys.stderr)
 MOFF = mouth_off_spans(SPEAK, FACEP, FPS, f0)    # 口の検査: 口の部品の無い姿勢（face: false）で話している所（口が止まって見える）
 for ln in mouth_report(MOFF): print(ln, file=sys.stderr)
 MSHUT = [s_ for s_ in mouth_shut_spans(LOUD, SPEAK, FPS, f0)            # 声が出ているのに口が閉じている所。口の部品の無い姿勢の所は上で数えた

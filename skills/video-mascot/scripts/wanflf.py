@@ -12,7 +12,7 @@ import glob, json, os, shutil, subprocess
 import cv2
 import numpy as np
 
-from lib import die, edge_weight, motion_positions, wan_cut, file_sig, stamp_ok
+from lib import die, edge_weight, motion_positions, wan_cut, file_sig, stamp_ok, frame_paths, readonly_guard
 
 _GEN_KEYS = ("width", "height", "length", "seed", "style", "head_poses", "unet_high", "unet_low", "lora_high", "lora_low", "clip", "vae", "clip_vision")
 _POST_KEYS = ("rife_mult", "cut_tol", "edge", "blink_tol")
@@ -185,23 +185,53 @@ def build(frames, img_a, img_b, n, edge):
     return out
 
 
+def _gen_maker(P, a, b, icfg, src):
+    """Wan の元のコマの印（raw_stamp.json）: 元の絵・生成に効く値・描かせる文。パックは元のコマを持たないが、この印は持つ。"""
+    wan = icfg["wan"]
+    return lambda sig: {"src": sig(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "prompt": prompt_of(P.cfg, wan, a, b)}
+
+
+def _stamp_maker(P, a, b, icfg, rp, src):
+    wan = icfg["wan"]
+    return lambda sig: {"raw": sig(rp), "src": sig(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
+                        "blink": blink_stamp(P, (a, b), sig) if wan["blink_tol"] is not None else None}
+
+
+def need(P, a, b, n, icfg):
+    """a→b の列に何が要るか（作らない。下見用）。None: 作り置きをそのまま使える。"rife": Wan の元のコマは合っていて、
+    後処理（RIFE で細かくする）だけやり直す。"wan": Wan で作る（新PC の ComfyUI が要る）。"""
+    wan = icfg["wan"]; base = P.p("ib_wan", f"{a}__{b}"); out_dir = os.path.join(base, f"n{n}"); raw = os.path.join(base, "raw")
+    src = [P.pose_path(a), P.pose_path(b)]
+    _, have = frame_paths(out_dir, n)
+    gen_ok = stamp_ok(os.path.join(base, "raw_stamp.json"), _gen_maker(P, a, b, icfg, src))
+    if have and gen_ok and stamp_ok(os.path.join(out_dir, "stamp.json"), _stamp_maker(P, a, b, icfg, raw_frames(raw), src)): return None
+    return "rife" if gen_ok and glob.glob(os.path.join(raw, "w*.png")) else "wan"
+
+
+def ready(P, a, b, n, icfg):
+    """a→b の列が作り置きにあって、今の元の絵・設定に合うか（作らない。下見用）。"""
+    return need(P, a, b, n, icfg) is None
+
+
 def dense_paths(P, a, b, n, icfg, log=None, gen=None, rife=None):
-    """a→b の切り替えの列のパス（n 枚、端を除く）。無ければ作る。gen・rife は差し替え用（テスト）。"""
+    """a→b の切り替えの列のパス（n 枚、端を除く）。無ければ作る。gen・rife は差し替え用（テスト）。
+    仕上がった列（n<n>/）が今の元の絵・設定に合えば、Wan の元のコマ（raw/）が無くてもそのまま使う（パックは raw を持たない）。"""
     wan = icfg["wan"]; gen = gen or generate; rife = rife or rife_frames
     base = P.p("ib_wan", f"{a}__{b}"); raw = os.path.join(base, "raw")
     src = [P.pose_path(a), P.pose_path(b)]
-    mk_gen = lambda sig: {"src": sig(src), "gen": {k: wan[k] for k in _GEN_KEYS}, "prompt": prompt_of(P.cfg, wan, a, b)}   # 描かせる文そのもの（キャラの説明・姿勢の desc・head_poses が変われば作り直す）
+    out_dir = os.path.join(base, f"n{n}")
+    want, have = frame_paths(out_dir, n)
+    mk_gen = _gen_maker(P, a, b, icfg, src)          # 描かせる文そのもの（キャラの説明・姿勢の desc・head_poses が変われば作り直す）
+    if have and stamp_ok(os.path.join(base, "raw_stamp.json"), mk_gen) and \
+            stamp_ok(os.path.join(out_dir, "stamp.json"), _stamp_maker(P, a, b, icfg, raw_frames(raw), src)): return want
+    readonly_guard(P.p("ib_wan"), f"{a}→{b} の Wan の切り替え")
     st_gen = mk_gen(file_sig)
     if not glob.glob(os.path.join(raw, "w*.png")) or not stamp_ok(os.path.join(base, "raw_stamp.json"), mk_gen):
         gen(P, a, b, wan, raw, log=log)
         os.makedirs(base, exist_ok=True); json.dump(st_gen, open(os.path.join(base, "raw_stamp.json"), "w"))
-    out_dir = os.path.join(base, f"n{n}")
     want = [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)]
     rp = raw_frames(raw)
-    mk = lambda sig: {"raw": sig(rp), "src": sig(src), "post": {k: wan[k] for k in _POST_KEYS}, "model": icfg["model"],
-                      "blink": blink_stamp(P, (a, b), sig) if wan["blink_tol"] is not None else None}
-    st = mk(file_sig)
-    if all(os.path.exists(p) for p in want) and stamp_ok(os.path.join(out_dir, "stamp.json"), mk): return want
+    st = _stamp_maker(P, a, b, icfg, rp, src)(file_sig)
     img_a, img_b = P.read_pose(a), P.read_pose(b)
     H, W = img_a.shape[:2]
     if img_b.shape != img_a.shape: img_b = cv2.resize(img_b, (W, H), interpolation=cv2.INTER_AREA)

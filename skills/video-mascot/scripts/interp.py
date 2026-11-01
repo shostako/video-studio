@@ -7,7 +7,7 @@ import json, os, shutil, subprocess
 
 import cv2
 
-from lib import die, file_sig, stamp_ok
+from lib import die, file_sig, stamp_ok, frame_paths, readonly_guard
 
 
 def _winpath(p):
@@ -19,6 +19,16 @@ def _stamp(srcs, cfg, sig=None):
     return {"src": (sig or file_sig)(srcs), "mult": cfg["mult"], "model": cfg["model"]}
 
 
+def ready(proj, pa, pb, div, cfg, direct=False):
+    """組 pa→pb の補間した列が作り置きにあって、今の元の絵と設定に合うか（作らない。下見用）。"""
+    mult = cfg["mult"] * div if direct else cfg["mult"]
+    srcs = [proj.pose_path(pa)] + ([] if direct else [proj.ib_path(pa, pb, k) for k in range(1, div)]) + [proj.pose_path(pb)]
+    if not all(os.path.exists(p) for p in srcs): return False
+    out = proj.p("ib_interp", f"{pa}_{pb}_{'direct_' if direct else ''}x{mult}_{cfg['model']}")
+    _, have = frame_paths(out, (len(srcs) - 1) * mult - 1)
+    return have and stamp_ok(os.path.join(out, "stamp.json"), lambda sig: _stamp(srcs, cfg, sig))
+
+
 def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
     """組 pa→pb（pairs の向き）の補間した列のパス（div*mult-1 枚、k=j/mult の順）。無ければ RIFE で作る。
     direct=True は中割りを使わず、端の姿勢2枚の間を div*mult 倍に細かくする（枚数と k の位置は同じ）。"""
@@ -27,9 +37,11 @@ def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
     miss = [p for p in srcs if not os.path.exists(p)]
     if miss: die(f"補間の元の絵が無い: {miss}")
     out = proj.p("ib_interp", f"{pa}_{pb}_{'direct_' if direct else ''}x{mult}_{cfg['model']}")
-    want = [os.path.join(out, f"f{j}.png") for j in range(1, (len(srcs) - 1) * mult)]
+    want, have = frame_paths(out, (len(srcs) - 1) * mult - 1)      # パックの作り置きは .webp
     st = _stamp(srcs, cfg); sf = os.path.join(out, "stamp.json")
-    if all(os.path.exists(p) for p in want) and stamp_ok(sf, lambda sig: _stamp(srcs, cfg, sig)): return want
+    if have and stamp_ok(sf, lambda sig: _stamp(srcs, cfg, sig)): return want
+    readonly_guard(proj.p("ib_interp"), f"{pa}→{pb} の RIFE の列")
+    want = [os.path.join(out, f"f{j}.png") for j in range(1, (len(srcs) - 1) * mult)]
     if not os.path.exists(cfg["exe"]): die(f"RIFE が無い: {cfg['exe']}（config.interp.exe を直すか、interp を外す）")
     imgs = [cv2.imread(p) for p in srcs]; h, w = imgs[0].shape[:2]
     imgs = [im if im.shape[:2] == (h, w) else cv2.resize(im, (w, h), interpolation=cv2.INTER_AREA) for im in imgs]
