@@ -21,6 +21,16 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 | `word_timing.py` | faster-whisper の入った Python（video-scene の venv） | 声の語ごとの長さを測り、読み違いと溜めを見つける |
 | `compose.py` | Pillow と ffmpeg | 撮影・声・場面の割り付けから動画を組む |
 
+## 出せる型（同じ撮影・声・scenes.py から選ぶ）
+
+| 型 | compose.py の指定 | 余白のマスコット |
+|---|---|---|
+| カーソルだけ | `--layout full`（既定）。`--chapters` で、章が替わった所に左上へ見出しを数秒出して消す | なし |
+| ワイプ | `--layout margin [--scale 0.73]`。画面を縮めて右に寄せ、字幕はその下。`--chapters` は余白の左上に出し続ける | 丸いワイプを左下に（video-mascot の `vm layout`） |
+| 全身・小 | 同上 | 全身を余白の下に（`vm layout`） |
+
+`--scale` を上げると画面の字は大きくなるが、余白（0.73 で 496px、0.8 で 384px、0.83 で 320px）は狭くなる。書き出すと `<出力>.layout.json` に余白の幅が残り、`vm layout` はそれに合わせてマスコットを置く。章の見出しの JSON は video-mascot の `scripts/chapters.py` の先頭に書き方がある。マスコット付きの型では、見出しは compose か `vm layout` のどちらか一方で付ける（両方だと二重に出る。`vm layout` が注意を出す）。
+
 ## 進め方
 
 作業フォルダは `~/.local/share/video-scene/work/<名前>/`（声）と、撮影フォルダ（Excel なら Windows から見える `C:\Users\<you>\AppData\Local\Temp\...`）。
@@ -38,7 +48,7 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 4. **ワイプの顔を作る**（顔の絵が変わったときだけ）。`wipe_faces.py --pose <閉じた顔> --parts <小> <中> <大> --out <口の絵のフォルダ>`。口だけを貼るので頭は動かない。出来た 4 枚を並べて見る（開き過ぎの形は入れない）。
 5. **場面を割り付ける**。`scenes.py` に 1 行 1 回 `add(...)` を書く。書き方は `assets/example_scenes.py`。割合はその行の声の長さを 1 とした位置。カーソルは台詞で言う物の上に、言う少し前に着ける。強調は言っている間だけ。
 6. **見本のコマで確かめる**。`compose.py ... --preview 3.0,12.5,...` で、場面の切り替えの前後・強調の出る所・ワイプが角を移る所を PNG にして Read で見る。枠のずれ、ワイプと枠の重なり、字幕のはみ出しを直す。
-7. **書き出す**。`compose.py --shots <撮影> --voice <作業フォルダ> --scenes scenes.py --out <名前>.mp4 --wipe <口の絵のフォルダ>`（Excel は `--clip-bottom 948`、右のスクロールバーを避けるなら `--clip-right 1895`）。一部だけなら `--from` / `--to`。
+7. **書き出す**。`compose.py --shots <撮影> --voice <作業フォルダ> --scenes scenes.py --out <名前>.mp4 [--chapters 章.json]`（カーソルだけの型。マスコット付きの型は `--layout margin` で書き出し、video-mascot の `vm layout` で余白にマスコットを置く。画面の角に重ねる古いワイプは `--wipe <口の絵のフォルダ>`）（Excel は `--clip-bottom 948`、右のスクロールバーを避けるなら `--clip-right 1895`）。一部だけなら `--from` / `--to`。
    - ワイプの角は、画面のどこに操作の欄があるかで決める。右に操作パネルが縦に続くアプリ（cad-viewer など）は `--wipe-home BL`。既定の BR のままだと、ずっとパネルに被る（ユーザーの指摘）。
 8. **送る**。30MB を超えたら `ffmpeg -i in.mp4 -c:v libx264 -crf 29 -preset slow -c:a aac -b:a 96k out_スマホ用.mp4`。ユーザーに耳と目で確かめてもらい、指摘の行だけ声か場面を直して 7 から。
 

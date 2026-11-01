@@ -7,7 +7,7 @@
   --audio    付ける声（既定 <作業フォルダ>/voice/master_clean.wav、無ければ master.wav）
   --full     主動画の最後まで書く（マスコットが先に終われば最後のコマのまま）。付けなければ短い方で終わる
   --chapters 章の見出しとサンプルの出どころ（下の形の JSON）。付けなければ見出しは出さない
-  --margin   主動画の左の余白の幅（既定 496。screen-explainer の画面の左端）
+  --margin   主動画の左の余白の幅（既定は主動画の隣の <名前>.layout.json の margin、無ければ 496）
   --place-only  位置を出すだけで書き出さない
 最後に CROP x,y,幅,高さ（完成の動画でマスコットのいる範囲）を出す。vm check <出力> --switches ... --crop に渡す。
 
@@ -37,41 +37,8 @@ def opt(name, default=None, typ=str):
     return typ(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
 
 
-# ---------- 章の見出し（純関数）----------
-def chapter_plan(spec, line_starts):
-    """章の JSON（dict）と台詞の開始秒 {n: 秒} から、[(替わる秒, 番号の文字, 見出し), ...]（時刻の順）と credits を返す。
-    line の章は台詞の lead 秒前に替わる（0 秒より前にはしない）。知らない台詞の番号や、line も at も無い章は止める。"""
-    lead = float(spec.get("lead", 0.6)); out = []
-    for k, c in enumerate(spec.get("chapters", [])):
-        if "title" not in c: die(f"章 {k + 1} に title が無い")
-        if "at" in c: t = float(c["at"])
-        elif "line" in c:
-            if c["line"] not in line_starts: die(f"章 {k + 1} の line {c['line']} が timing.json に無い")
-            t = max(0.0, line_starts[c["line"]] - lead)
-        else: die(f"章 {k + 1} に line も at も無い")
-        out.append([t, c["title"]])
-    out.sort(key=lambda x: x[0])
-    plan = [(t, f"{k + 1:02d}", title) for k, (t, title) in enumerate(out)]
-    credits = []
-    for c in spec.get("credits", []):
-        if not c.get("text"): die("credits に text が無い")
-        credits.append((float(c.get("from", 0)), float(c.get("to", 1e9)), list(c["text"]) if isinstance(c["text"], list) else [c["text"]]))
-    return plan, credits
-
-
-def chapter_at(t, plan):
-    """時刻 t に出す章の番号（plan の添字）。最初の章より前は最初の章。章が無ければ None。"""
-    if not plan: return None
-    k = 0
-    for i, (t0, _, _) in enumerate(plan):
-        if t0 <= t: k = i
-    return k
-
-
-def credit_alpha(t, c0, c1, fade=0.3):
-    """サンプルの出どころの濃さ（0〜1）。c0 から fade 秒で出し、c1 で消す。"""
-    if t < c0 or t >= c1: return 0.0
-    return min(1.0, (t - c0) / fade) if fade > 0 else 1.0
+# 章の見出しの JSON は chapters.py（screen-explainer の compose.py と共通）
+from chapters import chapter_plan, chapter_at, credit_alpha, fit_heading, heading_block  # noqa: E402,F401
 
 
 # ---------- 描く ----------
@@ -113,29 +80,39 @@ def blend(img, rgba, x, y, alpha=1.0):
 
 
 def heading_layers(plan, credits, margin):
-    """章ごとの (番号, 見出し, 下線の長さ) と、credits ごとの行の絵。見出しは余白（margin − 左右 40）に収める。"""
-    maxw = margin - 2 * HEAD_X
-    heads = [(text_rgba(num, 22, ACC), text_rgba(title, 34, INK, maxw)) for _, num, title in plan]
-    heads = [(n, t, min(maxw, max(120, t.shape[1]))) for n, t in heads]
+    """章ごとの (番号, [(行の絵, y)], 下線の長さ, 下線の y) と、credits ごとの行の絵と、出どころの上端の y。
+    見出しは余白（margin − 左右 40）に収め、長ければ 2 行に折る（chapters.fit_heading）。"""
+    from PIL import ImageFont
+    maxw = margin - 2 * HEAD_X; fp = font_path()
+    def width_of(t, sz):
+        b = ImageFont.truetype(fp, sz).getbbox(t); return b[2] - b[0]
+    heads = []
+    for _, num, title in plan:
+        sz, rows = fit_heading(title, width_of, maxw); ys, ry = heading_block(sz, len(rows), TITLE_Y)
+        ims = [(text_rgba(r, sz, INK, maxw), y) for r, y in zip(rows, ys)]
+        heads.append((text_rgba(num, 22, ACC), ims, min(maxw, max([120] + [im.shape[1] for im, _ in ims])), ry))
+    cred_y = max([RULE_Y] + [h[3] for h in heads]) + 20
     creds = [[text_rgba(x, 20, SUB, maxw) for x in c[2]] for c in credits]
-    return heads, creds
+    return heads, creds, cred_y
 
 
-def heading_bottom(credits):
-    """見出しの区画の下端（px）。マスコットの頭と重ならないかを見るのに使う。"""
-    return max([RULE_Y + 3] + [CREDIT_Y + CREDIT_STEP * len(c[2]) for c in credits])
+def heading_bottom(credits, heads_bottom=RULE_Y):
+    """見出しの区画の下端（px）。マスコットの頭と重ならないかを見るのに使う。heads_bottom は見出しのいちばん下の下線の y。"""
+    cy = max(RULE_Y, heads_bottom) + 20
+    return max([heads_bottom + 3] + [cy + CREDIT_STEP * len(c[2]) for c in credits])
 
 
-def draw_heading(img, t, plan, heads, credits, creds):
+def draw_heading(img, t, plan, heads, credits, creds, cred_y=CREDIT_Y):
     k = chapter_at(t, plan)
     if k is not None:
-        num, title, rule = heads[k]
-        blend(img, num, HEAD_X, NUM_Y); blend(img, title, HEAD_X, TITLE_Y)
-        img[RULE_Y - 1:RULE_Y + 2, HEAD_X:HEAD_X + rule] = ACC
+        num, ims, rule, ry = heads[k]
+        blend(img, num, HEAD_X, NUM_Y)
+        for im, y in ims: blend(img, im, HEAD_X, y)
+        img[ry - 1:ry + 2, HEAD_X:HEAD_X + rule] = ACC
     for (c0, c1, _), rows in zip(credits, creds):
         a = credit_alpha(t, c0, c1)
         if a > 0:
-            for j, r in enumerate(rows): blend(img, r, HEAD_X, CREDIT_Y + CREDIT_STEP * j, a)
+            for j, r in enumerate(rows): blend(img, r, HEAD_X, cred_y + CREDIT_STEP * j, a)
 
 
 # ---------- 置き場所 ----------
@@ -146,19 +123,28 @@ def probe(p):
 
 
 def place(mp, frame, size, margin):
-    """マスコットの縮めた大きさと置く位置: (sw, sh, x, y, 人物の上端の y)。"""
-    mw, mh, _ = probe(mp); cx_m = margin / 2
+    """マスコットの縮めた大きさと置く位置: (sw, sh, x, y, 人物の上端の y)。余白（左右 10px ずつ空ける）に収まらなければ、
+    収まるまで小さくする（解説の画面にはみ出させない）。"""
+    mw, mh, _ = probe(mp); cx_m = margin / 2; room = margin - 20
+    if room < 60: die(f"余白が狭すぎてマスコットを置けない（{margin}px）")
     if frame == "full":
-        k = mh / 1672; top, feet, cx = FIG_TOP * k, FIG_FEET * k, FIG_CX * k
-        if mp.endswith(".webm"):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心を測る（キャラで背が揃う）
+        k = mh / 1672; top, feet, cx = FIG_TOP * k, FIG_FEET * k, FIG_CX * k; x0f, x1f = cx - 0.3 * (feet - top), cx + 0.3 * (feet - top)
+        if mp.endswith(".webm"):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心・左右の端を測る（キャラで背が揃う）
             raw = subprocess.run(["ffmpeg", "-v", "error", "-c:v", "libvpx-vp9", "-i", mp, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], capture_output=True).stdout
             if len(raw) == mw * mh * 4:
                 al = np.frombuffer(raw, np.uint8).reshape(mh, mw, 4)[:, :, 3] > 128; ys, xs = np.where(al)
-                if len(ys): top, feet = float(ys.min()), float(ys.max()); cx = float(np.median(xs[ys > ys.min() + 0.6 * (ys.max() - ys.min())]))
+                if len(ys):
+                    top, feet = float(ys.min()), float(ys.max()); cx = float(np.median(xs[ys > ys.min() + 0.6 * (ys.max() - ys.min())]))
+                    x0f, x1f = float(xs.min()), float(xs.max())
         s = {"L": 880, "S": 560}[size] / (feet - top)
+        half = max(cx - x0f, x1f - cx)                # 体の中心から遠い方の端まで（身振りで少し広がる分は見込まない）
+        if 2 * half * s > room:
+            s2 = room / (2 * half); print(f"注意: 余白 {margin}px に収めるため、全身の高さを {round((feet - top) * s)}px から {round((feet - top) * s2)}px に縮めた", flush=True); s = s2
         sw, sh = round(mw * s), round(mh * s); x = round(cx_m - cx * s); y = round(1050 - feet * s)
         return sw, sh, x, y, round(y + top * s)
-    s = {"L": margin, "S": 340}[size] / mw; sw, sh = round(mw * s), round(mh * s)
+    want = {"L": margin, "S": 340}[size]
+    if want > room: print(f"注意: 余白 {margin}px に収めるため、胸から上の幅を {want}px から {room}px に縮めた", flush=True); want = room
+    s = want / mw; sw, sh = round(mw * s), round(mh * s)
     return sw, sh, round(cx_m - sw / 2), H - sh, H - sh
 
 
@@ -171,7 +157,10 @@ def main():
     outp = opt("--out")
     if not outp and "--place-only" not in sys.argv: die("--out が要る")
     mp = opt("--mascot", os.path.join(proj, "out", "mascot.webm"))
-    frame, size, margin = opt("--frame", "full"), opt("--size", "S"), opt("--margin", 496, int)
+    lay = {}                                       # screen-explainer の compose.py --layout margin が書いた割り付け（余白の幅など）
+    lp = os.path.splitext(bg)[0] + ".layout.json"
+    if os.path.exists(lp): lay = json.load(open(lp))
+    frame, size, margin = opt("--frame", "full"), opt("--size", "S"), opt("--margin", int(lay.get("margin", 496)), int)
     if frame not in ("full", "bust") or size not in ("S", "L"): die("--frame は full|bust、--size は S|L")
     for p in (bg, mp):
         if not os.path.exists(p): die(f"無い: {p}")
@@ -179,19 +168,20 @@ def main():
     print(f"{frame} {size}: → {sw}x{sh} at ({x},{y})", flush=True)
     x0, y0 = max(0, x), max(0, y); cw, ch_ = min(x + sw, W) - x0, min(y + sh, H) - y0
     print(f"CROP {x0},{y0},{cw},{ch_}", flush=True)
-    plan, credits = [], []
+    plan, credits, heads, creds, cred_y = [], [], [], [], CREDIT_Y
+    if opt("--chapters") and lay.get("chapters"): print("注意: 主動画にもう章の見出しが描いてある（compose.py --chapters）。二重に出る", flush=True)
     if opt("--chapters"):
         tp = os.path.join(proj, "voice", "timing.json")
         starts = {x_["n"]: x_["start"] for x_ in json.load(open(tp))["lines"]} if os.path.exists(tp) else {}
         plan, credits = chapter_plan(json.load(open(opt("--chapters"))), starts)
-        bot = heading_bottom(credits)
+        heads, creds, cred_y = heading_layers(plan, credits, margin)
+        bot = heading_bottom(credits, max([RULE_Y] + [h[3] for h in heads]))
         print(f"見出し: {len(plan)} 章（{'・'.join(t for _, _, t in plan)}）、出どころ {len(credits)} 件。区画の下端 {bot}px、マスコットの頭 {fig_top}px", flush=True)
         if bot + 10 > fig_top: print(f"注意: 見出しの区画（下端 {bot}px）がマスコットの頭（{fig_top}px）に近い・重なる", flush=True)
     if "--place-only" in sys.argv: return
     audio = opt("--audio") or next((p for p in (os.path.join(proj, "voice", "master_clean.wav"), os.path.join(proj, "voice", "master.wav")) if os.path.exists(p)), None)
     if not audio: die("声が無い（--audio で渡す）")
     full_len = "--full" in sys.argv; _, _, dur = probe(mp); bg_from = opt("--bg-from", 0.0, float)
-    heads, creds = heading_layers(plan, credits, margin) if plan or credits else ([], [])
 
     rd_bg = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(bg_from)] + ([] if full_len else ["-t", f"{dur:.3f}"]) + ["-i", bg, "-vf", f"scale={W}:{H}",
                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
@@ -212,7 +202,7 @@ def main():
             m = last_m
         last_m = m
         img = np.frombuffer(b, np.uint8).reshape(H, W, 3).copy()
-        if plan or credits: draw_heading(img, n / FPS, plan, heads, credits, creds)
+        if plan or credits: draw_heading(img, n / FPS, plan, heads, credits, creds, cred_y)
         if ALPHA:
             rgba = np.frombuffer(m, np.uint8).reshape(sh, sw, 4)[Y0 - y:Y1 - y, X0 - x:X1 - x].astype(np.float32)
             al = rgba[:, :, 3:] / 255.0; reg = img[Y0:Y1, X0:X1].astype(np.float32)
