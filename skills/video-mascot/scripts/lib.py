@@ -193,11 +193,14 @@ def body_height(img, anc):
 MATTE_MARGIN = 16                                   # roi の周りに足して計算する幅（輪郭のやわらげ・縁の明るさの近傍は 5 画素ほど）
 
 
-def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600, roi=None):
+def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600, roi=None, enclosed="bg"):
     """背景につながる白を透明にして、輪郭をやわらかくする。足元の影は黒の半透明で別に足す。
     roi=(x0, y0, x1, y1) を渡すと、その範囲だけの BGRA を返す（ワイプ用。中身は全体で作って切り抜いたものと同じ）。
     背景につながるかの判定（連結成分）は全体の絵で行い、重い計算は roi の周り（MATTE_MARGIN）だけで行う。
     絵を先に切り抜くと、切り口に触れた白（白いシャツ）が背景につながって見えて抜けるので、切り抜いてから呼ばない。
+    enclosed: 外（絵の縁）につながっていない、囲まれたほぼ白の扱い。"bg"（既定・今まで）は、顔の箱の外・大きい・毛に囲まれた
+    細長い白を背景にする（白いシャツやおでこの光も抜ける）。"keep" は囲まれた白をキャラの一部として閉じ、内側（縁を 3 画素
+    除く）の 9 割以上が背景の色そのもの（外につながる白の中央値 ±2）のときだけ背景にする（脚の間・腕と体の間のすき間）。
     keeps=[(x0,y0,x1,y1), ...]（出力の画素）の外にある、ほぼ白の領域（毛束に囲まれたすき間など）は、外とつながっていなくても背景にする。
     keeps の中（白目・歯）は守る。ただし箱の中でも面積が keep_max_area（画素）を超える白は、白目・歯ではなく背景。clean: BGR（背景は BG の白）。戻り値: BGRA（アルファ付き）。
     黒い物（髪・靴）の縁は、背景の白とのまざり具合を暗さから割り戻す。明るい物（肌）の縁は形からやわらげる。"""
@@ -215,16 +218,31 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600, roi=None):
         wx0, wy0, wx1, wy1 = 0, 0, W, H
     def hits(stat):                                # 成分の外接箱が窓に掛かるか
         x, y, w, h = stat[:4]; return x < wx1 and x + w > wx0 and y < wy1 and y + h > wy0
-    for i in range(1, n):
-        if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12 or not hits(st[i]): continue
+    def hair_gap(i):                               # 黒い毛にほとんど囲まれた細長い白（毛束の間のすき間）か
         x, y, w, h, area = st[i]; region = lab[y:y + h, x:x + w] == i
         ring = cv2.dilate(region.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
         ring_dark = float((dark_near[y:y + h, x:x + w][ring & ~region]).mean()) if (ring & ~region).any() else 0.0
-        cx, cy = cen[i]
+        return ring_dark > 0.85 and max(w, h) / max(1.0, min(w, h)) > 3.5
+    if enclosed not in ("bg", "keep"): raise ValueError(f"enclosed は bg か keep: {enclosed}")
+    if enclosed == "keep":                         # 囲まれた白はキャラ。ただし内側が背景の色そのもの（平ら）なら、透けて見えている背景
+        bgc = np.median(clean[np.isin(lab, list(border))], axis=0) if border else np.full(3, bg, np.float32)
+        for i in range(1, n):
+            if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12 or not hits(st[i]): continue
+            x, y, w, h, area = st[i]; cx, cy = cen[i]
+            if area <= keep_max_area and keeps and any(x0 <= cx <= x1 and y0 <= cy <= y1 for (x0, y0, x1, y1) in keeps):
+                isbg[i] = hair_gap(i); continue    # 顔の箱の中の小さな白は bg と同じ: 白目・歯は守り、毛束の間の細長い白は背景
+            region = (lab[y:y + h, x:x + w] == i).astype(np.uint8)
+            inner = cv2.erode(region, np.ones((7, 7), np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
+            if inner.sum() < 30: inner = region > 0
+            px = clean[y:y + h, x:x + w][inner].astype(np.int16)
+            if (np.abs(px - bgc.astype(np.int16)) <= 2).all(axis=1).mean() >= 0.9: isbg[i] = True
+    for i in range(1, n):
+        if enclosed == "keep": break
+        if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12 or not hits(st[i]): continue
+        area = st[i, cv2.CC_STAT_AREA]; cx, cy = cen[i]
         inside = bool(keeps) and any(x0 <= cx <= x1 and y0 <= cy <= y1 for (x0, y0, x1, y1) in keeps)
         # 顔の箱の外の白は背景。箱の中でも、大きな白（白目・歯より大きい）や、黒い毛にほとんど囲まれた細長い白は背景
-        elong = max(w, h) / max(1.0, min(w, h))
-        if (keeps and not inside) or area > keep_max_area or (inside and ring_dark > 0.85 and elong > 3.5): isbg[i] = True
+        if (keeps and not inside) or area > keep_max_area or (inside and hair_gap(i)): isbg[i] = True
     isbg[0] = False
     bgmask = isbg[lab] & (cand > 0)
     # 仕上げ: 肌や服の色を持たない「ほぼ白」の小さな塊（毛束の間に取り残された白）を、周りが黒い毛に囲まれていれば消す
