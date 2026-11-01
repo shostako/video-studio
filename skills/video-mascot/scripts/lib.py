@@ -61,6 +61,26 @@ def file_sig_mtime(paths):
     return [[os.path.basename(p), os.path.getmtime(p), os.path.getsize(p)] for p in paths]
 
 
+READONLY = ".readonly"                    # パックの作り置きの置き場（ib_wan/・ib_interp/）に置く印。ここでは作り直さない
+
+
+def frame_paths(out_dir, n):
+    """作り置きの列のコマ f1..fn のパスと、全部そろっているか。.png が全部あればそれ、無くて .webp が全部あれば .webp
+    （パックは WebP で持つ）。どちらもそろっていなければ .png（作る所）。"""
+    for ext in (".png", ".webp"):
+        ps = [os.path.join(out_dir, f"f{j}{ext}") for j in range(1, n + 1)]
+        if ps and all(os.path.exists(p) for p in ps): return ps, True
+    return [os.path.join(out_dir, f"f{j}.png") for j in range(1, n + 1)], False
+
+
+def readonly_guard(root, what):
+    """root（ib_wan/ か ib_interp/）がパックの作り置き（.readonly がある）なら、作り直さずに止める。"""
+    if os.path.exists(os.path.join(root, READONLY)):
+        die(f"{what} がパックの作り置きに無いか、元の絵・設定と合わない。パックの作り置きは書き換えない（{os.path.realpath(root)}）。"
+            "新PC（Wan・RIFE のある PC）でパックの元の作業フォルダに作り足して vm pack し直すか、この作業フォルダの "
+            "ib_wan/・ib_interp/ をパックへのリンクでなく自分の置き場にして作る")
+
+
 def stamp_ok(path, make):
     """作り置きの stamp.json が今の元の絵と設定に合うか。make(sig) は印の関数を受けて stamp の dict を返す。
     中身の印で合えば真。前の形（更新時刻）で合えば、中身の印に書き換えて真。どちらでもなければ偽。"""
