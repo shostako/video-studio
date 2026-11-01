@@ -376,3 +376,43 @@ def test_short_holds_flags_overlap_but_not_quick_wag_or_home():
 def test_short_holds_tolerates_float_rounding():
     """ちょうど接する切り替えを、0.1+0.2 > 0.3 の誤差で重なりと見ない（Codex の指摘）。"""
     assert lib.short_holds([(0.1, 0.2, "home", "point"), (0.3, 0.2, "point", "home")], "home") == []
+
+
+# ---------- matte の範囲指定（ワイプ用、vm render --crop）----------
+def _figure():
+    """白地に、黒い髪（すき間の白あり）・肌の顔・白目・黒い輪郭で囲んだ白いシャツの人型。足元に影。"""
+    import numpy as np
+    H, W = 420, 300; img = np.full((H, W, 3), 253, np.uint8)
+    img[40:150, 90:210] = (25, 25, 30)                                  # 髪
+    img[60:62, 120:150] = 253; img[90:93, 100:104] = 253                # 毛束の間の白（小さい）
+    img[100:170, 110:190] = (190, 210, 240)                             # 顔（肌）
+    img[120:126, 125:135] = 250; img[120:126, 160:170] = 250            # 白目
+    img[170:400, 80:220] = (30, 30, 30); img[174:396, 84:216] = 236     # 黒い輪郭で囲んだ白いシャツ（影で少し灰色）
+    sh = np.zeros((H, W), np.float32); sh[398:412, 70:230] = 0.4
+    return img, sh, [(110, 100, 190, 170)]
+
+
+@pytest.mark.parametrize("roi", [(60, 20, 240, 200), (0, 0, 300, 420), (100, 150, 200, 260), (0, 300, 120, 420), (290, 410, 300, 420)])
+def test_matte_roi_matches_full_crop(roi):
+    """roi を渡しても、全体で作って切り抜いたものと 1 画素も違わない。切り口がシャツの白を横切っても抜けない。"""
+    import numpy as np
+    img, sh, keeps = _figure()
+    full = lib.matte(img, sh, keeps)
+    part = lib.matte(img, sh, keeps, roi=roi)
+    assert part.shape == (roi[3] - roi[1], roi[2] - roi[0], 4)
+    assert np.array_equal(part, full[roi[1]:roi[3], roi[0]:roi[2]])
+    assert full[250, 150, 3] >= 250 and full[5, 5, 3] == 0              # シャツの白は不透明、外の白は透明
+
+
+def test_matte_roi_outside_is_an_error():
+    img, sh, keeps = _figure()
+    with pytest.raises(ValueError):
+        lib.matte(img, sh, keeps, roi=(400, 0, 500, 100))
+
+
+def test_wipe_box_none_without_figure():
+    import numpy as np
+    assert lib.wipe_box(np.zeros((50, 40), bool)) is None
+    fg = np.zeros((1280, 720), bool); fg[200:1160, 260:460] = True
+    x, y, side = lib.wipe_box(fg)
+    assert side == int(0.44 * 959) // 2 * 2 and x + side <= 720

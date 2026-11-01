@@ -8,6 +8,9 @@
   --check-only   下見。絵を作らず（RIFE・Wan を呼ばず）時間割だけを回して同じ検査をし、Wan で新しく作る組を出す（<出力>.precheck.json）
   --strict       切り替えの検査で問題があれば終了コード 3（動画は書き出したまま残る）
   --no-events    config.events（身振り）を使わず home のまま話す（ワイプの型の顔用）。--no-head は頭の向きの列（config.head）も止める
+  --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
+                 ワイプと同じ決め方）。透明にする計算も範囲の周りだけで行うので速い。決めた範囲は <出力>.crop.json に書き、
+                 vm layout --style wipe はその動画をそのまま丸にする
   --lipsync amp|mora  口パクの母音の決め方（既定は config.lipsync、無ければ amp）。amp: 聞き取りの語を音の数で等分（今まで）。
                  mora: 行のかな台本を行の声の範囲にモーラの数で割り付け、両唇音・「っ」・句読点で口を閉じる
   --motion on|off  二次運動（既定は config.motion、無ければ off）。呼吸のゆらぎ、首の傾きとうなずき、まばたきの間隔のゆらぎ、
@@ -27,7 +30,7 @@ from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_heig
 from lib import vowel_frames, resolve_events, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
-from lib import legs_config, lock_legs
+from lib import legs_config, lock_legs, wipe_box
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
 from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report, speech_loud, short_holds, short_hold_report
@@ -60,6 +63,13 @@ timing = json.load(open(P.p("voice", "timing.json"))); L = {x["n"]: x["start"] f
 T1 = opt("--to", END, float)
 OUTF = opt("--out", P.p("out", "mascot.webm" if MODE == "alpha" else "mascot_white.mp4"))
 VOICE = P.p("voice", "master.wav")
+CROP = opt("--crop"); CROP_BOX = None              # 書き出す正方形 (x, y, 辺)（出力の画素）。face は最初のコマで決める
+if CROP:
+    if MODE != "alpha": die("--crop は --mode alpha だけ（ワイプ用）")
+    if CROP != "face":
+        try: CROP_BOX = tuple(int(v) for v in CROP.split(","))
+        except ValueError: CROP_BOX = ()
+        if len(CROP_BOX) != 3 or CROP_BOX[2] <= 0 or min(CROP_BOX[:2]) < 0: die(f"--crop は face か x,y,辺: {CROP}")
 
 # ---------- 声: 大きさ・語・母音 ----------
 def load_audio(p, sr=16000):
@@ -408,10 +418,15 @@ def body(pl, f):
 W1 = W0 + 2 * PAD; OW = 2 * round(OH * W1 / H0 / 2)
 f0, f1 = int(T0 * FPS), int(math.ceil(T1 * FPS))
 if min(f1, NALL) <= f0: die(f"書き出すコマが無い（{T0}〜{T1} 秒、声は {NALL / FPS:.2f} 秒まで。--from / --to を見直す）")
+if CROP_BOX and (CROP_BOX[0] + CROP_BOX[2] > OW or CROP_BOX[1] + CROP_BOX[2] > OH): die(f"--crop {CROP} が出力（{OW}x{OH}）からはみ出す")
+def alpha_enc(w_, h_):                            # 透明つきの VP9。行ごとの並列（-row-mt）で、画質・大きさはほぼ同じまま速くする
+    return subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{w_}x{h_}", "-r", str(FPS), "-i", "-",
+                             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "20", "-auto-alt-ref", "0",
+                             "-row-mt", "1", "-threads", "8", OUTF], stdin=subprocess.PIPE)
 if DRY: enc = None
 elif MODE == "alpha":
-    enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
-                            "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "20", "-auto-alt-ref", "0", OUTF], stdin=subprocess.PIPE)
+    enc = None if CROP else alpha_enc(OW, OH)     # --crop は大きさが決まってから（face は最初のコマのあと）
+    if not CROP and os.path.exists(os.path.splitext(OUTF)[0] + ".crop.json"): os.remove(os.path.splitext(OUTF)[0] + ".crop.json")   # 前の切り抜きの控えを残さない
 else:
     tmp = OUTF + ".noaudio.mp4"
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{OW}x{OH}", "-r", str(FPS), "-i", "-",
@@ -435,6 +450,7 @@ def finish(img, sh, boxes, sdd):
     for p1 in boxes:                                                                      # 顔の箱を、息づかい・縮小の変換で最終の画素に写す
         p2 = p1 @ M[:, :2].T + M[:, 2]
         keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
+    if CROP_BOX: x_, y_, d_ = CROP_BOX; return matte(img, sh, keep, roi=(x_, y_, x_ + d_, y_ + d_))
     return matte(img, sh, keep)
 
 TAGS, SPEAK, FACEP, LOUD = [], [], [], []         # 検査: 各コマで何を出したか（frame_tag）、口を開けているか、口の部品を貼る姿勢に部品があるか、声が出ているか
@@ -468,11 +484,19 @@ for f in range(f0, min(f1, NALL)):
             out = finish(cv2.addWeighted(B_[0], u_, A_[0], 1 - u_, 0), B_[1] * u_ + A_[1] * (1 - u_), A_[2] + B_[2], M)
     else:
         out = finish(*body(pl, f), M)
+    if CROP and not DRY:
+        if CROP_BOX is None:                      # face: 最初のコマの人物から顔の周りを測る（vm layout のワイプと同じ）
+            CROP_BOX = wipe_box(out[:, :, 3] > 128)
+            if CROP_BOX is None: die("最初のコマに人物が無い（--crop x,y,辺 で渡す）")
+            print(f"crop: {CROP_BOX[0]},{CROP_BOX[1]} 辺 {CROP_BOX[2]}（出力 {OW}x{OH} の中）", file=sys.stderr, flush=True)
+        if out.shape[:2] != (CROP_BOX[2], CROP_BOX[2]): out = out[CROP_BOX[1]:CROP_BOX[1] + CROP_BOX[2], CROP_BOX[0]:CROP_BOX[0] + CROP_BOX[2]]
+        if enc is None: enc = alpha_enc(CROP_BOX[2], CROP_BOX[2])
     enc.stdin.write(out.tobytes())
     if f % 300 == 0: print(f"  {f}/{NALL}", file=sys.stderr, flush=True)
 if not DRY:
     enc.stdin.close(); rc_enc = enc.wait()
     if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
+    if CROP: json.dump({"box": list(CROP_BOX), "size": [OW, OH], "from": T0}, open(os.path.splitext(OUTF)[0] + ".crop.json", "w"))
     if MODE != "alpha":
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{T0}", "-t", f"{T1 - T0}", "-i", VOICE, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", OUTF], check=True)
         os.remove(tmp)

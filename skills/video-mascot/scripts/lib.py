@@ -190,19 +190,33 @@ def body_height(img, anc):
 
 
 # ---------- 背景の切り抜き（透明にする）----------
-def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600):
+MATTE_MARGIN = 16                                   # roi の周りに足して計算する幅（輪郭のやわらげ・縁の明るさの近傍は 5 画素ほど）
+
+
+def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600, roi=None):
     """背景につながる白を透明にして、輪郭をやわらかくする。足元の影は黒の半透明で別に足す。
+    roi=(x0, y0, x1, y1) を渡すと、その範囲だけの BGRA を返す（ワイプ用。中身は全体で作って切り抜いたものと同じ）。
+    背景につながるかの判定（連結成分）は全体の絵で行い、重い計算は roi の周り（MATTE_MARGIN）だけで行う。
+    絵を先に切り抜くと、切り口に触れた白（白いシャツ）が背景につながって見えて抜けるので、切り抜いてから呼ばない。
     keeps=[(x0,y0,x1,y1), ...]（出力の画素）の外にある、ほぼ白の領域（毛束に囲まれたすき間など）は、外とつながっていなくても背景にする。
     keeps の中（白目・歯）は守る。ただし箱の中でも面積が keep_max_area（画素）を超える白は、白目・歯ではなく背景。clean: BGR（背景は BG の白）。戻り値: BGRA（アルファ付き）。
     黒い物（髪・靴）の縁は、背景の白とのまざり具合を暗さから割り戻す。明るい物（肌）の縁は形からやわらげる。"""
-    H, W = clean.shape[:2]; mn = clean.min(axis=2).astype(np.float32)
+    H, W = clean.shape[:2]; b_, g_, r_ = cv2.split(clean); mn = cv2.min(cv2.min(b_, g_), r_).astype(np.float32)   # numpy の min(axis=2) は 30 倍遅い
     cand = (mn >= bg - 12).astype(np.uint8)
     n, lab, st, cen = cv2.connectedComponentsWithStats(cand, connectivity=4)
     border = set(np.unique(np.concatenate([lab[0, :], lab[-1, :], lab[:, 0], lab[:, -1]]))) - {0}
     isbg = np.zeros(n, bool); isbg[list(border)] = True
     dark_near = cv2.dilate((mn < 110).astype(np.uint8), np.ones((9, 9), np.uint8))                 # 近くに黒い毛がある所
+    if roi is not None:                            # roi の周りの窓。成分の判定はその窓に掛かる成分だけでよい（結果は画素ごとに成分で決まる）
+        rx0, ry0, rx1, ry1 = max(0, roi[0]), max(0, roi[1]), min(W, roi[2]), min(H, roi[3])
+        if rx1 <= rx0 or ry1 <= ry0: raise ValueError(f"roi が絵の外: {roi}")
+        wx0, wy0, wx1, wy1 = max(0, rx0 - MATTE_MARGIN), max(0, ry0 - MATTE_MARGIN), min(W, rx1 + MATTE_MARGIN), min(H, ry1 + MATTE_MARGIN)
+    else:
+        wx0, wy0, wx1, wy1 = 0, 0, W, H
+    def hits(stat):                                # 成分の外接箱が窓に掛かるか
+        x, y, w, h = stat[:4]; return x < wx1 and x + w > wx0 and y < wy1 and y + h > wy0
     for i in range(1, n):
-        if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12: continue
+        if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12 or not hits(st[i]): continue
         x, y, w, h, area = st[i]; region = lab[y:y + h, x:x + w] == i
         ring = cv2.dilate(region.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
         ring_dark = float((dark_near[y:y + h, x:x + w][ring & ~region]).mean()) if (ring & ~region).any() else 0.0
@@ -217,7 +231,7 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600):
     fg0 = (~bgmask) & (cand > 0); n2, lab2, st2, _ = cv2.connectedComponentsWithStats(fg0.astype(np.uint8), connectivity=4)
     for i in range(1, n2):
         x, y, w, h, area = st2[i]
-        if area > keep_max_area: continue
+        if area > keep_max_area or not hits(st2[i]): continue
         reg = lab2[y:y + h, x:x + w] == i
         ys_, xs_ = np.where(reg); cx = x + xs_.mean(); cy = y + ys_.mean()
         if keeps and any(x0 <= cx <= x1 and y0 <= cy <= y1 for (x0, y0, x1, y1) in keeps): continue      # 白目・歯は守る
@@ -225,6 +239,8 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600):
         sub = lab2[y0_:y1_, x0_:x1_] == i; ringm = cv2.dilate(sub.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
         ringm &= ~sub; dark_ring = (mn[y0_:y1_, x0_:x1_][ringm] < 110).mean() if ringm.any() else 0
         if dark_ring > 0.25: bgmask[y:y + h, x:x + w] |= reg
+    if roi is not None:                            # ここから先は近傍だけを見る計算なので、窓で行い最後に roi を切り出す
+        clean, shadow, mn, bgmask = (v[wy0:wy1, wx0:wx1] for v in (clean, shadow, mn, bgmask))
     fg = (~bgmask).astype(np.uint8)
     dist = cv2.distanceTransform(fg, cv2.DIST_L2, 3); band = (fg > 0) & (dist <= 3.0)
     a_geo = cv2.GaussianBlur(cv2.erode(fg, np.ones((2, 2), np.uint8)).astype(np.float32), (0, 0), 0.9)
@@ -235,7 +251,19 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600):
     col = np.where(af > 0.95, clean.astype(np.float32), col)
     sh = shadow * (1 - a)                                                           # 影は黒の半透明
     at = a + sh; rgb = (col * a[:, :, None]) / np.maximum(at[:, :, None], 1e-3)
-    return np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), (np.clip(at, 0, 1) * 255).astype(np.uint8)])
+    out = np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), (np.clip(at, 0, 1) * 255).astype(np.uint8)])
+    return out if roi is None else out[ry0 - wy0:ry1 - wy0, rx0 - wx0:rx1 - wx0]
+
+
+def wipe_box(fg):
+    """人物の画素（真偽の配列）から、ワイプに切り抜く正方形 (x, y, 辺)。辺は背の 0.44 倍、横は頭（上 25%）の真ん中、
+    上は頭の少し上。3 頭身のキャラで、顔と肩の上が丸に収まる（凜で合わせた）。画面の外に出る分は内側へ寄せる。人物が無ければ None。"""
+    mh, mw = fg.shape; ys, xs = np.where(fg)
+    if not len(ys): return None
+    top, fh = int(ys.min()), int(ys.max() - ys.min())
+    cx = float(np.median(xs[ys < top + 0.25 * fh])); side = min(mw, mh, int(0.44 * fh) // 2 * 2)
+    x = int(round(cx - side / 2)); y = int(round(top - 0.01 * fh))
+    return max(0, min(mw - side, x)), max(0, min(mh - side, y)), side
 
 
 # ---------- 声の語から母音の時刻列（render.py の口パク用。純関数）----------
