@@ -379,3 +379,16 @@ def test_hand_replace_does_not_touch_linked_pack_cache(tmp_path):
     nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
     hands.archive_old(lib.Proj(str(nw)), "point")
     assert (d / "f1.webp").exists()
+
+
+
+def test_rebuild_repins_workspace_links_to_the_old_pack(tmp_path):
+    """パックを --force で作り直しても、前のパックから作った作業フォルダは前のパックの作り置きを使い続ける（Codex の指摘）。"""
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
+    nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
+    assert str(nw) in json.loads((pk / "pack.json").read_text())["workspaces"]
+    r = run("pack.py", pk, "--from", p, "--force")                          # 作り置きなしで作り直す
+    assert r.returncode == 0 and "向け直した" in r.stdout, r.stdout + r.stderr
+    old = next(x for x in tmp_path.iterdir() if x.name.startswith("pack.old-"))
+    assert os.readlink(nw / "ib_wan") == str(old / "ib_wan") and (nw / "ib_wan" / "home__point").is_dir()

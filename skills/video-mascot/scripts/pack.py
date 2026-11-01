@@ -296,6 +296,7 @@ def build(pack, sources, force=False, with_cache=False):
         json.dump(man, open(os.path.join(tmp, "pack.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         if os.path.exists(pack):                  # 古いパックは消さずに、重ならない名前で残す（同じ秒に2回作っても）
             old = unique(pack + ".old-" + time.strftime("%Y%m%d_%H%M%S")); os.rename(pack, old); print("古いパック:", old)
+            repin(pack, old)
         os.rename(tmp, pack)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True); raise
@@ -309,6 +310,20 @@ def build(pack, sources, force=False, with_cache=False):
         c = man["cache"]; print(f"  作り置き: Wan の切り替え {len(c['wan'])} 組、RIFE の列 {len(c['rife'])}（WebP、読むだけ）")
         for k, why in c["skipped"]: print(f"    入れなかった: {k}（{why}）")
     return man
+
+
+def repin(pack, old):
+    """パックを作り直して古いパックを old へ退避したとき、古いパックから作った作業フォルダの作り置きのリンクを old へ向け直す
+    （新しいパックの絵・作り置きに、古い作業フォルダが勝手に乗り換えないように）。"""
+    try: ws = json.load(open(os.path.join(old, "pack.json"), encoding="utf-8")).get("workspaces", [])
+    except (OSError, ValueError): return
+    n = 0
+    for w in ws:
+        for sub in ("ib_wan", "ib_interp"):
+            lk = os.path.join(w, sub)
+            if os.path.islink(lk) and os.readlink(lk) == os.path.join(pack, sub):
+                os.remove(lk); os.symlink(os.path.join(old, sub), lk); n += 1
+    if n: print(f"  古いパックから作った作業フォルダの作り置きのリンク {n} 本を、古いパック（{old}）に向け直した")
 
 
 def unique(path):
@@ -345,6 +360,10 @@ def new(pack, dst, name=None, own_cache=False):
         os.rename(tmp, dst)
     except BaseException:                          # 途中で落ちたら、半端な複製を残さない
         shutil.rmtree(tmp, ignore_errors=True); raise
+    if not own_cache and any(os.path.islink(os.path.join(dst, sub)) for sub in ("ib_wan", "ib_interp")):
+        mf = os.path.join(pack, "pack.json"); man = json.load(open(mf, encoding="utf-8"))   # 作り直しのときにリンクを古いパックへ向け直すため、使う作業フォルダを控える
+        man["workspaces"] = sorted(set(man.get("workspaces", [])) | {dst})
+        json.dump(man, open(mf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("作業フォルダ:", dst, f"（{pack} から。台本・声・動きは空）")
 
 
