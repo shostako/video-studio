@@ -445,6 +445,15 @@ def test_matte_enclosed_keep_protects_eye_white_inside_face_box():
         assert lib.matte(img, sh, keeps, enclosed=mode)[143, 145, 3] >= 250, mode
 
 
+def test_matte_enclosed_keep_removes_hair_gap_inside_face_box():
+    """顔の箱の中でも、黒い毛に囲まれた細長い白（毛束の間）は keep でも抜く（bg と同じ。Codex の指摘）。"""
+    img, sh, keeps = _figure_gap()
+    import cv2
+    img[95:145, 108:124] = (25, 25, 30); cv2.ellipse(img, (116, 120), (3, 20), 0, 0, 360, (253, 253, 253), -1)   # 顔の箱の左端に、毛に囲まれた細長い白（楕円）
+    for mode in ("bg", "keep"):
+        assert lib.matte(img, sh, keeps, enclosed=mode)[120, 116, 3] == 0, mode
+
+
 def test_matte_enclosed_keep_roi_matches_full_crop():
     import numpy as np
     img, sh, keeps = _figure_gap()
