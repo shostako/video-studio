@@ -437,6 +437,14 @@ def test_matte_enclosed_keep_closes_shirt_but_opens_flat_gap():
     assert new[5, 5, 3] == 0                                           # 外の白は透明のまま
 
 
+def test_matte_enclosed_keep_protects_eye_white_inside_face_box():
+    """顔の箱の中の白目・歯は、背景の色そのもの（253）でも keep で抜かない（bg と同じ。Codex の指摘）。"""
+    img, sh, keeps = _figure_gap()
+    img[140:146, 140:150] = 253                                        # 肌の顔の中に、背景と同じ色の白目
+    for mode in ("bg", "keep"):
+        assert lib.matte(img, sh, keeps, enclosed=mode)[143, 145, 3] >= 250, mode
+
+
 def test_matte_enclosed_keep_roi_matches_full_crop():
     import numpy as np
     img, sh, keeps = _figure_gap()

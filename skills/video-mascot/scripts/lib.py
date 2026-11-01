@@ -223,7 +223,9 @@ def matte(clean, shadow, keeps=None, bg=BG, keep_max_area=600, roi=None, enclose
         bgc = np.median(clean[np.isin(lab, list(border))], axis=0) if border else np.full(3, bg, np.float32)
         for i in range(1, n):
             if isbg[i] or st[i, cv2.CC_STAT_AREA] < 12 or not hits(st[i]): continue
-            x, y, w, h, area = st[i]; region = (lab[y:y + h, x:x + w] == i).astype(np.uint8)
+            x, y, w, h, area = st[i]; cx, cy = cen[i]
+            if area <= keep_max_area and keeps and any(x0 <= cx <= x1 and y0 <= cy <= y1 for (x0, y0, x1, y1) in keeps): continue   # 白目・歯は守る（bg と同じ）
+            region = (lab[y:y + h, x:x + w] == i).astype(np.uint8)
             inner = cv2.erode(region, np.ones((7, 7), np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
             if inner.sum() < 30: inner = region > 0
             px = clean[y:y + h, x:x + w][inner].astype(np.int16)
