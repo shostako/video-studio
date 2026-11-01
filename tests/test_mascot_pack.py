@@ -16,6 +16,15 @@ sys.path.insert(0, str(ROOT / "tests/fixtures"))
 import synth_mascot  # noqa: E402
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _registry(tmp_path, monkeypatch):
+    """パックの作業フォルダの控えを、試験ごとの置き場にする（手元の ~/.local/share に書かない）。"""
+    monkeypatch.setenv("VM_PACK_REGISTRY", str(tmp_path / "pack_workspaces.json"))
+
+
 def run(script, *args, env=None):
     return subprocess.run([sys.executable, "-B", str(SCRIPTS / script), *map(str, args)], capture_output=True, text=True, timeout=300, env=env)
 
@@ -387,8 +396,23 @@ def test_rebuild_repins_workspace_links_to_the_old_pack(tmp_path):
     p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
     assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
     nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
-    assert str(nw) in json.loads((pk / "pack.json").read_text())["workspaces"]
+    assert "workspaces" not in json.loads((pk / "pack.json").read_text())        # パックは書き換えない
+    assert str(nw) in json.loads((tmp_path / "pack_workspaces.json").read_text())[str(pk)]
     r = run("pack.py", pk, "--from", p, "--force")                          # 作り置きなしで作り直す
     assert r.returncode == 0 and "向け直した" in r.stdout, r.stdout + r.stderr
     old = next(x for x in tmp_path.iterdir() if x.name.startswith("pack.old-"))
     assert os.readlink(nw / "ib_wan") == str(old / "ib_wan") and (nw / "ib_wan" / "home__point").is_dir()
+
+
+
+def test_new_does_not_write_into_a_read_only_pack(tmp_path):
+    """読むだけ（書けない）のパックからも作業フォルダを作れ、パックの中身は変わらない（旧PC での指摘）。"""
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
+    before = (pk / "pack.json").read_text(); os.chmod(pk / "pack.json", 0o444); os.chmod(pk, 0o555)
+    try:
+        r = run("pack.py", pk, "--new", tmp_path / "video")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (pk / "pack.json").read_text() == before
+    finally:
+        os.chmod(pk, 0o755); os.chmod(pk / "pack.json", 0o644)
