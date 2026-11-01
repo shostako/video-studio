@@ -962,6 +962,45 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
 
 
 # ---------- 中割りのコマ補間（config.interp、opt-in）----------
+_WIN_HOME = None
+
+
+def win_decode(b):
+    """cmd.exe の出力（バイト）を文字にする。UTF-8 で読めなければ CP932（日本語の Windows の既定）で読む。"""
+    for enc in ("utf-8", "cp932"):
+        try: return b.decode(enc)
+        except UnicodeDecodeError: pass
+    return b.decode("utf-8", errors="replace")
+
+
+def win_home():
+    """Windows のユーザーのフォルダを WSL から見たパス（例 /mnt/c/Users/<名前>）。環境変数 VM_WIN_HOME → cmd.exe の %USERPROFILE%。
+    Windows の無い所（CI など）では None。1 回調べたら覚えておく。"""
+    global _WIN_HOME
+    if _WIN_HOME is None:
+        v = os.environ.get("VM_WIN_HOME", "")
+        if not v:
+            import shutil, subprocess
+            if shutil.which("cmd.exe") and shutil.which("wslpath"):
+                try:
+                    w = win_decode(subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, timeout=15,
+                                                  cwd="/mnt/c" if os.path.isdir("/mnt/c") else None).stdout).strip().splitlines()
+                    if w and "%" not in w[-1]: v = subprocess.run(["wslpath", "-u", w[-1].strip()], capture_output=True, text=True, timeout=15).stdout.strip()
+                except (OSError, subprocess.SubprocessError): v = ""
+        _WIN_HOME = v
+    return _WIN_HOME or None
+
+
+def rife_tmp(cfg):
+    """RIFE（Windows の exe）に渡す絵を置く一時フォルダ。config.interp.tmp か VM_RIFE_TMP、無ければ Windows の %TEMP%/vm_rife、
+    Windows が無ければこの PC の一時フォルダ。"""
+    if cfg.get("tmp"): return cfg["tmp"]
+    wh = win_home()
+    if wh: return os.path.join(wh, "AppData", "Local", "Temp", "vm_rife")
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "vm_rife")
+
+
 INTERP_DEFAULTS = {
     "engine": "rife",       # rife: 描いた絵の間を RIFE で細かくする。wan: 姿勢の切り替えを Wan2.2 の First-Last-Frame で動かす（interp.wan）
     "mult": 8,              # 描いた絵（端の姿勢と中割り）の間を何倍に細かくするか
@@ -971,14 +1010,14 @@ INTERP_DEFAULTS = {
     "pairs": None,          # 補間する組 ["gap>gassho", ...]（None は中割りのある全部の組）
     "direct": False,        # 中割りの無い組も、端の姿勢2枚の間を直に補間する（向きの同じ組だけ。溶かしの代わり）
     "model": "rife-v4.6",
-    "exe": "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe",
-    "tmp": "/mnt/c/Users/shost/AppData/Local/Temp/vm_rife",   # Windows の exe が読み書きできる所
+    "exe": os.environ.get("VM_RIFE_EXE", "/mnt/c/ComfyUI/tools/rife-ncnn-vulkan-20221029-windows/rife-ncnn-vulkan.exe"),   # 環境変数 VM_RIFE_EXE で変えられる
+    "tmp": os.environ.get("VM_RIFE_TMP") or None,   # Windows の exe が読み書きできる所。無ければ Windows の %TEMP%/vm_rife（rife_tmp）
     "wan": None,            # engine: wan の設定（WAN_DEFAULTS を上書きする辞書）
 }
 
 # engine: wan の既定。新PC の ComfyUI（portable）と、その models に置いた Wan2.2 I2V-A14B（GGUF）・Lightning の LoRA を使う
 WAN_DEFAULTS = {
-    "comfy": "/mnt/c/ComfyUI/ComfyUI_windows_portable",   # ComfyUI portable の場所（python_embeded と ComfyUI/ がある所）
+    "comfy": os.environ.get("VM_COMFY_ROOT") or os.environ.get("VS_COMFY_ROOT") or "/mnt/c/ComfyUI/ComfyUI_windows_portable",   # ComfyUI portable の場所（python_embeded と ComfyUI/ がある所）
     "url": "http://127.0.0.1:8188",
     "width": 704, "height": 1248,   # Wan に渡す大きさ（16 の倍数。縦横比は姿勢の絵に近く）
     "length": 13,           # Wan のコマ数（4n+1）。16fps で 0.75 秒分。再生の秒は interp.dur / durs で決まる

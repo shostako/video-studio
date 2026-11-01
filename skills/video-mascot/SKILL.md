@@ -23,6 +23,8 @@ Codex の枠を使いたくないときは、絵を ChatGPT の通常 Chat 画�
 ```
 video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。入口は `~/.claude/skills/video-mascot/scripts/vm <コマンド>`（以下 `vm`）。`vm <コマンド>` を引数なしで呼ぶと使い方が出る。
 
+場所は環境変数で変えられる（無ければ既定）: `VIDEO_SCENE_HOME`（道具と作業フォルダの置き場、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`（RIFE の exe）、`VM_RIFE_TMP`（RIFE に渡す絵の一時フォルダ、既定は Windows の `%TEMP%/vm_rife`）、`VM_COMFY_ROOT`（Wan を作る ComfyUI portable）、`VM_WIN_HOME`（Windows のユーザーのフォルダ。既定は `cmd.exe` で調べる）。Wan・RIFE の無い PC でも、パックの作り置きのある身振りは書き出せる（`vm pack --new`）。
+
 ## 進め方
 
 **新しいキャラの絵が来たら**、references/new-character.md の順に通す（`vm init` で雛形 → 姿勢 → 中割り → 差分 → `vm face` → `vm parts`）。キャラに固有の値は作業フォルダの config にだけ置く。

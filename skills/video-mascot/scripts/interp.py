@@ -7,7 +7,7 @@ import json, os, shutil, subprocess
 
 import cv2
 
-from lib import die, file_sig, stamp_ok, frame_paths, readonly_guard
+from lib import die, file_sig, stamp_ok, frame_paths, readonly_guard, rife_tmp
 
 
 def _winpath(p):
@@ -42,10 +42,10 @@ def dense_paths(proj, pa, pb, div, cfg, log=None, direct=False):
     if have and stamp_ok(sf, lambda sig: _stamp(srcs, cfg, sig)): return want
     readonly_guard(proj.p("ib_interp"), f"{pa}→{pb} の RIFE の列")
     want = [os.path.join(out, f"f{j}.png") for j in range(1, (len(srcs) - 1) * mult)]
-    if not os.path.exists(cfg["exe"]): die(f"RIFE が無い: {cfg['exe']}（config.interp.exe を直すか、interp を外す）")
+    if not os.path.exists(cfg["exe"]): die(f"RIFE が無い: {cfg['exe']}（config.interp.exe か環境変数 VM_RIFE_EXE を直すか、interp を外す。パックの作り置きがあれば RIFE は要らない）")
     imgs = [cv2.imread(p) for p in srcs]; h, w = imgs[0].shape[:2]
     imgs = [im if im.shape[:2] == (h, w) else cv2.resize(im, (w, h), interpolation=cv2.INTER_AREA) for im in imgs]
-    tmp = os.path.join(cfg["tmp"], f"{os.path.basename(proj.root)}_{pa}_{pb}")
+    tmp = os.path.join(rife_tmp(cfg), f"{os.path.basename(proj.root)}_{pa}_{pb}")
     shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp + "/in"); os.makedirs(tmp + "/out")
     for i, im in enumerate(imgs): cv2.imwrite(f"{tmp}/in/{i:04d}.png", im)
     n_out = (len(imgs) - 1) * mult + 1           # -n は列の末尾の外まで割り付けるので、多めに頼んで最後の原画までで切る

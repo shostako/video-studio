@@ -12,7 +12,7 @@ import glob, json, os, shutil, subprocess
 import cv2
 import numpy as np
 
-from lib import die, edge_weight, motion_positions, wan_cut, file_sig, stamp_ok, frame_paths, readonly_guard
+from lib import die, edge_weight, motion_positions, wan_cut, file_sig, stamp_ok, frame_paths, readonly_guard, rife_tmp
 
 _GEN_KEYS = ("width", "height", "length", "seed", "style", "head_poses", "unet_high", "unet_low", "lora_high", "lora_low", "clip", "vae", "clip_vision")
 _POST_KEYS = ("rife_mult", "cut_tol", "edge", "blink_tol")
@@ -61,7 +61,7 @@ def prompt_of(cfg, wan, a, b):
 def generate(P, a, b, wan, raw_dir, log=None):
     """ComfyUI で a→b の Wan のコマを作り、raw_dir に w01.png… として置く。ComfyUI が起動していないと止まる。"""
     comfy = wan["comfy"]; py = os.path.join(comfy, "python_embeded", "python.exe")
-    if not os.path.exists(py): die(f"ComfyUI の Python が無い: {py}（interp.wan.comfy を直す。Wan の切り替えは新PC の ComfyUI で作る）")
+    if not os.path.exists(py): die(f"ComfyUI の Python が無い: {py}（interp.wan.comfy か環境変数 VM_COMFY_ROOT を直す。Wan の切り替えは Wan の入った PC の ComfyUI で作る。パックの作り置きがあれば Wan は要らない）")
     tag = "vm_wan_" + "".join(ch if ch.isalnum() else "_" for ch in os.path.basename(P.root))
     inp = os.path.join(comfy, "ComfyUI", "input")
     names = {}
@@ -153,7 +153,7 @@ def rife_frames(frames, mult, icfg, tag):
     """BGR の絵の列を RIFE で mult 倍に細かくした列（(len-1)*mult+1 枚）。"""
     if mult <= 1 or len(frames) < 2: return list(frames)
     if not os.path.exists(icfg["exe"]): die(f"RIFE が無い: {icfg['exe']}（config.interp.exe を直す）")
-    tmp = os.path.join(icfg["tmp"], tag)
+    tmp = os.path.join(rife_tmp(icfg), tag)
     shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp + "/in"); os.makedirs(tmp + "/out")
     for i, im in enumerate(frames): cv2.imwrite(f"{tmp}/in/{i:04d}.png", im)
     n_out = (len(frames) - 1) * mult + 1
