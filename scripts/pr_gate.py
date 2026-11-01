@@ -11,6 +11,9 @@ import sys
 
 MARK = "codex-pull-request-review-summary"
 STATE_RE = re.compile(r"<!--\s*codex-review-state:v1\s*(\{.*?\})\s*-->", re.S)
+# 指摘が無いとき、Codex は要約の状態を running のまま、別のコメントで結果を返すことがある（2026-11-01 の #70）
+CLEAN_RE = re.compile(r"Codex Review:\s*Didn't find any major issues", re.I)
+REVIEWED_RE = re.compile(r"Reviewed commit:\**\s*`([0-9a-fA-F]{7,40})`")
 
 
 def codex_summaries(comments):
@@ -29,15 +32,19 @@ def flatten_pages(pages):
     return [c for page in pages for c in (page if isinstance(page, list) else [page])]
 
 
-def evaluate(summaries, head_sha, unresolved_threads=0):
+def evaluate(summaries, head_sha, unresolved_threads=0, resolve=None):
     """Codex の要約コメント本文のリスト（古い順）、PR の先頭 SHA、未解決のレビュースレッド数から (コード, 理由) を返す。
 
     要約の has_unresolved_findings は「レビューしたときの写し」で、指摘を直してスレッドを解決しても更新されない。
     そのため、未解決かどうかは GitHub 上のスレッドの解決状態（unresolved_threads）で見る。要約からは
-    「先頭コミットに対して完了したレビューがあること」だけを使う。"""
+    「先頭コミットに対して完了したレビューがあること」だけを使う。
+    resolve は短い SHA を SHA の全体に引く関数（引けない・曖昧なら None）。結果のコメントは短い SHA しか書かないので、
+    それが先頭のコミットそのものかをこれで確かめる。渡さなければ、SHA の全体が書いてあるときだけ使う。"""
     bodies = [b for b in summaries if MARK in b]
     if not bodies:
         return 2, "Codex の要約コメントがまだ無い"
+    last = max(i for i, b in enumerate(summaries) if MARK in b)
+    later = summaries[last + 1:]                     # 最後の要約より後の、Codex のボットのほかのコメント
     m = STATE_RE.search(bodies[-1])
     if not m:
         return 2, "Codex の要約に状態（codex-review-state）が無い"
@@ -45,6 +52,19 @@ def evaluate(summaries, head_sha, unresolved_threads=0):
         cr = json.loads(m.group(1)).get("code_review") or {}
     except json.JSONDecodeError:
         return 1, "Codex の状態が読めない"
+    if cr.get("status") == "running" and (cr.get("commit_sha") or "").lower() == head_sha.lower():
+        # 要約が先頭コミット（SHA の全体）を running と書いたまま、その後に「大きな問題は見つからない」と、先頭のコミットの
+        # 「Reviewed commit」を返していれば、完了とみなす（指摘があればスレッドが残るので下で止まる）。短い SHA は、
+        # リポの中で先頭のコミットにだけ引けるときに限る（接頭辞を揃えた別のコミットへの結果で通さない）
+        for b in later:
+            r = REVIEWED_RE.search(b)
+            if not (CLEAN_RE.search(b) and r and head_sha.lower().startswith(r.group(1).lower())):
+                continue
+            full = r.group(1) if len(r.group(1)) == 40 else (resolve(r.group(1)) if resolve else None)
+            if (full or "").lower() == head_sha.lower():
+                if unresolved_threads > 0:
+                    return 1, f"未解決のレビュースレッドが {unresolved_threads} 件ある。直して返信し、解決済みにする"
+                return 0, "Codex のレビューは先頭コミットに対して完了し（要約は running のまま、結果は別のコメントで「指摘なし」）、未解決のスレッドは無い"
     if cr.get("status") != "completed":
         return 2, f"Codex のレビューが終わっていない（status={cr.get('status')}）"
     sha = cr.get("commit_sha") or ""
@@ -64,6 +84,14 @@ def _gh(*args, ok_codes=(0,)):
     if r.returncode not in ok_codes:
         raise GhError(f"gh 失敗: {' '.join(args)}: {r.stderr.strip()[:200]}")
     return r.stdout
+
+
+def resolve_sha(repo, abbr):
+    """短い SHA をリポの中で SHA の全体に引く。無い・曖昧（GitHub は 422 を返す）・通信の失敗なら None（＝待つ）。"""
+    try:
+        return _gh("api", f"repos/{repo}/commits/{abbr}", "--jq", ".sha").strip() or None
+    except GhError:
+        return None
 
 
 def main(argv):
@@ -97,7 +125,7 @@ def main(argv):
     if rt["pageInfo"]["hasNextPage"]:
         print("だめ: レビュースレッドが100件を超えている。人が見る"); return 1
     unresolved = sum(1 for x in rt["nodes"] if not x["isResolved"])
-    code, why = evaluate(codex_summaries(flatten_pages(pages)), head, unresolved)
+    code, why = evaluate(codex_summaries(flatten_pages(pages)), head, unresolved, resolve=lambda abbr: resolve_sha(repo, abbr))
     if code == 0:
         # 判定している間に push が入っていないことを確かめ、判定した SHA を出す（マージはこの SHA に縛る）
         now = _gh("pr", "view", n, "-R", repo, "--json", "headRefOid", "-q", ".headRefOid").strip()
