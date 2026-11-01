@@ -53,6 +53,24 @@ def hear(path):
     return out[-1] if out else ""
 
 
+def clean_tail(src, dst, n):
+    """行の声の終わりのゴミの音（lib.tail_blip）を無音にした写しを dst に書いて、そのパスを返す（長さは変えない＝行の時刻はずれない）。
+    無ければ src をそのまま返す。消したときはログに出す。"""
+    import numpy as np
+    from lib import tail_blip
+    sr = int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "csv=p=0", src],
+                            capture_output=True, text=True).stdout.strip() or 0) or 48000
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-ac", "1", "-f", "f32le", "-"], capture_output=True).stdout
+    x = np.frombuffer(raw, np.float32).copy(); bl = tail_blip(x, sr)
+    if bl is None: return src
+    a, b = bl; f = min(int(sr * 0.005), a)
+    if f: x[a - f:a] *= np.linspace(1, 0, f, dtype=np.float32)
+    pk = float(np.abs(x[a:b]).max()); x[a:b] = 0
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "f32le", "-ar", str(sr), "-ac", "1", "-i", "-", "-c:a", "pcm_s16le", dst], input=x.tobytes(), check=True)
+    print(f"行{n}: 終わりのゴミの音を消した（{a / sr:.2f}〜{b / sr:.2f} 秒、{(b - a) / sr * 1000:.0f} ミリ秒、大きさ {pk:.2f}。長さは変えない）")
+    return dst
+
+
 def main():
     a = [x for x in sys.argv[1:]]
     if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master")
@@ -104,8 +122,9 @@ def main():
             info.append({"n": i, "start": round(st, 3), "dur": round(d, 3)}); t = st + d + gap
         end = float(V.get("end") or max(x["start"] + x["dur"] for x in info) + 0.6)
         args = ["ffmpeg", "-v", "error", "-y"]; flt = []; labs = []
+        cd_ = P.p("voice", "_clean"); os.makedirs(cd_, exist_ok=True)
         for k, x in enumerate(info):
-            args += ["-i", P.p("voice", f"l{x['n']}.wav")]
+            args += ["-i", clean_tail(P.p("voice", f"l{x['n']}.wav"), os.path.join(cd_, f"l{x['n']}.wav"), x["n"])]
             flt.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=mono,loudnorm=I=-18:TP=-1.5:LRA=11,adelay={int(x['start'] * 1000)}:all=1,asetpts=N/SR/TB,apad=whole_dur={end}[a{k}]"); labs.append(f"[a{k}]")
         flt.append("".join(labs) + f"amix=inputs={len(info)}:normalize=0:duration=longest,atrim=0:{end},loudnorm=I=-16:TP=-1.5:LRA=11[out]")
         subprocess.run(args + ["-filter_complex", ";".join(flt), "-map", "[out]", "-ar", "48000", "-ac", "1", P.p("voice", "master.wav")], check=True)

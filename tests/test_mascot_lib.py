@@ -292,3 +292,57 @@ def test_words_hira_numbers_split_across_words():
     assert "".join(lib.words_hira(["20", "26", "年"], K.convert)) == "にせんにじゅうろくねん"
     hs = lib.words_hira(["1", ",", "000", "円"], K.convert)
     assert "".join(hs) == "せんえん"                                    # 桁区切りの数も千と読む（語への配り方は読みの塊の比で）
+
+
+# ---------- tail_blip（行の声の終わりのゴミの音）----------
+def _voice_like(parts, sr=24000):
+    """[(秒, 大きさ), ...] を順につないだ合成の声（大きさ 0 は無音、それ以外は 220Hz の正弦波）。"""
+    import numpy as np
+    out = []
+    for d, a in parts:
+        t = np.arange(int(d * sr)) / sr; out.append((a * np.sin(2 * np.pi * 220 * t)).astype(np.float32))
+    return np.concatenate(out), sr
+
+
+def test_tail_blip_finds_a_cut_off_sound_after_silence():
+    """旧PC の l11.wav の形: 読み終えて 0.36 秒黙ったあと、0.04 秒の大きい音（0.56）がファイルの端で切れている。"""
+    x, sr = _voice_like([(1.5, 0.4), (0.36, 0.0), (0.04, 0.56)])
+    a, b = lib.tail_blip(x, sr)
+    assert abs(a / sr - 1.86) < 0.02 and b == len(x)
+
+
+@pytest.mark.parametrize("parts", [
+    [(1.0, 0.4), (0.84, 0.0), (0.5, 0.4), (0.3, 0.0)],     # 読点の間のあとに語が続き、端の前に終わる（l12 の「以上だ」）
+    [(1.5, 0.4), (0.36, 0.0), (0.3, 0.4)],                 # 端で切れているが長い＝本物の語
+    [(1.5, 0.4), (0.1, 0.0), (0.04, 0.5)],                 # 黙りが短い（語の続き）
+    [(1.5, 0.4), (0.4, 0.0)],                              # 終わりは静か
+    [(0.4, 0.0), (0.05, 0.5)],                             # 前に声が無い
+])
+def test_tail_blip_leaves_real_speech(parts):
+    x, sr = _voice_like(parts)
+    assert lib.tail_blip(x, sr) is None
+
+
+@pytest.mark.skipif(not (__import__("shutil").which("ffmpeg") and __import__("shutil").which("ffprobe")), reason="ffmpeg・ffprobe が無い")
+def test_voice_master_mutes_tail_blip_without_changing_timing(tmp_path):
+    """vm voice master は、行の声の終わりのゴミの音を無音にして master を組む。行の長さ（時刻）は変えない。"""
+    import json, subprocess, sys, wave
+    from pathlib import Path
+    import numpy as np
+    root = tmp_path / "proj"; (root / "voice").mkdir(parents=True)
+    json.dump({"name": "t", "fps": 30, "poses": {"home": {}}, "voice": {"lines": [{"text": "あ"}, {"text": "い"}], "gap": 0.5}},
+              open(root / "config.json", "w"), ensure_ascii=False)
+    for n, parts in ((1, [(1.0, 0.4), (0.5, 0.0)]), (2, [(1.5, 0.4), (0.36, 0.0), (0.04, 0.56)])):
+        x, sr = _voice_like(parts)
+        with wave.open(str(root / "voice" / f"l{n}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes((x * 32767).astype(np.int16).tobytes())
+    scripts = Path(__file__).resolve().parent.parent / "skills" / "video-mascot" / "scripts"
+    r = subprocess.run([sys.executable, "-B", str(scripts / "voice.py"), str(root), "master"], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "行2: 終わりのゴミの音を消した" in r.stdout and "行1:" not in r.stdout.split("終わりのゴミ")[0].splitlines()[-1]
+    tm = json.load(open(root / "voice" / "timing.json"))
+    assert abs(tm["lines"][1]["dur"] - 1.90) < 0.02                       # 行の長さはそのまま
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(root / "voice" / "master.wav"), "-ac", "1", "-ar", "48000", "-f", "f32le", "-"], capture_output=True).stdout
+    m = np.frombuffer(raw, np.float32); st = tm["lines"][1]["start"]
+    tail = m[int((st + 1.87) * 48000):int((st + 1.90) * 48000)]
+    assert np.abs(tail).max() < 0.02                                       # ゴミの音の所は無音
