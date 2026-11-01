@@ -311,6 +311,13 @@ def test_tail_blip_finds_a_cut_off_sound_after_silence():
     assert abs(a / sr - 1.86) < 0.02 and b == len(x)
 
 
+def test_tail_blip_finds_a_small_sound_just_before_the_end():
+    """旧PC の l8.wav の形: 黙ったあと、端の 0.06 秒手前の 40 ミリ秒の小さい音（0.047）。端の 20 ミリ秒は静か。"""
+    x, sr = _voice_like([(1.5, 0.4), (0.4, 0.0), (0.04, 0.047), (0.02, 0.0)])
+    a, b = lib.tail_blip(x, sr)
+    assert abs(a / sr - 1.90) < 0.02 and b == len(x)
+
+
 @pytest.mark.parametrize("parts", [
     [(1.0, 0.4), (0.84, 0.0), (0.5, 0.4), (0.3, 0.0)],     # 読点の間のあとに語が続き、端の前に終わる（l12 の「以上だ」）
     [(1.5, 0.4), (0.36, 0.0), (0.3, 0.4)],                 # 端で切れているが長い＝本物の語

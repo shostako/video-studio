@@ -381,9 +381,10 @@ def plan_at(t, ev, home, ib_seq, ibfps, nib, ease_name=None, trans_of=None, ib_d
 
 
 # ---------- 口の形（純関数）----------
-def tail_blip(x, sr, gap=0.25, max_len=0.1, hop=0.01):
+def tail_blip(x, sr, gap=0.25, max_len=0.1, end_tol=0.1, hop=0.01):
     """Irodori が行の声の終わりに出すゴミの音の範囲 (始めの標本, 終わりの標本) か None。
-    条件: 声が終わって gap 秒以上黙ったあとに、max_len 秒以内の短い音があり、それがファイルの端で切れている（端の 2 区切り以内まで鳴っている）。
+    条件: 声が終わって gap 秒以上黙ったあとに、max_len 秒以内の短い音があり、それがファイルの端か端の手前 end_tol 秒以内で鳴っている
+    （旧PC の l11 は端で切れ、l8 は端の 0.06 秒手前の 40 ミリ秒の音だった）。範囲は短い音の始めからファイルの端まで。
     行の途中の読点の間（黙ったあとに語が続き、端の前に終わる）は端で切れていないので触らない。音の大きさの境は、行の大きい所の 3%（0.01 以上）。"""
     import numpy as np
     x = np.asarray(x, dtype=np.float32); h = max(1, int(sr * hop)); n = len(x) // h
@@ -391,11 +392,14 @@ def tail_blip(x, sr, gap=0.25, max_len=0.1, hop=0.01):
     env = np.sqrt(np.mean(x[:n * h].reshape(n, h) ** 2, axis=1))
     thr = max(0.01, 0.03 * float(env.max()))
     on = env >= thr
-    if not on[-2:].any(): return None             # 端まで鳴っていない
-    b = n - 1
-    while b > 0 and on[b - 1]: b -= 1             # 端の音の始め
-    blen = (n - b) * hop
-    if blen > max_len: return None                # 端の音が長い＝本物の語
+    tol = max(2, int(round(end_tol / hop)))
+    if not on[-tol:].any(): return None           # 端の近くで鳴っていない
+    e = n
+    while e > 0 and not on[e - 1]: e -= 1         # 最後の音の終わり
+    b = e
+    while b > 0 and on[b - 1]: b -= 1             # その音の始め
+    blen = (e - b) * hop
+    if blen > max_len: return None                # 最後の音が長い＝本物の語
     s = b
     while s > 0 and not on[s - 1]: s -= 1         # その前の黙った所の始め（前の声の終わり）
     if s == 0 or (b - s) * hop < gap: return None   # 前に声が無い、黙りが短い
