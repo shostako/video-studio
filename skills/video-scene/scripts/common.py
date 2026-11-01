@@ -1,7 +1,20 @@
 """video-scene の共通部品: 鍵の解決、Gemini 呼び出し、動画・音声の読み出し、保存先の決定。"""
 import json, os, subprocess, sys, time, datetime, shutil
 
-OUT_DIR = os.environ.get("VIDEO_SCENE_OUT", "/mnt/c/Users/shost/Videos/generated")
+def _default_out():
+    """出力先の既定: Windows のユーザーの Videos/generated（WSL）、Windows が無ければ ~/Videos/generated。"""
+    try:
+        r = subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, text=True, timeout=15, cwd="/mnt/c" if os.path.isdir("/mnt/c") else None)
+        w = r.stdout.strip().splitlines()
+        if w and "%" not in w[-1]:
+            u = subprocess.run(["wslpath", "-u", w[-1].strip()], capture_output=True, text=True, timeout=15).stdout.strip()
+            if u: return os.path.join(u, "Videos", "generated")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.expanduser("~/Videos/generated")
+
+
+OUT_DIR = os.environ.get("VIDEO_SCENE_OUT") or _default_out()
 GEMINI_MODELS = [m for m in os.environ.get("VS_GEMINI_MODEL", "gemini-3.8-flash,gemini-2.5-flash").split(",") if m]
 
 

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, die
 
 IRO = os.environ.get("IRODORI_DIR", os.path.expanduser("~/.local/share/voice-engines/Irodori-TTS"))
-WS = os.path.expanduser("~/.local/share/video-scene/venv/bin/python")
+WS = os.path.join(os.environ.get("VIDEO_SCENE_HOME") or os.path.expanduser("~/.local/share/video-scene"), "venv", "bin", "python")
 
 
 def ff(*a): subprocess.run(["ffmpeg", "-v", "error", "-y", *a], check=True)
