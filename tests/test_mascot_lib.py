@@ -263,7 +263,7 @@ def test_speech_loud_skips_sokuon_closure():
 # ---------- num_to_kanji / words_hira ----------
 @pytest.mark.parametrize("src, want", [
     ("2つ", "二つ"), ("100%", "百%"), ("2026年", "二千二十六年"), ("10", "十"), ("1000", "千"), ("12345", "一万二千三百四十五"),
-    ("0", "零"), ("２つ", "二つ"), ("1.5倍", "1.5倍"), ("1,000円", "1,000円"), ("かな", "かな"),
+    ("0", "零"), ("２つ", "二つ"), ("1.5倍", "1.5倍"), ("1,000円", "千円"), ("12,345,678", "千二百三十四万五千六百七十八"), ("かな", "かな"),
 ])
 def test_num_to_kanji(src, want):
     assert lib.num_to_kanji(src) == want
@@ -283,3 +283,12 @@ def test_words_hira_falls_back_per_word_when_lengths_do_not_match():
     def conv(t):
         calls.append(t); return [{"orig": t + "x", "hira": "あ"}] if len(calls) == 1 else [{"orig": t, "hira": "い"}]
     assert lib.words_hira(["a", "b"], conv) == ["い", "い"]
+
+
+
+def test_words_hira_numbers_split_across_words():
+    """数字が語の途中で分かれても、つないだ文の上で読む（「20」「26」「年」→ にせんにじゅうろくねん）（Codex の指摘）。"""
+    pykakasi = pytest.importorskip("pykakasi"); K = pykakasi.kakasi()
+    assert "".join(lib.words_hira(["20", "26", "年"], K.convert)) == "にせんにじゅうろくねん"
+    hs = lib.words_hira(["1", ",", "000", "円"], K.convert)
+    assert "".join(hs) == "せんえん"                                    # 桁区切りの数も千と読む（語への配り方は読みの塊の比で）
