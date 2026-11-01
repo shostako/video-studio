@@ -4,6 +4,7 @@
 
 ## 未リリース
 
+- **手順書の既定の声を替えた**: ナレーターのような癖のない声に。README の例と screen-explainer の手順書。道具の動きは変えていない
 - **手順書を実際の動きに合わせた**: Claude Code に頼んで作る試験で分かった、入れたあとの起動し直し、コマの速さと長さ、キャラごとの姿勢の名前、Windows の Python の場所、欄の Enter、声の決め方、聞き取りの表記の違い
 - **キャラ作りの絵を `img` スキルなしで描ける**: 呼び出しの道具（Codex CLI と ChatGPT Plus で動く）を video-mascot に同梱した。別の画像生成に替えるなら `VM_IMG_CMD`。`img` スキルが入っている PC は今まで通り
 - **WSL を使わない Windows（Git Bash）で動く**: Windows 版の Claude Code と同じ Git Bash で、入れるところから蘭の解説動画を作るまで通した（#77）

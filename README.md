@@ -35,7 +35,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 | WSL2 の Ubuntu 24.04（作者の新PC、RTX 5070） | 全部（キャラ作り・Wan・RIFE を含む）。日々ここで作っている |
 | WSL2 の Ubuntu 22.04（作者の旧PC、RTX 4060） | パックを Releases から入れ、蘭・凜で 3 つの型（カーソルだけ・ワイプ・全身）を作った。Wan・RIFE は使わない |
 | WSL2 に新しく作った Ubuntu 24.04（何も入っていない） | README の手順だけで入れ、Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-01） |
-| WSL を使わない Windows 11（Git Bash） | 試験用の家（何も入れていない `HOME`）で、README の手順を Git Bash で流して入れ、同じ Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-02）。書き出しは WSL より遅い（30 秒の動画で WSL 382 秒、Windows 616 秒）。Python・ffmpeg・Node.js などは元から入っていた PC で試した。別の日に、何も入っていない家の Claude Code に「README で入れて解説動画を作って」と頼み、51.8 秒の動画まで通した（全体 56 分、書き出し 19.6 分、2026-11-02）。声と動きの最終の確認は人がする |
+| WSL を使わない Windows 11（Git Bash） | 試験用の家（何も入れていない `HOME`）で、README の手順を Git Bash で流して入れ、同じ Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-02）。書き出しは WSL より遅い（30 秒の動画で WSL 382 秒、Windows 616 秒）。Python・ffmpeg・Node.js などは元から入っていた PC で試した。別の日に、何も入っていない家の Claude Code に「README で入れて解説動画を作って」と頼み、51.8 秒の動画まで通した（全体 56 分、書き出し 19.6 分、2026-11-02）。出来た動画は作者が見て確かめた |
 | WSL ではない Ubuntu（GitHub Actions の CI） | テストだけ（PR ごと）。動画を作るところまでは試していない |
 
 ## 必要なもの
@@ -81,7 +81,7 @@ Windows 版の Claude Code は、コマンドを Git Bash で動かす。スキ�
 ```bash
 vm pack rin --new ~/.local/share/video-scene/work/my-howto      # パックから作業フォルダ（名前だけなら ~/.local/share/video-scene/packs/ の中）
 # config.json に声の設定と台詞、身振りを書く（パックには声の設定が入っていない）。例:
-#   "voice": {"caption": "落ち着いた若い女性の声で、はきはきと説明する", "seed": 2024, "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
+#   "voice": {"caption": "ニュースのナレーターのような、癖のない落ち着いた女性の声。丁寧に、聞き取りやすく説明している。クリアな音質。", "seed": 2024, "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
 #   "events": [{"line": 1, "kw": "せつめい", "pose": "open"}, ...]   （行 1 の声の「せつめい」の直前に open へ。書き方は skills/video-mascot/references/config-spec.md）
 #   声を選ぶなら voice.candidates に説明文を数通り書いて vm voice <作業フォルダ> candidates で聞き比べ、決めた 1 本を voice.ref に
 vm voice ~/.local/share/video-scene/work/my-howto synth && vm voice ~/.local/share/video-scene/work/my-howto master   # 声
