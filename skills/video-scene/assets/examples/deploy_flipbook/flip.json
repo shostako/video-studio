@@ -1,5 +1,5 @@
 {
- "base": "/mnt/c/Users/shost/Pictures/generated/20261011-145941_Monday_Figure_Typing_Start_A.png",
+ "base": "/mnt/c/Users/shost/Pictures/generated/20261011-145941_Ran_Figure_Typing_Start_A.png",
  "layers": [
   {
    "name": "hand",
@@ -10,8 +10,8 @@
     640
    ],
    "variants": {
-    "N": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Monday_Figure_Typing_Flip_HandNearUp.png",
-    "F": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Monday_Figure_Typing_Flip_HandFarUp.png"
+    "N": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_HandNearUp.png",
+    "F": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_HandFarUp.png"
    }
   },
   {
@@ -23,14 +23,14 @@
     430
    ],
    "variants": {
-    "K": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Monday_Figure_Typing_Flip_Blink.png",
-    "S": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Monday_Figure_Typing_Flip_Smirk.png"
+    "K": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_Blink.png",
+    "S": "/mnt/c/Users/shost/Pictures/generated/20261011-152331_Ran_Figure_Typing_Flip_Smirk.png"
    }
   }
  ],
  "full": {
-  "shock": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Monday_Figure_Typing_Flip_Shock.png",
-  "panic": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Monday_Figure_Typing_Flip_Panic.png",
-  "angry": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Monday_Figure_Typing_Flip_Angry.png"
+  "shock": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Shock.png",
+  "panic": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Panic.png",
+  "angry": "/mnt/c/Users/shost/Pictures/generated/20261011-153611_Ran_Figure_Typing_Flip_Angry.png"
  }
 }

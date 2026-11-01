@@ -1,5 +1,5 @@
 {
- "name": "Monday_Figure_Deploy_H3restrained_HyperFrames_8s",
+ "name": "Ran_Figure_Deploy_H3restrained_HyperFrames_8s",
  "fps": 30,
  "duration": 8.0,
  "bg": "#fcfcfc",
@@ -43,7 +43,7 @@
     770,
     700
    ],
-   "title": "monday@vaio: ~/app",
+   "title": "ran@vaio: ~/app",
    "prefill": "export const ship = async () => {\n  await build();\n  await test();   // たぶん通る\n  await deploy(\"production\");\n};\n",
    "typing": [
     {
