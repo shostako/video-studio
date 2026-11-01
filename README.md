@@ -29,8 +29,10 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 ## 必要なもの
 
 - Windows の WSL2（Ubuntu）と Claude Code。スキルは WSL の中で動く
-- `ffmpeg`、日本語の太字フォント（`fonts-noto-cjk`）
-- スキルの Python（3.12 以上）と音声合成: `setup.sh` が入れる（Irodori-TTS は数 GB）
+- `ffmpeg`（libvpx-vp9 入り）、`python3`、日本語の太字フォント（`fonts-noto-cjk`）: `sudo apt install ffmpeg python3 fonts-noto-cjk`
+- Node.js 22 以上（字幕・吹き出しの重ねに使う HyperFrames の要件。nvm などで入れる）
+- `uv`（音声合成 Irodori-TTS を入れて動かすのに使う）: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- スキルの Python（3.12 以上）と音声合成 Irodori-TTS: 上がそろっていれば `setup.sh` が入れる（Irodori-TTS は数 GB。GPU が無ければ CPU 版）
 - 絵を描くとき（キャラ作り）: ChatGPT Plus（Codex の画像生成）
 - 姿勢の切り替えを新しく作るとき（キャラ作り）: NVIDIA の GPU（8GB 以上）、ComfyUI portable と Wan2.2 I2V・Lightning の LoRA、RIFE（rife-ncnn-vulkan）。パックの作り置きを使うだけなら要らない
 - Veo の場面: Gemini API の鍵（**別料金**）
@@ -39,6 +41,7 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 ```bash
 git clone https://github.com/shostako/video-studio.git ~/ClaudeCode/video-studio
+mkdir -p ~/.claude/skills                                         # 入れたばかりの Claude Code には無い
 ~/ClaudeCode/video-studio/scripts/link-skills.sh                 # ~/.claude/skills/ に symlink を張る
 ~/.claude/skills/video-scene/scripts/setup.sh                    # 道具を入れる
 ~/.claude/skills/video-mascot/scripts/setup.sh                   # 音声合成を入れる
