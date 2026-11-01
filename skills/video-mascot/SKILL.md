@@ -1,6 +1,6 @@
 ---
 name: video-mascot
-description: 解説の台詞とマスコットの絵1枚から、口パク・身振り・姿勢の切り替えを「パラパラ」で1コマずつ組み立てた喋るマスコットの動画を作り、別に用意した主動画（解説の画面・金型の動画など）の上に重ねて1本にする。声は手元の Irodori-TTS、絵は /img（ChatGPT の枠）なので、動画生成サービスへの追加料金はかからない。「マスコットに解説を喋らせたい」「立ち絵が口パクで話す動画」「この動画に喋るキャラを重ねて」「ゆっくり解説風」「身振り手振りつきの解説キャラ」「Hedra や Veo を使わずに」で発動。主動画の用意、台詞の中身の確認、字幕の重ねは別（字幕・見出しは video-scene の compose）。キャラの寸劇やなめらかな実写風の動きは対象外（video-scene の Veo）。
+description: 喋るマスコットの動画を作る。キャラの絵・口と目の部品・姿勢の切り替え（Wan）の作り置きを「パック」にまとめ、台本に身振りを書いて組み合わせるだけで、口パク・身振りつきのマスコットを書き出す。画面操作の解説では、画面を縮めた余白に小さな全身か丸いワイプの顔を置き、型（カーソルだけ・ワイプ・全身）を選んで 1 本に組める（vm explain）。基準キャラは蘭・凜。声は手元の Irodori-TTS、絵は /img（ChatGPT の枠）で、動画生成サービスへの追加料金はかからない。Wan・RIFE の無い PC でもパックの作り置きで書き出せる。「マスコットに解説を喋らせたい」「立ち絵が口パクで話す動画」「この動画に喋るキャラを重ねて」「マスコット付きの解説動画」「ワイプで解説」「身振り手振りつきの解説キャラ」「Hedra や Veo を使わずに」で発動。画面の撮影と組み立ては screen-explainer、字幕・見出しの重ねは video-scene の compose。キャラの寸劇やなめらかな実写風の動きは対象外（video-scene の Veo）。
 ---
 
 # 喋るマスコット（video-mascot）
@@ -25,32 +25,41 @@ video-scene の道具（`~/.local/share/video-scene/venv`）を共用する。�
 
 場所は環境変数で変えられる（無ければ既定）: `VIDEO_SCENE_HOME`（道具と作業フォルダの置き場、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`（RIFE の exe）、`VM_RIFE_TMP`（RIFE に渡す絵の一時フォルダ、既定は Windows の `%TEMP%/vm_rife`）、`VM_COMFY_ROOT`（Wan を作る ComfyUI portable）、`VM_WIN_HOME`（Windows のユーザーのフォルダ。既定は `cmd.exe` で調べる）。Wan・RIFE の無い PC でも、パックの作り置きのある身振りは書き出せる（`vm pack --new`）。
 
-## 進め方
+## 進め方（2 段）
 
-**新しいキャラの絵が来たら**、references/new-character.md の順に通す（`vm init` で雛形 → 姿勢 → 中割り → 差分 → `vm face` → `vm parts`）。キャラに固有の値は作業フォルダの config にだけ置く。
+ふだんは **動画作り** だけを回す。キャラの絵・部品・切り替えの作り置きは **パック** に入っていて、パックのあるキャラ（基準キャラの蘭・凜。`~/.local/share/video-scene/packs/`）なら、台本に身振りを書いて組み合わせるだけで動画になる。Wan・RIFE・画像生成の無い PC（旧PC など）でも、作り置きのある身振りは書き出せる。新しいキャラや姿勢を足すときだけ **キャラ作り**（新PC）をする。
 
-作業フォルダ `~/.local/share/video-scene/work/<名前>/` に、`mascot.png`（元の絵）と `config.json`（設定。references/config-spec.md、実例は assets/examples/icm_explainer/）を置く。配置と各コマンドの出力先は `vm` が作る（poses/ parts/ parts_<姿勢>/ ib/ voice/ out/）。
+### 動画作り（ふだん。パックのあるキャラで）
 
+0. **作業フォルダをパックから作る**: `vm pack <パック> --new ~/.local/share/video-scene/work/<名前>`（作り置きはパックへのリンク。台本・声・動きは空）。使える姿勢の名前は作業フォルダの `config.json` の `poses`。パックに無い身振りを使うと、下見の「Wan で新しく作る組」「RIFE で新しく作る列」に出て止まる（キャラ作りで足す）
 1. **台本を決める**: 主動画の流れに合わせて、1行 6〜9 秒に区切る。**どの言葉で姿勢を変えるか**を決める（例:「そこで…」で右を指す、「バネが縮む」で合掌）。各行を場面の型（導入・図を示す・問い・列挙など）に分けてから身振りを選び、1本の中で手の形と意味を固定する（references/roles.md、型の一覧は `vm gestures --roles`）。専門用語や読みが割れる漢字は、`say`（合成に渡す文）にひらがなを混ぜる。
 2. **声を決める**: `config.voice.candidates` に声の説明文を3〜6通り書き、`vm voice <作業フォルダ> candidates` → `voice/cand/聞き比べ.wav` をユーザーに聞いてもらう。決まった声の1本を `voice.ref` に指定して `vm voice <作業フォルダ> synth` で全行を同じ声で作る。**出力の「台本との一致」が 0.9 未満の行は読み違い**なので、`say` を直して作り直す。声を決める前に絵へ進まない（時刻が全部ここで決まる）。
-3. **姿勢を設計する**: 基本の構え（home）と、台詞に合う身振りを5〜6個。姿勢どうしの行き来（pairs）を決める。向きや大きさがそろうよう同じ絵を参照して描かせる（references/pose-design.md）。
-4. **姿勢の絵を描く**: `vm poses <作業フォルダ> poses`（home は元の絵そのままでもよい）。1枚ずつ見て、顔つき・服・指が崩れていないか確かめる。崩れた姿勢は絵を消して描き直す。
-5. **口・目の範囲を測る**: home の絵で `vm grid poses/pose_home.png x0 y0 x1 y1` を使って、口の範囲と目の範囲（目は両目）を読み取り、`config.face` に書く。他の姿勢へは自動で写る。
-6. **口と目の差分を描く**: `vm poses <作業フォルダ> parts`（姿勢×9枚。7形の口と2段の目）→ `vm parts <作業フォルダ>` で部品に切り抜き → `vm parts <作業フォルダ> --check` で `parts_check/<姿勢>.png` を Read して、口が変わっていて両目が閉じているかを全姿勢で見る。
-    - **同じ顔の正面の身振りを足したとき**（home を参照に描いた身振りは顔がほぼ同じ）は、差分を描かずに `vm parts <作業フォルダ> --borrow home <姿勢 ...>` で home の部品を写せる（opt-in。Codex の枠を使わない）。顔の合いが 0.95 に届かない姿勢には書かない。写した姿勢は `vm poses parts` が描かず、`vm parts` が切り直さない（描くなら `parts_<姿勢>/borrowed.json` を消す）。写したら `--check` で見る
-7. **中割りを描く**: `vm poses <作業フォルダ> inbetweens`（pairs ごとに5枚）。
-    - **新PC なら、中割りを描かずに姿勢の切り替えを Wan で動かせる**（opt-in、`config.interp.engine: "wan"`、`legs_lock.fix_x: true` と組で。references/config-spec.md の「engine "wan"」）。止めて話す所は姿勢の絵と部品のまま、切り替えだけが滑らかに動く。ComfyUI を起動しておく。会釈のように頭が少し動くだけの組は `interp.wan.rife_pairs` で RIFE の直の補間に。**首振り・横を見るなどの頭の動きは Wan に任せず `config.head`（描いた向きの絵の列）で**（Wan は首を回すと目を閉じる）
-8. **姿勢の切り替えを書く**: `config.events` に、台詞のキーワード（ひらがな）か語で切り替え時刻を指定。`vm render <作業フォルダ> --mode white --from 秒 --to 秒` で姿勢の移り変わりが多い範囲だけ書き出し、`vm frames`（video-scene）で並べて確かめる。標準エラーに、キーワードが見つかった時刻（声／語／推定）が出る。**推定になった所は、語に替える**（references/lessons.md）。
-9. **全編を書き出す**: 主動画の背景が**白っぽい**なら `vm render <作業フォルダ> --mode white`（背景が白の mp4、声入り）、**暗い・色つき**なら `--mode alpha`（背景透明の webm）。
+3. **姿勢の切り替えを書く**: `config.events` に、台詞のキーワード（ひらがな）か語で切り替え時刻を指定。`vm render <作業フォルダ> --mode white --from 秒 --to 秒` で姿勢の移り変わりが多い範囲だけ書き出し、`vm frames`（video-scene）で並べて確かめる。標準エラーに、キーワードが見つかった時刻（声／語／推定）が出る。**推定になった所は、語に替える**（references/lessons.md）。
+4. **全編を書き出す**: 主動画の背景が**白っぽい**なら `vm render <作業フォルダ> --mode white`（背景が白の mp4、声入り）、**暗い・色つき**なら `--mode alpha`（背景透明の webm）。
     - **書き出す前に下見する**: `vm render <作業フォルダ> --check-only --strict`（十数秒。絵を作らず、RIFE も Wan も呼ばない）。events の各切り替えが頭の動き（`config.head`）に隠れていないか、中割り・補間・Wan の列が出るか、次の姿勢に着くかを表で出し、Wan で新しく作る組を並べる。あわせて**口の検査**: 口の部品の無い姿勢（`face: false`。会釈の `nod` など）で話している所を出す（口が止まって見える。0.2 秒以上は問題、短いものは △ で知らせるだけ）。問題があれば終了コード 3。口の部品の無い姿勢は話していない所に置くか、顔が同じなら `vm parts --borrow home <姿勢>` で口を持たせる。もう一つ、**声が出ているのに口が閉じている所**（0.2 秒以上）も出す。音量式（既定）では問題、モーラ式では △ で知らせるだけ。音量式は、聞き取りの語が英字・数字・記号（「CAD」「100」「%」）なら母音「あ」で、語の端から 0.4 秒以内の隙間で声が出ているコマは近い語の母音で口を開ける
     - **本番も `--strict` を付ける**: 書き出しの最後に同じ表が出て `<出力>.check.json` に残る。問題があれば終了コード 3（動画は残る）。「Wan が作られていない」「身振りが出ていない」はここで止まる
-10. **主動画に重ねる**（`--x` や `--bottom` を負にしてマスコットの枠を主動画の外へはみ出させてよい。はみ出す分は切り落としてから重ねる）: `vm overlay <主動画.mp4> <作業フォルダ> --out 出力.mp4 --side left [--mode multiply]`。白っぽい主動画は `--mode multiply`（白が透けて枠が出ない。実績あり）。主動画の画面比で置くなら `--preset left|right|center|corner-left|corner-right`（安全領域 `--safe 0.05` の内側。`--height` / `--bottom` / `--x` を足すとそちらが優先）、登場・退場を付けるなら `--enter slide --exit fade` など（`--move-dur 0.5`、`--ease out-cubic|out-back` ほか）。どれも付けなければ今までどおり。プリセットが揃えるのは枠（`pad` の白い余白を含む）の端で、キャラの輪郭ではない。見出し・字幕を足すなら、できた動画を video-scene の `compose` の base にして重ねる。
+5. **主動画に重ねる**（`--x` や `--bottom` を負にしてマスコットの枠を主動画の外へはみ出させてよい。はみ出す分は切り落としてから重ねる）: `vm overlay <主動画.mp4> <作業フォルダ> --out 出力.mp4 --side left [--mode multiply]`。白っぽい主動画は `--mode multiply`（白が透けて枠が出ない。実績あり）。主動画の画面比で置くなら `--preset left|right|center|corner-left|corner-right`（安全領域 `--safe 0.05` の内側。`--height` / `--bottom` / `--x` を足すとそちらが優先）、登場・退場を付けるなら `--enter slide --exit fade` など（`--move-dur 0.5`、`--ease out-cubic|out-back` ほか）。どれも付けなければ今までどおり。プリセットが揃えるのは枠（`pad` の白い余白を含む）の端で、キャラの輪郭ではない。見出し・字幕を足すなら、できた動画を video-scene の `compose` の base にして重ねる。
     - **暗い背景に透明版を重ねる場合の限界**: 髪の毛束のすき間の白（肌・髪・耳の間の細長い白）が、小さな白い切れ端として残ることがある（2026-10-12 実測: 全身の1コマに7か所、うち目立つのは耳の下と首筋の2か所）。透明版は「ほぼ使える」止まり。気になるときは、**元のマスコットの絵を最初から単色の背景（緑など）で描かせて色で抜く**か、主動画の暗い所に白い縁取りを足す（references/lessons.md の「透明にする」）。
     - **画面操作の解説動画を型で 1 本に組む**（入口）: `vm explain <作業フォルダ> --shots <撮影> --scenes scenes.py --style cursor|wipe|full --out 出力.mp4 [--scale 0.73] [--chapters 章.json]`。cursor はカーソルだけ（マスコットなし）、wipe は余白の左下に丸い顔、full は余白に小さな全身。screen-explainer の組み立て → マスコットの下見と書き出し → 余白に置く → 身振りの測定（full）まで順に回し、どこかで問題があればその段の名前で止まる。測れない・弱い切り替えは注意だけ、動いていない切り替えは止める。声（vm voice）と撮影・scenes.py は先に用意する。作業フォルダはパックから作る（`vm pack <パック> --new`）と、Wan・RIFE の無い PC でも作り置きのある身振りで組める
     - **画面を縮めた解説（screen-explainer の主動画、左に 496px の余白）の余白に置く**なら `vm layout <主動画.mp4> <作業フォルダ> --out 出力.mp4 --full [--chapters 章.json]`。全身を小さめ（`--size S`、高さ 560px）で余白の下に立たせ、透明の webm はそのまま、白背景の mp4 は乗算で重ねる。声は `voice/master_clean.wav`（無ければ `master.wav`）。最後に `CROP x,y,幅,高さ` を出すので、`vm check <出力> --switches out/mascot.check.json --crop <CROP> --strict` に渡す
     - **ワイプの型**（丸い枠の中で顔が口パクで話す。余白の左下）: 顔用に身振りなしで書き出す `vm render <作業フォルダ> --mode alpha --no-events --out out/mascot_face.webm`（頭の向きの列の作り置きが無い PC では `--no-head` も）→ `vm layout <主動画.mp4> <作業フォルダ> --style wipe --mascot out/mascot_face.webm --out 出力.mp4 --full`。顔の周りは最初のコマの人物から測って切り抜く（合わなければ `--wipe-box x,y,辺`）。直径は余白の幅 − 80（400 まで、`--wipe-size`）。身振りが無いので切り替えも無く、Wan も要らない
     - **章の見出し**: `--chapters` の JSON（`{"chapters": [{"line": 台詞の番号, "title": "見出し"}, ...], "credits": [{"from": 秒, "to": 秒, "text": ["サンプル: ○○", "出典（許諾）"]}]}`）で、余白の左上に番号（01, 02…）・見出し・橙の下線を出し、台詞の 0.6 秒前に替える。章は台詞の流れの区切り（使い方の手順ごと）で 8〜12 個が目安。画面に他人のデータ（サンプルの CAD ファイルなど）を映すなら、`credits` で出典と許諾をその間ずっと出す。見出しの区画がマスコットの頭に近いと注意が出る
-11. **確かめて報告する**（下）。
+6. **確かめて報告する**（下）。
+
+### キャラ作り（新しいキャラ・姿勢を足すとき。新PC）
+
+**新しいキャラの絵が来たら**、references/new-character.md の順に通す（`vm init` で雛形 → 姿勢 → 中割り → 差分 → `vm face` → `vm parts`）。キャラに固有の値は作業フォルダの config にだけ置く。
+
+作業フォルダ `~/.local/share/video-scene/work/<名前>/` に、`mascot.png`（元の絵）と `config.json`（設定。references/config-spec.md、実例は assets/examples/icm_explainer/）を置く。配置と各コマンドの出力先は `vm` が作る（poses/ parts/ parts_<姿勢>/ ib/ voice/ out/）。
+
+1. **姿勢を設計する**: 基本の構え（home）と、台詞に合う身振りを5〜6個。姿勢どうしの行き来（pairs）を決める。向きや大きさがそろうよう同じ絵を参照して描かせる（references/pose-design.md）。
+2. **姿勢の絵を描く**: `vm poses <作業フォルダ> poses`（home は元の絵そのままでもよい）。1枚ずつ見て、顔つき・服・指が崩れていないか確かめる。崩れた姿勢は絵を消して描き直す。
+3. **口・目の範囲を測る**: home の絵で `vm grid poses/pose_home.png x0 y0 x1 y1` を使って、口の範囲と目の範囲（目は両目）を読み取り、`config.face` に書く。他の姿勢へは自動で写る。
+4. **口と目の差分を描く**: `vm poses <作業フォルダ> parts`（姿勢×9枚。7形の口と2段の目）→ `vm parts <作業フォルダ>` で部品に切り抜き → `vm parts <作業フォルダ> --check` で `parts_check/<姿勢>.png` を Read して、口が変わっていて両目が閉じているかを全姿勢で見る。
+    - **同じ顔の正面の身振りを足したとき**（home を参照に描いた身振りは顔がほぼ同じ）は、差分を描かずに `vm parts <作業フォルダ> --borrow home <姿勢 ...>` で home の部品を写せる（opt-in。Codex の枠を使わない）。顔の合いが 0.95 に届かない姿勢には書かない。写した姿勢は `vm poses parts` が描かず、`vm parts` が切り直さない（描くなら `parts_<姿勢>/borrowed.json` を消す）。写したら `--check` で見る
+5. **中割りを描く**: `vm poses <作業フォルダ> inbetweens`（pairs ごとに5枚）。
+    - **新PC なら、中割りを描かずに姿勢の切り替えを Wan で動かせる**（opt-in、`config.interp.engine: "wan"`、`legs_lock.fix_x: true` と組で。references/config-spec.md の「engine "wan"」）。止めて話す所は姿勢の絵と部品のまま、切り替えだけが滑らかに動く。ComfyUI を起動しておく。会釈のように頭が少し動くだけの組は `interp.wan.rife_pairs` で RIFE の直の補間に。**首振り・横を見るなどの頭の動きは Wan に任せず `config.head`（描いた向きの絵の列）で**（Wan は首を回すと目を閉じる）
+6. **切り替えを作り置きしてパックにする**: Wan で動かすキャラは、全姿勢 ⇄ home の切り替えを作り置きする（下見の「Wan で新しく作る組」が 0 になるまで書き出すか、組を指定して作る。凜で 43 組・蘭で 52 組、1 組 3 分前後）。向きの違う姿勢（横を向く・首を振る）は溶かし、会釈は `interp.wan.rife_pairs` で RIFE。作り置きがそろったら `vm pack <パック> --from <作業フォルダ> --with-cache`（使える組だけを WebP で入れる。凜で 396MB）。別の PC へはパックのフォルダごと運ぶ（作り置きの判定は中身の印なので、写しても使える）
 
 ## Critical: 書き出したら必ず確かめる
 
