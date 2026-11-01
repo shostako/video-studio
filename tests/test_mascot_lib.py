@@ -3,6 +3,8 @@
 import ast
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 import lib
@@ -521,3 +523,43 @@ def test_voice_uses_partial_voice_ref():
     src = (Path(lib.__file__).parent / "voice.py").read_text(encoding="utf-8")
     imported = {a.name for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ImportFrom) and n.module == "lib" for a in n.names}
     assert "partial_voice_ref" in imported and "partial_voice_ref(only" in src
+
+
+# ---------- 速くした計算は元と 1 画素も変わらない ----------
+def _rand_img(seed, h=120, w=90):
+    return np.random.default_rng(seed).integers(0, 256, (h, w, 3), dtype=np.uint8)
+
+
+def test_fg_mask_matches_the_numpy_form():
+    for seed in range(5):
+        img = _rand_img(seed)
+        want = (np.abs(img.astype(np.int16) - lib.BG).max(axis=2) > 24).astype(np.uint8)
+        assert np.array_equal(lib.fg_mask(img), want)
+
+
+def test_occlude_distance_matches_the_numpy_form():
+    """occlude の中の距離は np.linalg.norm と同じ値（しきい値で切るので、同じ値なら同じ結果）。"""
+    a, b = _rand_img(1).astype(np.float32), _rand_img(2).astype(np.float32)
+    b_, g_, r_ = cv2.split(a - b)
+    got = cv2.sqrt(cv2.multiply(b_, b_) + cv2.multiply(g_, g_) + cv2.multiply(r_, r_))
+    assert np.allclose(got, np.linalg.norm(a - b, axis=2), atol=1e-3)
+    src = (Path(lib.__file__).parent / "lib.py").read_text(encoding="utf-8")
+    assert "cv2.sqrt(cv2.multiply(b_, b_) + cv2.multiply(g_, g_) + cv2.multiply(r_, r_))" in src
+
+
+def test_used_poses():
+    ev = [{"at": 1, "pose": "point"}, {"at": 2, "pose": "home"}]
+    assert lib.used_poses(ev, "home") == {"home", "point"}
+    assert lib.used_poses([], "home") == {"home"}
+    assert lib.used_poses(ev, "home", {"chain": ["look_l", "home"]}, "arms") == {"home", "point", "look_l", "arms"}
+
+
+def test_render_cache_does_not_hold_full_images():
+    """numpy の切り抜きは元の全面の絵を掴んだままになる。copy しないと控え 48 枚で 3GB 残る。"""
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "xx.min():xx.max() + 1].copy()" in src
+
+
+def test_render_reads_only_used_poses():
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert src.index("P.poses = [p for p in P.poses if p in _used]") < src.index("img = RAW[p] = P.read_pose(p)")
