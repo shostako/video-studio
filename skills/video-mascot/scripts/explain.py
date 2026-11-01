@@ -16,7 +16,7 @@ import json, os, re, shutil, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import die
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.realpath(__file__))
 COMPOSE = os.path.join(HERE, "..", "..", "screen-explainer", "scripts", "compose.py")
 
 

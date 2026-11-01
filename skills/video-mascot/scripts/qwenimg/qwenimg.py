@@ -24,7 +24,7 @@ import time
 import cv2
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "..", "..", "video-scene", "scripts")))
 
 DEADLINE = int(os.environ.get("QWENIMG_DEADLINE", "640"))     # 1回の呼び出し全体の上限（秒）。vm poses の 700 秒より短く
