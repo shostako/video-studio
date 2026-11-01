@@ -525,7 +525,11 @@ for ln in mouth_report(MOFF): print(ln, file=sys.stderr)
 MSHUT = [s_ for s_ in mouth_shut_spans(LOUD, SPEAK, FPS, f0)            # 声が出ているのに口が閉じている所。口の部品の無い姿勢の所は上で数えた
          if not any(m_["from"] <= s_["from"] and s_["to"] <= m_["to"] for m_ in MOFF)]
 for ln in mouth_shut_report(MSHUT, LIPSYNC == "amp"): print(ln, file=sys.stderr)
-SHOLD = [h_ for h_ in short_holds(SW, P.home) if T0 - 1 <= h_["at"] <= (T1 if T1 is not None else END) + 1]   # 着く前に上書きされる身振り（重なり。書き出す範囲の分）
+def _instant(e_):                                 # 中割りもつなぎも無い切り替えは一瞬で替わる（名目の長さで重なりと見ない）
+    k_ = trans_of(e_[1], e_[2], e_[3]) if USE_VIA else None
+    return (k_ is None and ib_seq(e_[1], e_[2]) is None) or (k_ is not None and k_[0] == "cut")
+SWH = [(sw[0], 0.0 if _instant(e_) else sw[1], sw[2], sw[3]) for sw, e_ in zip(SW, ev)]
+SHOLD = [h_ for h_ in short_holds(SWH, P.home) if h_["at"] < T1 and h_["next"] + 0.001 > T0]   # 着く前に上書きされる身振り（重なり。書き出す範囲と交わる分）
 for ln in short_hold_report(SHOLD): print(ln, file=sys.stderr)
 NBAD = sum(r["status"] not in ("ok", "skip") for r in CHK) + sum(s["long"] for s in MOFF) + (len(MSHUT) if LIPSYNC == "amp" else 0) + len(SHOLD)   # モーラ式は知らせるだけ
 HSP = head_spans(HEAD_KEYS, P.home if P.home in HEAD_IDX else None) if HEAD_KEYS else []

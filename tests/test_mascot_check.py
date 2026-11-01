@@ -334,3 +334,18 @@ def test_render_reports_talking_in_a_pose_without_mouth_parts(tmp_path, env):
     assert j["mouth_off"] and all(s["pose"] == "point" for s in j["mouth_off"]) and j["problems"] >= 1
     cfg["poses"]["point"].pop("face"); json.dump(cfg, open(cfgp, "w"))          # face を戻すと通る（比べ）
     assert render(root, tmp_path / "h.mp4", env, "--check-only", "--strict").returncode == 0
+
+
+def test_precheck_short_holds_overlap_instant_and_range(tmp_path, env):
+    """着く前に上書きされる身振り: 中割りのある組の重なりは問題、中割りの無い組（一瞬）は数えない、書き出す範囲の外は数えない（Codex の指摘）。"""
+    pytest.importorskip("pykakasi")
+    root = sm.make(str(tmp_path / "proj")); cfgp = os.path.join(root, "config.json"); cfg = json.load(open(cfgp))
+    cfg["events"] = [{"at": 1.0, "pose": "point"}, {"at": 1.2, "pose": "home"}]; json.dump(cfg, open(cfgp, "w"))
+    r = render(root, tmp_path / "a.mp4", env, "--check-only", "--strict")
+    assert r.returncode == 3 and "着く前に次の切り替えに上書きされる身振り 1 件" in r.stderr, r.stderr[-1500:]
+    assert json.load(open(tmp_path / "a.precheck.json"))["short_holds"][0]["pose"] == "point"
+    r = render(root, tmp_path / "b.mp4", env, "--check-only", "--strict", "--from", "2.5", "--to", "3.4")
+    assert "上書きされる身振り" not in r.stderr                         # 書き出す範囲の外
+    cfg["pairs"] = []; json.dump(cfg, open(cfgp, "w"))                   # 中割りが無い＝一瞬で替わる
+    r = render(root, tmp_path / "c.mp4", env, "--check-only")
+    assert "上書きされる身振り" not in r.stderr, r.stderr[-1500:]
