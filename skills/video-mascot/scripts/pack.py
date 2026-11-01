@@ -18,6 +18,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -145,10 +146,15 @@ def add_caches(tmp, sources):
                 if key in got_w or a not in P.cfg["poses"] or b not in P.cfg["poses"]: continue
                 if not os.path.isdir(os.path.join(base, f"n{n}")): continue
                 if wanflf.need(Ps, a, b, n, ic_s) is not None: skipped.append((key, "元の作業フォルダで今の絵・設定と合わない")); continue
+                try: st_s = json.load(open(os.path.join(base, f"n{n}", "stamp.json")))
+                except (OSError, ValueError): continue
+                want = wanflf._stamp_maker(P, a, b, icfg, [], [P.pose_path(a), P.pose_path(b)])(file_sig)
+                diff = [k for k in ("src", "post", "model", "blink") if json.loads(json.dumps(want[k])) != st_s.get(k)]
+                if diff: skipped.append((key, f"パックの絵・設定と合わない（{'・'.join(diff)}）")); continue   # 後処理の値・目の部品・元の絵が違う列を、パックの値で書き換えて通さない
                 d = os.path.join(tmp, "ib_wan", key); os.makedirs(d, exist_ok=True)
                 shutil.copy2(os.path.join(base, "raw_stamp.json"), d)
                 _webp_dir(os.path.join(base, f"n{n}"), os.path.join(d, f"n{n}"), [f"f{j}" for j in range(1, n + 1)])
-                json.dump(wanflf._stamp_maker(P, a, b, icfg, [], [P.pose_path(a), P.pose_path(b)])(file_sig), open(os.path.join(d, f"n{n}", "stamp.json"), "w"))
+                json.dump(want, open(os.path.join(d, f"n{n}", "stamp.json"), "w"))   # raw（元のコマ）だけ空にした、元と同じ印
                 if wanflf.need(P, a, b, n, icfg) is None: got_w.append(key)
                 else: shutil.rmtree(d); skipped.append((key, "パックの絵・設定（描かせる文・部品）と合わない"))
         for d_s in sorted(glob.glob(os.path.join(s, "ib_interp", "*"))):
@@ -158,7 +164,9 @@ def add_caches(tmp, sources):
             except ValueError: continue
             srcs = _interp_srcs(s, st)
             if srcs is None: continue
-            cnt = (len(srcs) - 1) * st.get("mult", 0) - 1
+            m_ = re.search(r"_x(\d+)_[^_]*$", key)                 # 置き場の名前の x<倍率>（直の補間は分割数を掛けた倍率。stamp の mult は掛ける前）
+            if not m_: continue
+            cnt = (len(srcs) - 1) * int(m_.group(1)) - 1
             fr, have = lib.frame_paths(d_s, cnt)
             if not have: continue
             rest = {k: v for k, v in st.items() if k != "src"}

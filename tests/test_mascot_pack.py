@@ -316,7 +316,7 @@ def test_pack_with_cache_holds_webp_without_raw_and_new_links_it(tmp_path):
     assert (nw / "ib_wan").is_symlink() and os.path.realpath(nw / "ib_wan") == os.path.realpath(pk / "ib_wan")
     shutil.rmtree(nw / "voice"); shutil.copytree(p / "voice", nw / "voice")
     c = cfg(nw); c["voice"] = cfg(p)["voice"]; c["events"] = [{"at": 0.6, "pose": "point"}, {"at": 2.0, "pose": "home"}]; put(nw, c)
-    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only")
+    r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--check-only", env=ffmpeg_env(tmp_path))
     assert r.returncode == 0 and "Wan で新しく作る組: 0" in r.stderr, r.stderr[-1500:]
     r = run("render.py", nw, "--mode", "white", "--out", nw / "out/t.mp4", "--strict", env=ffmpeg_env(tmp_path))   # ComfyUI は無いので、作ろうとすれば落ちる
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
@@ -337,3 +337,30 @@ def test_pack_without_cache_flag_keeps_old_behavior(tmp_path):
     p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
     assert run("pack.py", pk, "--from", p).returncode == 0
     assert not (pk / "ib_wan").exists() and "cache" not in json.loads((pk / "pack.json").read_text())
+
+
+
+def test_pack_with_cache_keeps_all_frames_of_direct_rife(tmp_path):
+    """直の補間の列（頭の向きなど）は分割数×倍率のコマ数。全部入れる（Codex の指摘。1 枚しか入らなかった）。"""
+    import cv2
+    sys.path.insert(0, str(SCRIPTS)); import interp, lib  # noqa: E401
+    p, n = _wan_wf(tmp_path); P = lib.Proj(str(p))
+    cfg_ = dict(lib.INTERP_DEFAULTS); cfg_["mult"] = 2; tot = cfg_["mult"] * P.ib_div
+    srcs = [P.pose_path("home"), P.pose_path("point")]
+    out = P.p("ib_interp", f"home_point_direct_x{tot}_{cfg_['model']}"); os.makedirs(out)
+    A, B = P.read_pose("home"), P.read_pose("point")
+    for j in range(1, tot): cv2.imwrite(os.path.join(out, f"f{j}.png"), cv2.addWeighted(A, 1 - j / tot, B, j / tot, 0))
+    json.dump(interp._stamp(srcs, cfg_), open(os.path.join(out, "stamp.json"), "w"))
+    pk = tmp_path / "pack"; r = run("pack.py", pk, "--from", p, "--with-cache")
+    assert r.returncode == 0 and "RIFE の列 1" in r.stdout, r.stdout + r.stderr
+    assert len(list((pk / "ib_interp" / os.path.basename(out)).glob("f*.webp"))) == tot - 1
+    Pk = lib.Proj(str(pk)); assert interp.ready(Pk, "home", "point", Pk.ib_div, cfg_, direct=True)
+
+
+def test_pack_with_cache_rejects_frames_made_with_other_post_settings(tmp_path):
+    """後処理の値（wan.edge）が元とパックで違う列は、パックの値で書き換えて通さない（Codex の指摘）。"""
+    p, n = _wan_wf(tmp_path, "a"); q = wf(tmp_path, "b")
+    cq = cfg(q); cq["interp"] = dict(cfg(p)["interp"]); cq["interp"]["wan"] = {**cq["interp"]["wan"], "edge": 0.3}; put(q, cq)   # 後の作業フォルダ: 同じ絵・同じ生成で edge だけ違う（作り置きは無い）
+    r = run("pack.py", tmp_path / "pack", "--from", p, "--from", q, "--with-cache")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Wan の切り替え 0 組" in r.stdout and "post" in r.stdout
