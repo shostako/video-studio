@@ -33,7 +33,10 @@ from check import probe as vprobe
 W, H, FPS = 1920, 1080, 60
 FIG_CX, FIG_TOP, FIG_FEET = 463, 195, 1521     # 立ち姿（941x1672）での体の中心 x・頭の上・足元。白背景の mp4 で測れないときの目安
 INK, ACC, SUB = (28, 33, 44), (232, 120, 30), (110, 114, 122)
-FONTS = (os.environ.get("VIDEO_MASCOT_FONT"), "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc")
+_WINFONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts") if os.name == "nt" else "/mnt/c/Windows/Fonts"
+# Noto Sans CJK Bold が無いとき（Windows で直に動かすとき、WSL に fonts-noto-cjk を入れていないとき）は Windows の太字を使う
+WIN_BOLD = tuple(os.path.join(_WINFONTS, f) for f in ("YuGothB.ttc", "BIZ-UDGothicB.ttc", "meiryob.ttc"))
+FONTS = (os.environ.get("VIDEO_MASCOT_FONT"), "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc") + WIN_BOLD
 HEAD_X, NUM_Y, TITLE_Y, RULE_Y, CREDIT_Y, CREDIT_STEP = 40, 44, 76, 128, 148, 30
 
 

@@ -2,7 +2,9 @@
 import json, os, subprocess, sys, time, datetime, shutil
 
 def _default_out():
-    """出力先の既定: Windows のユーザーの Videos/generated（WSL）、Windows が無ければ ~/Videos/generated。"""
+    """出力先の既定: Windows のユーザーの Videos/generated（WSL・Windows）、Windows が無ければ ~/Videos/generated。"""
+    if os.name == "nt":                            # Windows で直に動いているとき（Git Bash など）は自分の家の Videos
+        return os.path.join(os.environ.get("USERPROFILE") or os.path.expanduser("~"), "Videos", "generated")
     try:
         r = subprocess.run(["cmd.exe", "/C", "echo %USERPROFILE%"], capture_output=True, timeout=15, cwd="/mnt/c" if os.path.isdir("/mnt/c") else None)
         b = r.stdout                               # 日本語のユーザー名は CP932 で出るので、UTF-8 で読めなければ CP932 で読む

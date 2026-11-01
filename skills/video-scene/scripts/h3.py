@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import out_path, die, probe
 from veo import fit_aspect
 
-ROOT = os.environ.get("VS_COMFY_ROOT", "/mnt/c/ComfyUI/ComfyUI_windows_portable")
+ROOT = os.environ.get("VS_COMFY_ROOT", ("C:" if os.name == "nt" else "/mnt/c") + "/ComfyUI/ComfyUI_windows_portable")
 WIN_PY = os.path.join(ROOT, "python_embeded", "python.exe")
 VS_DIR = os.path.join(os.path.dirname(ROOT), "vs")           # ジョブと係の置き場（Windows 側）
 SERVER_ARGS = ["--disable-pinned-memory", "--disable-async-offload", "--reserve-vram", "1"]   # 8GB + Blackwell の VAE decode 落ち対策

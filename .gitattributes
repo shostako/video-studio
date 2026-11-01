@@ -1,0 +1,9 @@
+# どの PC でも改行は LF で取り出す（Windows の git は既定で CRLF に変えて取り出し、シェルのスクリプトが bash で壊れることがある）
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.wav binary
+*.mp4 binary
+*.webm binary
+*.zip binary

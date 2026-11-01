@@ -26,9 +26,21 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 基準のキャラは 2 体: **蘭**（ボブの丸顔）と **凜**（まとめ髪）。パックは GitHub Releases に zip で置き、どの版を使うかをリポの `skills/video-mascot/data/packs.json` に書いてある。`setup.sh`（か `vm packs fetch`）が足りない・古いパックを取ってきて `~/.local/share/video-scene/packs/` に置くので、**リポを同期して `setup.sh` を回せば、どの PC にも同じ版のパックがそろう**。`vm packs` で手元の版を確かめられる。新しいキャラを作る手順は `skills/video-mascot/references/new-character.md`（新PC 相当の GPU と ComfyUI が要る）。
 
+## 確かめた環境
+
+どこまで確かめたかを、そのまま書く。表に無い環境（macOS、WSL ではない Linux の PC での動画づくり）は試していない。
+
+| 環境 | 確かめたこと |
+|---|---|
+| WSL2 の Ubuntu 24.04（作者の新PC、RTX 5070） | 全部（キャラ作り・Wan・RIFE を含む）。日々ここで作っている |
+| WSL2 の Ubuntu 22.04（作者の旧PC、RTX 4060） | パックを Releases から入れ、蘭・凜で 3 つの型（カーソルだけ・ワイプ・全身）を作った。Wan・RIFE は使わない |
+| WSL2 に新しく作った Ubuntu 24.04（何も入っていない） | README の手順だけで入れ、Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-01） |
+| WSL を使わない Windows 11（Git Bash） | 試験用の家（何も入れていない `HOME`）で、README の手順を Git Bash で流して入れ、同じ Web アプリの解説動画を蘭の全身の型で 1 本作った（2026-11-02）。書き出しは WSL より遅い（30 秒の動画で WSL 382 秒、Windows 616 秒）。Python・ffmpeg・Node.js などは元から入っていた PC で試した。Claude Code に頼む段からは未確認 |
+| WSL ではない Ubuntu（GitHub Actions の CI） | テストだけ（PR ごと）。動画を作るところまでは試していない |
+
 ## 必要なもの
 
-- Windows の WSL2（Ubuntu）と Claude Code。スキルは WSL の中で動く
+- Claude Code と、次のどちらか: Windows の WSL2（Ubuntu。下の手順の基本）か、WSL を使わない Windows（Git Bash で動かす。下の「WSL を使わない Windows」）
 - `ffmpeg`（libvpx-vp9 入り）、`python3` と `python3-venv`、日本語の太字フォント（`fonts-noto-cjk`）: `sudo apt update && sudo apt install ffmpeg python3 python3-venv fonts-noto-cjk`（入れたばかりの Ubuntu は、先に `apt update` をしないとパッケージが見つからない）
 - Node.js 22 以上（字幕・吹き出しの重ねに使う HyperFrames の要件。nvm などで入れる）
 - `uv`（音声合成 Irodori-TTS を入れて動かすのに使う）: `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -50,6 +62,17 @@ mkdir -p ~/.claude/skills                                         # 入れたば
 ```
 
 場所は環境変数で変えられる: `VIDEO_SCENE_HOME`（道具と作業フォルダ、既定 `~/.local/share/video-scene`）、`VM_RIFE_EXE`・`VM_RIFE_TMP`（RIFE）、`VM_COMFY_ROOT`（ComfyUI）、`VM_WIN_HOME`（Windows のユーザーのフォルダ）、`VIDEO_SCENE_OUT`（短い場面の出力先）。
+
+### WSL を使わない Windows
+
+Windows 版の Claude Code は、コマンドを Git Bash で動かす。スキルも Git Bash で動く（2026-11-02 に、試験用の家で入れるところから蘭の解説動画を 1 本作って確かめた）。
+
+- 入れるもの（winget や scoop で）: Git for Windows（Git Bash）、Python（版は問わない。スキルの venv は uv が 3.12 で作る）、`uv`、`ffmpeg`（libvpx-vp9 入りの full ビルド。例 `winget install Gyan.FFmpeg`）、Node.js 22 以上
+- Git Bash の `~/.bashrc` に `export PYTHONUTF8=1` を書く。Windows の Python は既定で CP932 で読み書きするので、日本語の入ったファイルや出力が化けたり落ちたりする（`vm`・`vs` の入口は自分で付けるが、`compose.py` などを直に動かすときに要る）
+- 手順は上の「入れ方」と同じコマンドを Git Bash で打つ。`link-skills.sh` は、Windows ではシンボリックリンクの代わりにジャンクション（管理者権限の要らないフォルダのリンク）を張る。パックから作った作業フォルダの作り置きもジャンクションで読む
+- venv の Python は `~/.local/share/video-scene/venv/Scripts/python.exe`（Linux の `bin/python` の代わり）。Web の撮影はこの Python で `web_capture.py` を動かす
+- Excel の撮影（`excel_capture.py`）は、pywin32 と Pillow を入れた Python で直に動かす
+- まだ確かめていないこと: キャラ作り（Wan・RIFE で切り替えを新しく作る）、Veo・H3 の場面
 
 ## 作り方の流れ（マスコット付きの解説動画）
 

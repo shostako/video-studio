@@ -24,7 +24,7 @@ import shutil
 import sys
 import time
 
-from lib import die, file_sig, file_sig_mtime, READONLY
+from lib import die, file_sig, file_sig_mtime, READONLY, dir_link, is_dir_link, read_dir_link, same_path, remove_dir_link
 
 SCRIPT_KEYS = {"name", "voice", "events", "events_kw", "events_script", "events_demo", "gaze_script", "gaze_demo"}
 SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face", "anchor"}
@@ -321,13 +321,27 @@ def registry_path():
 class _RegLock:
     """控えを読んで直して書くまでを 1 本ずつにする（同時の vm pack --new が互いの控えを上書きしないように）。"""
     def __enter__(self):
-        import fcntl
         p = registry_path(); os.makedirs(os.path.dirname(p), exist_ok=True)
-        self.f = open(p + ".lock", "w"); fcntl.flock(self.f, fcntl.LOCK_EX); return self
+        self.f = open(p + ".lock", "a+")
+        if os.name == "nt":                        # Windows には fcntl が無い。先頭の 1 バイトを取り合う（取れるまで待つ）
+            import msvcrt
+            self.f.seek(0)
+            while True:
+                try: msvcrt.locking(self.f.fileno(), msvcrt.LK_LOCK, 1); break
+                except OSError: time.sleep(0.2)
+        else:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
 
     def __exit__(self, *a):
-        import fcntl
-        fcntl.flock(self.f, fcntl.LOCK_UN); self.f.close()
+        if os.name == "nt":
+            import msvcrt
+            self.f.seek(0); msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
 
 
 def _reg_load():
@@ -362,8 +376,8 @@ def _repin(pack, old):
     for w in ws:
         for sub in ("ib_wan", "ib_interp"):
             lk = os.path.join(w, sub)
-            if os.path.islink(lk) and os.readlink(lk) == os.path.join(pack, sub):
-                os.remove(lk); os.symlink(os.path.join(old, sub), lk); n += 1
+            if is_dir_link(lk) and same_path(read_dir_link(lk), os.path.join(pack, sub)):
+                remove_dir_link(lk); dir_link(os.path.join(old, sub), lk); n += 1
     if pack in reg:                               # 控えも古いパックの方へ移す
         reg[old] = sorted(set(reg.get(old, [])) | set(reg.pop(pack))); _reg_save(reg)
     if n: print(f"  古いパックから作った作業フォルダの作り置きのリンク {n} 本を、古いパック（{old}）に向け直した")
@@ -399,14 +413,14 @@ def new(pack, dst, name=None, own_cache=False):
             if own_cache:
                 shutil.copytree(sp, os.path.join(tmp, sub)); ro = os.path.join(tmp, sub, READONLY)
                 if os.path.exists(ro): os.remove(ro)
-            else: os.symlink(sp, os.path.join(tmp, sub))
+            else: dir_link(sp, os.path.join(tmp, sub))
         cf = os.path.join(tmp, "config.json"); c = json.load(open(cf, encoding="utf-8"))
         c["name"] = name or os.path.basename(dst); c["from_pack"] = pack
         json.dump(c, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         os.rename(tmp, dst)
     except BaseException:                          # 途中で落ちたら、半端な複製を残さない
         shutil.rmtree(tmp, ignore_errors=True); raise
-    if not own_cache and any(os.path.islink(os.path.join(dst, sub)) for sub in ("ib_wan", "ib_interp")):
+    if not own_cache and any(is_dir_link(os.path.join(dst, sub)) for sub in ("ib_wan", "ib_interp")):
         try:                                       # 作り直しのときにリンクを古いパックへ向け直すため、使う作業フォルダをパックの外に控える（パックは書き換えない）
             with _RegLock():
                 reg = _reg_load(); reg[pack] = sorted(set(reg.get(pack, [])) | {dst}); _reg_save(reg)

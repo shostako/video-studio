@@ -16,9 +16,10 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 次の目標: リポを見つけた第三者が、自分の PC で README の手順だけで解説動画を作れるようにする。2026-11-01 に新しい WSL（Ubuntu 24.04 の素の中身）で README の手順だけを流し、蘭の解説動画を 1 本作れた。見つかった穴（apt update・python3-venv・壊れた venv・`/img` の扱い・Playwright・既定の声・手元のパス）は #76 で直した。残り:
 
 1. キャラ作りの絵: `vm poses` が `~/.claude/skills/img`（このリポに無いスキル）を直に呼ぶ。リポに入れるか、差し替えられる形にする
-2. 純粋な Windows（WSL 無し）の Claude Code: 今は動かない（bash の入口、`fcntl`、パックへの symlink、`venv/bin/python` の決め打ち、Excel の撮影を WSL から呼ぶ作り）。移植するかを決める。試す場所は `C:\Users\shost\vs-wintest\`（試験用の家に向けて起動する .bat と頼み文を用意済み。最初にログインが要る）
+2. 純粋な Windows（WSL 無し）: Git Bash で入れるところから蘭の解説動画を作るまで通した（#77）。残りは、Claude Code に頼む段（下の 3）、キャラ作り（Wan・RIFE を Windows から呼ぶ）、書き出しの速さとメモリ（30 秒の動画で WSL 382 秒・Windows 616 秒、書き出しの Python が 4.6GB）
 3. Claude Code に頼む段まで通す: まっさらな環境の試験は、Claude が書くファイル（台本・撮影の指定・場面の割り付け）を手で書いて流した。Claude Code に「解説動画を作って」と頼むところからは、ログインが要るので未確認
-4. ブラウザの部品（apt のライブラリ）が足りないときの案内（`playwright install-deps`）は、部品が入った後の環境でしか確かめていない
+4. README にサンプルの短い動画を載せる（ユーザー、2026-11-02）: 候補は今日まっさらな環境で作った単位換算の解説動画（蘭・全身の型・30 秒・約 3MB。新PC の `C:\Users\shost\wsl-vs-clean\unit_ran_full.mp4`、Windows 版は `C:\Users\shost\vs-wintest\unit_ran_full_win.mp4`）。題材は自作の小さな Web アプリで、顧客の物は写っていない。3 つの型を並べて見せるなら、同じ台本で cursor・wipe も作る。載せ方（リポに mp4 を入れるか、GitHub の添付に上げて埋めるか）を決める
+5. ブラウザの部品（apt のライブラリ）が足りないときの案内（`playwright install-deps`）は、部品が入った後の環境でしか確かめていない
 
 ## 手元待ち（クラウドでは動かない。スレッドは手を出さず、必要なら `DECISIONS.md` の「未決」に書く）
 
