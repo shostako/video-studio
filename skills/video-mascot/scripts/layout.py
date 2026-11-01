@@ -123,19 +123,28 @@ def probe(p):
 
 
 def place(mp, frame, size, margin):
-    """マスコットの縮めた大きさと置く位置: (sw, sh, x, y, 人物の上端の y)。"""
-    mw, mh, _ = probe(mp); cx_m = margin / 2
+    """マスコットの縮めた大きさと置く位置: (sw, sh, x, y, 人物の上端の y)。余白（左右 10px ずつ空ける）に収まらなければ、
+    収まるまで小さくする（解説の画面にはみ出させない）。"""
+    mw, mh, _ = probe(mp); cx_m = margin / 2; room = margin - 20
+    if room < 60: die(f"余白が狭すぎてマスコットを置けない（{margin}px）")
     if frame == "full":
-        k = mh / 1672; top, feet, cx = FIG_TOP * k, FIG_FEET * k, FIG_CX * k
-        if mp.endswith(".webm"):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心を測る（キャラで背が揃う）
+        k = mh / 1672; top, feet, cx = FIG_TOP * k, FIG_FEET * k, FIG_CX * k; x0f, x1f = cx - 0.3 * (feet - top), cx + 0.3 * (feet - top)
+        if mp.endswith(".webm"):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心・左右の端を測る（キャラで背が揃う）
             raw = subprocess.run(["ffmpeg", "-v", "error", "-c:v", "libvpx-vp9", "-i", mp, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], capture_output=True).stdout
             if len(raw) == mw * mh * 4:
                 al = np.frombuffer(raw, np.uint8).reshape(mh, mw, 4)[:, :, 3] > 128; ys, xs = np.where(al)
-                if len(ys): top, feet = float(ys.min()), float(ys.max()); cx = float(np.median(xs[ys > ys.min() + 0.6 * (ys.max() - ys.min())]))
+                if len(ys):
+                    top, feet = float(ys.min()), float(ys.max()); cx = float(np.median(xs[ys > ys.min() + 0.6 * (ys.max() - ys.min())]))
+                    x0f, x1f = float(xs.min()), float(xs.max())
         s = {"L": 880, "S": 560}[size] / (feet - top)
+        half = max(cx - x0f, x1f - cx)                # 体の中心から遠い方の端まで（身振りで少し広がる分は見込まない）
+        if 2 * half * s > room:
+            s2 = room / (2 * half); print(f"注意: 余白 {margin}px に収めるため、全身の高さを {round((feet - top) * s)}px から {round((feet - top) * s2)}px に縮めた", flush=True); s = s2
         sw, sh = round(mw * s), round(mh * s); x = round(cx_m - cx * s); y = round(1050 - feet * s)
         return sw, sh, x, y, round(y + top * s)
-    s = {"L": margin, "S": 340}[size] / mw; sw, sh = round(mw * s), round(mh * s)
+    want = {"L": margin, "S": 340}[size]
+    if want > room: print(f"注意: 余白 {margin}px に収めるため、胸から上の幅を {want}px から {room}px に縮めた", flush=True); want = room
+    s = want / mw; sw, sh = round(mw * s), round(mh * s)
     return sw, sh, round(cx_m - sw / 2), H - sh, H - sh
 
 

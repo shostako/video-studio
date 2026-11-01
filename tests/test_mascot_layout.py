@@ -176,3 +176,16 @@ def test_layout_reads_margin_from_layout_json(tmp_path, env):
     x, y, cw, ch = map(int, next(l.split()[1] for l in r.stdout.splitlines() if l.startswith("CROP ")).split(","))
     assert x + cw <= 384 + 20 and abs((x + cw / 2) - 192) < 40                            # 余白 384 の真ん中に立つ
     assert "二重に出る" in r.stdout
+
+
+
+def test_layout_shrinks_mascot_to_fit_narrow_margin(tmp_path, env):
+    """余白が狭い（--scale 0.88 で 208px）と、全身も胸から上も余白に収まるまで縮める（Codex の指摘）。"""
+    root = tmp_path / "proj"; make_inputs(root, env, secs=0.5)
+    for extra in ([], ["--frame", "bust"]):
+        r = run_layout(root, env, "--place-only", "--margin", "208", *extra)
+        assert r.returncode == 0, r.stderr
+        x, y, cw, ch = map(int, next(l.split()[1] for l in r.stdout.splitlines() if l.startswith("CROP ")).split(","))
+        if extra: assert x >= 0 and x + cw <= 208 and "縮めた" in r.stdout
+    r = run_layout(root, env, "--place-only", "--margin", "60")
+    assert r.returncode != 0 and "狭すぎて" in r.stderr

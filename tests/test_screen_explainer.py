@@ -267,7 +267,7 @@ def test_compose_margin_captions_do_not_overlap_or_overflow(tmp_path):
     a = _png(tmp_path, t)
     pw = int(1920 * 0.85 / 2) * 2; ph = int(round(pw * 1020 / 1920 / 2)) * 2; top = 34 + ph + 30
     assert a[top + 80:, :].min() >= 0 and (a[top:1080, 1920 - 24 - pw:1896] < 120).any()   # 字幕が出ている
-    cfg["voice"]["lines"][2]["text"] = "区切りの無いとても長い一つの文" * 30 + "。"
+    cfg["voice"]["lines"][2]["text"] = "区切りの無いとても長い一つの文" * 120 + "。"   # どの字体でも入らない長さ
     (voice / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     r = subprocess.run(base + ["--scale", "0.88", "--preview", "3.0"], capture_output=True, text=True, env=env)
     assert r.returncode != 0 and "行 3 の字幕" in r.stderr and "入らない" in r.stderr
