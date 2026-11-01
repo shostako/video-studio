@@ -11,6 +11,7 @@
   --enclosed bg|keep  囲まれたほぼ白の扱い（既定は config.matte.enclosed、無ければ bg）。bg: 今までどおり、顔の箱の外の囲まれた白は
                  背景（白いシャツ・おでこの光も透けて、暗い背景に重ねると穴に見える）。keep: 囲まれた白はキャラとして閉じ、内側が
                  背景の色そのもの（平ら）な所（脚の間・腕と体の間）だけ背景にする。暗い背景に重ねるときに使う
+  --out-height N  出力の高さ（既定は config.out_height、無ければ 1280）。vm explain の全身の型は 720 で書き出す
   --jobs N       区間に分けて N 並列で書き出し、1 本につなぐ（1 区間のメモリは約 1GB）。絵は変わらない
   --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
                  ワイプと同じ決め方）。透明にする計算も範囲の周りだけで行うので速い。決めた範囲は <出力>.crop.json に書き、
@@ -62,7 +63,7 @@ try: HEADC = head_config(C.get("head"), C["poses"])   # 頭の向きの列（Non
 except ValueError as e_: die(str(e_))
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
-FPS = P.fps; PAD = P.pad; OH = int(C.get("out_height", 1280)); random.seed(int(C.get("seed", 5)))
+FPS = P.fps; PAD = P.pad; OH = opt("--out-height", int(C.get("out_height", 1280)), int); random.seed(int(C.get("seed", 5)))
 timing = json.load(open(P.p("voice", "timing.json"))); L = {x["n"]: x["start"] for x in timing["lines"]}; LDUR = {x["n"]: x["dur"] for x in timing["lines"]}; END = timing["end"]
 T1 = opt("--to", END, float)
 OUTF = opt("--out", P.p("out", "mascot.webm" if MODE == "alpha" else "mascot_white.mp4"))

@@ -107,3 +107,13 @@ def test_explain_positional_work_survives_same_named_options(tmp_path, env):
     for f in shots.iterdir(): shutil.copy(f, work / f.name)
     r = explain(env, work, work, sc, tmp_path / "same.mp4", "cursor")
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+
+
+def test_full_style_renders_at_720_unless_config_says_otherwise(tmp_path):
+    import json
+    import explain
+    c = tmp_path / "config.json"
+    c.write_text(json.dumps({"poses": {}}), encoding="utf-8")
+    assert explain.full_height_args(str(c)) == ["--out-height", "720"]
+    c.write_text(json.dumps({"out_height": 1000}), encoding="utf-8")
+    assert explain.full_height_args(str(c)) == []
