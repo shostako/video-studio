@@ -13,13 +13,12 @@ PR ごとに更新する。目的は、仕事で使う解説動画・まとめ�
 
 解説動画の 3 つの型を、新PC でも旧PC でも、パックの動きを組み合わせるだけで作れるようにする目標は済んだ（2026-11-01、下の「済んだこと」の完成の判定）。
 
-次の目標: リポを見つけた第三者が、自分の PC で README の手順だけで解説動画を作れるようにする。2026-11-01 に調べて見つかった穴:
+次の目標: リポを見つけた第三者が、自分の PC で README の手順だけで解説動画を作れるようにする。2026-11-01 に新しい WSL（Ubuntu 24.04 の素の中身）で README の手順だけを流し、蘭の解説動画を 1 本作れた。見つかった穴（apt update・python3-venv・壊れた venv・`/img` の扱い・Playwright・既定の声・手元のパス）は #76 で直した。残り:
 
-1. 撮影の道具の用意: Web の撮影（`web_capture.py`）の Playwright と Chromium を、どの `setup.sh` も入れず README にも無い。Excel の撮影（`excel_capture.py`）の Windows 側の Python と pywin32 も、README に無く setup も確かめない
-2. 既定の声: screen-explainer の SKILL.md が「どの声を使うかは利用者ごとの記憶にある」と書いている。記憶の無い人でも作れるよう、既定の声（説明文と seed）を雛形に入れる
-3. 手元のパスを消す: video-scene の SKILL.md の `C:\Users\shost\...`、例のスクリプトの作業場所のパス
-4. キャラ作りの絵: `vm poses` が `~/.claude/skills/img`（このリポに無いスキル）を直に呼ぶ。リポに入れるか、差し替えられる形にする
-5. まっさらな環境で通す: 私たちの設定の無い Linux ユーザーか新しい WSL で、README の手順だけで「Web アプリの解説動画を蘭で 1 本」を作る。詰まった所を直す
+1. キャラ作りの絵: `vm poses` が `~/.claude/skills/img`（このリポに無いスキル）を直に呼ぶ。リポに入れるか、差し替えられる形にする
+2. 純粋な Windows（WSL 無し）の Claude Code: 今は動かない（bash の入口、`fcntl`、パックへの symlink、`venv/bin/python` の決め打ち、Excel の撮影を WSL から呼ぶ作り）。移植するかを決める。試す場所は `C:\Users\shost\vs-wintest\`（試験用の家に向けて起動する .bat と頼み文を用意済み。最初にログインが要る）
+3. Claude Code に頼む段まで通す: まっさらな環境の試験は、Claude が書くファイル（台本・撮影の指定・場面の割り付け）を手で書いて流した。Claude Code に「解説動画を作って」と頼むところからは、ログインが要るので未確認
+4. ブラウザの部品（apt のライブラリ）が足りないときの案内（`playwright install-deps`）は、部品が入った後の環境でしか確かめていない
 
 ## 手元待ち（クラウドでは動かない。スレッドは手を出さず、必要なら `DECISIONS.md` の「未決」に書く）
 
