@@ -11,6 +11,7 @@
   --enclosed bg|keep  囲まれたほぼ白の扱い（既定は config.matte.enclosed、無ければ bg）。bg: 今までどおり、顔の箱の外の囲まれた白は
                  背景（白いシャツ・おでこの光も透けて、暗い背景に重ねると穴に見える）。keep: 囲まれた白はキャラとして閉じ、内側が
                  背景の色そのもの（平ら）な所（脚の間・腕と体の間）だけ背景にする。暗い背景に重ねるときに使う
+  --jobs N       区間に分けて N 並列で書き出し、1 本につなぐ（1 区間のメモリは約 1GB）。絵は変わらない
   --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
                  ワイプと同じ決め方）。透明にする計算も範囲の周りだけで行うので速い。決めた範囲は <出力>.crop.json に書き、
                  vm layout --style wipe はその動画をそのまま丸にする
@@ -75,6 +76,12 @@ if CROP:
         try: CROP_BOX = tuple(int(v) for v in CROP.split(","))
         except ValueError: CROP_BOX = ()
         if len(CROP_BOX) != 3 or CROP_BOX[2] <= 0 or min(CROP_BOX[:2]) < 0: die(f"--crop は face か x,y,辺: {CROP}")
+JOBS = opt("--jobs", 1, int)
+if JOBS < 1: die(f"--jobs は 1 以上: {JOBS}")
+if JOBS > 1 and "--check-only" not in sys.argv:    # 区間に分けて自分を並列に呼び、つなぐ（中身は render_jobs.py）
+    import render_jobs
+    render_jobs.run(sys.argv[1:], JOBS, int(T0 * FPS), min(int(math.ceil(T1 * FPS)), int(math.ceil(END * FPS))), FPS, MODE, OUTF, CROP, VOICE, T0, T1)
+    sys.exit(0)
 
 # ---------- 声: 大きさ・語・母音 ----------
 def load_audio(p, sr=16000):
@@ -505,7 +512,8 @@ if not DRY:
     enc.stdin.close(); rc_enc = enc.wait()
     if rc_enc != 0: die(f"ffmpeg の書き出しに失敗（終了コード {rc_enc}）")
     if CROP: json.dump({"box": list(CROP_BOX), "size": [OW, OH], "from": T0}, open(os.path.splitext(OUTF)[0] + ".crop.json", "w"))
-    if MODE != "alpha":
+    if MODE != "alpha" and "--video-only" in sys.argv: os.replace(tmp, OUTF)   # --jobs の区間。声はつないだあとに 1 回だけ付ける
+    elif MODE != "alpha":
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ss", f"{T0}", "-t", f"{T1 - T0}", "-i", VOICE, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", OUTF], check=True)
         os.remove(tmp)
 
