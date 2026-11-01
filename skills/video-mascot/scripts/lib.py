@@ -533,7 +533,7 @@ def short_holds(switches, home, min_hold=SHORT_HOLD):
     out = []
     for (t0, d0, _, b0), (t1, _, a1, _) in zip(switches, switches[1:]):
         hold = t1 - (t0 + d0)
-        if b0 != home and hold < min_hold:
+        if b0 != home and hold < min_hold - 1e-6:   # ちょうど接する切り替え（0.1+0.2 と 0.3）を浮動小数点の誤差で重なりと見ない
             out.append({"at": round(t0, 3), "pose": b0, "hold": round(hold, 3), "next": round(t1, 3)})
     return out
 

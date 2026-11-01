@@ -371,3 +371,8 @@ def test_short_holds_flags_overlap_but_not_quick_wag_or_home():
     out = lib.short_holds(sw, "home")
     assert [(o["at"], o["pose"]) for o in out] == [(10.0, "point_r")] and out[0]["hold"] < 0
     assert lib.short_hold_report([]) == [] and "上書き" in lib.short_hold_report(out)[0]
+
+
+def test_short_holds_tolerates_float_rounding():
+    """ちょうど接する切り替えを、0.1+0.2 > 0.3 の誤差で重なりと見ない（Codex の指摘）。"""
+    assert lib.short_holds([(0.1, 0.2, "home", "point"), (0.3, 0.2, "point", "home")], "home") == []
