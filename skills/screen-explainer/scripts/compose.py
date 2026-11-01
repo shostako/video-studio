@@ -4,7 +4,7 @@
 usage:
   python3 compose.py --shots <撮影フォルダ> --voice <声の作業フォルダ> --scenes <scenes.py> --out <出力.mp4>
                      [--wipe <口の絵のフォルダ>] [--wipe-home BR] [--clip-bottom 948] [--clip-right 1895]
-                     [--from 秒 --to 秒] [--preview 秒,秒,...]
+                     [--from 秒 --to 秒] [--preview 秒,秒,...] [--layout full|margin] [--scale 0.73] [--chapters 章.json]
   撮影フォルダ : <名前>.png（1920×1020 か、それ以上の高さ。上 1020 を使う）と rects.json（{名前: {キー: [x0,y0,x1,y1]}}）
   声の作業フォルダ: config.json（voice.lines[].text が字幕）、voice/master.wav、voice/timing.json（vm voice master の出力）
   --wipe        : mouth0.png〜mouth3.png（440×440、円 (220,238) 半径 200 に顔と肩）。閉じ→小→中→大の順。無ければワイプを出さない
@@ -12,6 +12,12 @@ usage:
                   強調の枠・カーソル・キーの札に重なる場面だけ、ほかの角へ移る
   --clip-bottom : 強調の枠の下端をここで切る（Excel はシート見出しの上 948、ブラウザは 1016）
   --preview     : 指定の時刻のコマを <出力>_t<秒>.png に書くだけ（動画は作らない）
+  --layout      : full（既定。画面を全面に出し、下に字幕の帯）か margin（画面を --scale の倍率に縮めて右に寄せ、字幕はその下。
+                  左の余白にはマスコット（vm layout で全身かワイプ）を置く）。margin では --wipe は使えない
+  --scale       : margin の画面の倍率（0.5〜0.9、既定 0.73＝幅 1400・余白 496）。上げると画面の字は大きく、余白は狭くなる
+  --chapters    : 章の見出しの JSON（video-mascot の chapters.py の形）。full は章が替わった所で左上に数秒出して消し、
+                  margin は余白の左上に出し続ける（サンプルの出どころ credits も余白に出す）
+  書き出すと <出力>.layout.json（割り付け: 余白の幅、画面の位置、見出しを描いたか）も書く。vm layout はこれを読んで合わせる
 
 scenes.py の中で使える名前: R（rects.json）, rc(画像, キー), ctr(画像, キー), box(*枠, pad=), FULL, W, VIEW_H, add(...)
 add(imgs=[(割合, 画像名)], cam=[(割合, 枠)], cur=[(割合, (x, y))], hl=[(割合の始め, 割合の終わり, 枠)],
@@ -30,6 +36,8 @@ ap.add_argument("--scenes", required=True); ap.add_argument("--out", required=Tr
 ap.add_argument("--wipe"); ap.add_argument("--wipe-home", default="BR", choices=["BR", "BL", "TR", "TL"]); ap.add_argument("--clip-bottom", type=float, default=1016); ap.add_argument("--clip-right", type=float, default=1920)
 ap.add_argument("--from", dest="t_from", type=float, default=0.0); ap.add_argument("--to", dest="t_to", type=float)
 ap.add_argument("--preview", default="")
+ap.add_argument("--layout", default="full", choices=["full", "margin"]); ap.add_argument("--scale", type=float, default=0.73)
+ap.add_argument("--chapters")
 A = ap.parse_args()
 
 W, H, VIEW_H, FPS = 1920, 1080, 1020, 30
@@ -37,6 +45,18 @@ BAND = H - VIEW_H
 FONT = next((p for p in (os.environ.get("SCREEN_EXPLAINER_FONT"), "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
                           "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc") if p and os.path.exists(p)), None)
 if not FONT: sys.exit("ERROR: 日本語の太字フォント（Noto Sans CJK Bold）が無い。fonts-noto-cjk を入れるか、SCREEN_EXPLAINER_FONT に太字のフォントを指定する")
+
+# 割り付け。margin: 画面を縮めて右に寄せ（右の隙間 24、上 34）、左の余白にマスコットを置く。字幕は画面の下に濃い字で
+MARGIN = A.layout == "margin"
+if MARGIN:
+    if A.wipe: sys.exit("ERROR: --layout margin ではワイプを compose で重ねない（余白に vm layout で置く）。--wipe を外す")
+    if not 0.5 <= A.scale <= 0.9: sys.exit(f"ERROR: --scale は 0.5〜0.9: {A.scale}")
+    PW = int(W * A.scale / 2) * 2; PH = int(round(PW * VIEW_H / W / 2)) * 2   # 0.73 で幅 1400・余白 496
+    PX, PY = W - 24 - PW, 34
+    if PX < 200: sys.exit(f"ERROR: --scale {A.scale} では余白が {PX}px しか無い（マスコットを置けない）")
+LIGHT, INK, ACC, SUBC = (247, 246, 244), (28, 33, 44), (232, 120, 30), (110, 114, 122)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "video-mascot", "scripts"))
+import chapters as CH  # noqa: E402
 
 R = json.load(open(os.path.join(A.shots, "rects.json"), encoding="utf-8"))
 timing = json.load(open(os.path.join(A.voice, "voice", "timing.json")))
@@ -117,6 +137,78 @@ for i, l in enumerate(LINES):
         SUBS.append((t, t + d + (0.35 if j == len(parts) - 1 else 0), p)); t += d
 f_sub = ImageFont.truetype(FONT, 36, index=0)
 f_key = ImageFont.truetype(FONT, 40, index=0)
+
+def text_w(f, t):
+    b = f.getbbox(t); return b[2] - b[0]
+
+def fit(text, size, maxw, min_size=16):
+    """maxw に収まる (フォント, 文字)。字を 2px ずつ小さくし、min_size でも広ければ末尾を「…」で切る。"""
+    while size > min_size and text_w(ImageFont.truetype(FONT, size, index=0), text) > maxw: size -= 2
+    f = ImageFont.truetype(FONT, size, index=0)
+    if text_w(f, text) > maxw:
+        while text and text_w(f, text + "…") > maxw: text = text[:-1]
+        text += "…"
+    return f, text
+
+def text_img(text, f, color):
+    b = f.getbbox(text); im = Image.new("RGBA", (max(1, b[2] - b[0]), max(1, b[3] - b[1])), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((-b[0], -b[1]), text, font=f, fill=color + (255,)); return im
+
+def faded(im, a):
+    if a >= 1: return im
+    im = im.copy(); im.putalpha(im.getchannel("A").point(lambda v: int(v * a))); return im
+
+def wrap(text, f, maxw):
+    """字幕の折り返し: 句読点・』」・空白の後ろで切る（幅が収まる最後の区切り）。"""
+    out, cur = [], ""
+    for ch in text:
+        cur += ch
+        if text_w(f, cur) > maxw:
+            cut = max(cur.rfind(c) for c in "、。』」 ")
+            if cut <= 0: cut = len(cur) - 2
+            out.append(cur[:cut + 1]); cur = cur[cut + 1:]
+    if cur: out.append(cur)
+    return out
+
+CHP, CRD = CH.load(A.chapters, os.path.join(A.voice, "voice", "timing.json")) if A.chapters else ([], [])
+if MARGIN:
+    # 背景（影つきの角丸の枠）と角丸のマスク
+    BGM = Image.new("RGB", (W, H), LIGHT); shd = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(shd).rectangle([PX + 6, PY + 14, PX + PW - 6, PY + PH + 10], fill=int(255 * 0.28))
+    BGM.paste((0, 0, 0), (0, 0), shd.filter(ImageFilter.GaussianBlur(18)))
+    PMASK = Image.new("L", (PW * 2, PH * 2), 0); ImageDraw.Draw(PMASK).rounded_rectangle([0, 0, PW * 2 - 1, PH * 2 - 1], radius=32, fill=255)
+    PMASK = PMASK.resize((PW, PH), Image.LANCZOS)
+    # 字幕: 行ごとに全文を、画面の下の空きに収まる大きさで（字が多ければ小さく）
+    CAP_TOP = PY + PH + 30; room = H - CAP_TOP - 12; CAPS = []
+    for tx in texts:
+        size = 40
+        while True:
+            f = ImageFont.truetype(FONT, size, index=0); rows = wrap(tx, f, PW - 120); lh = int(size * 1.45)
+            if lh * len(rows) <= room or size <= 24: break
+            size -= 2
+        im = Image.new("RGBA", (PW, lh * len(rows)), (0, 0, 0, 0)); d_ = ImageDraw.Draw(im)
+        for k, r in enumerate(rows): d_.text(((PW - text_w(f, r)) / 2, k * lh), r, font=f, fill=INK + (255,))
+        CAPS.append(im)
+    # 章の見出し（余白の左上に出し続ける）とサンプルの出どころ
+    HMAX = PX - 80
+    HEADS = []                                                      # (番号, [(行の絵, y)], 下線の長さ, 下線の y)。長い見出しは 2 行に折る
+    for _, num, title in CHP:
+        sz, rows = CH.fit_heading(title, lambda t_, z_: text_w(ImageFont.truetype(FONT, z_, index=0), t_), HMAX)
+        if rows[-1].endswith("…") and not title.endswith("…"): print(f"注意: 見出し「{title}」が余白（{HMAX}px）に収まらず末尾を切った。短くするか --scale を下げる", file=sys.stderr)
+        ys, ry = CH.heading_block(sz, len(rows)); f_ = ImageFont.truetype(FONT, sz, index=0)
+        ims = [(text_img(r, f_, INK), y_) for r, y_ in zip(rows, ys)]
+        HEADS.append((text_img(num, ImageFont.truetype(FONT, 22, index=0), ACC), ims, min(HMAX, max([120] + [im.size[0] for im, _ in ims])), ry))
+    CRED_Y = max([128] + [h[3] for h in HEADS]) + 20               # 出どころは、いちばん下の下線のさらに下（章で位置が跳ねない）
+    CREDS = [[text_img(*fit(x, 20, HMAX)[::-1], SUBC) for x in c[2]] for c in CRD]
+else:
+    # 章の見出し（章が替わった所で左上に数秒出して消す）: 濃い角丸の札に、橙の縦線・番号・見出し
+    FLASH = []
+    for _, num, title in CHP:
+        ft, tt = fit(title, 46, W - 400); ti = text_img(tt, ft, (255, 255, 255)); nu = text_img(num, ImageFont.truetype(FONT, 26, index=0), ACC)
+        bw, bh = max(ti.size[0], nu.size[0]) + 72, nu.size[1] + ti.size[1] + 58
+        card = Image.new("RGBA", (bw, bh), (0, 0, 0, 0)); dc = ImageDraw.Draw(card)
+        dc.rounded_rectangle([0, 0, bw - 1, bh - 1], radius=16, fill=(20, 22, 28, 220)); dc.rectangle([0, 14, 7, bh - 14], fill=ACC + (255,))
+        card.alpha_composite(nu, (36, 20)); card.alpha_composite(ti, (36, 20 + nu.size[1] + 14)); FLASH.append(card)
 
 # カーソル：太い橙の矢印（白縁・影）と、先端の黄色の光の輪
 def make_cursor(sc=2):
@@ -248,10 +340,29 @@ def frame(t):
     cx, cy = cur_screen(t); p = 0.5 + 0.5 * math.sin(t * 2 * math.pi * 1.2); hr = int(40 + 6 * p)
     fr.alpha_composite(halo(hr, 0.8 + 0.2 * p), (int(cx - hr - 10), int(cy - hr - 10)))
     fr.alpha_composite(CUR, (int(cx - HOT[0]), int(cy - HOT[1])))
+    if MARGIN:                                                       # 画面を縮めて右に寄せ、字幕は画面の下、見出しは余白の左上
+        out = BGM.copy(); out.paste(fr.convert("RGB").resize((PW, PH), Image.LANCZOS), (PX, PY), PMASK)
+        for i, l in enumerate(LINES):
+            s0, s1 = l["start"], l["start"] + l["dur"]
+            if s0 - 0.15 <= t <= s1 + 0.35:
+                a = min(1, (t - s0 + 0.15) / 0.12, (s1 + 0.35 - t) / 0.12); out.paste(CAPS[i], (PX, CAP_TOP), faded(CAPS[i], a))
+        k = CH.chapter_at(t, CHP)
+        if k is not None:
+            nu, ims, rule, ry = HEADS[k]; out.paste(nu, (40, 44), nu)
+            for im, y_ in ims: out.paste(im, (40, y_), im)
+            ImageDraw.Draw(out).rectangle([40, ry - 1, 40 + rule, ry + 1], fill=ACC)
+        for (c0, c1, _), rows in zip(CRD, CREDS):
+            a = CH.credit_alpha(t, c0, c1)
+            if a > 0:
+                for j, r in enumerate(rows): out.paste(r, (40, CRED_Y + 30 * j), faded(r, a))
+        return out
     out = Image.new("RGB", (W, H), (22, 24, 28)); out.paste(fr.convert("RGB"), (0, 0)); dd = ImageDraw.Draw(out)
     for a, b, txt in SUBS:                                           # 字幕の帯
         if a <= t < b:
             dd.text(((W - dd.textlength(txt, font=f_sub)) / 2, VIEW_H + (BAND - 46) / 2), txt, font=f_sub, fill=(255, 255, 255)); break
+    for (t0, _, _), card in zip(CHP, FLASH):                         # 章が替わった所だけ、左上に見出しの札
+        a = CH.flash_alpha(t, t0)
+        if a > 0: c_ = faded(card, a); out.paste(c_, (36, 36), c_)
     return out
 
 if A.preview:
@@ -271,4 +382,7 @@ for n in range(int(A.t_from * FPS), int(t_to * FPS)):
 pr.stdin.close()
 if pr.wait() != 0: sys.exit("ERROR: ffmpeg が失敗した")
 os.replace(A.out + ".part", A.out)
+lay = {"layout": A.layout, "chapters": bool(CHP or CRD)}
+if MARGIN: lay.update({"scale": A.scale, "margin": PX, "panel": [PX, PY, PW, PH]})
+json.dump(lay, open(os.path.splitext(A.out)[0] + ".layout.json", "w"), ensure_ascii=False)
 print("out", A.out, f"{t_to - A.t_from:.1f}s")

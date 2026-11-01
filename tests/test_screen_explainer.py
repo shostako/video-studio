@@ -88,13 +88,13 @@ def _wipe(d):
         cv2.imwrite(str(d / f"mouth{i}.png"), f)
 
 
-def _run(tmp_path, *extra, scenes=None):
+def _run(tmp_path, *extra, scenes=None, wipe_on=True):
     shots, voice, wipe = tmp_path / "shots", tmp_path / "work", tmp_path / "wipe"
     for p in (shots, voice, wipe): p.mkdir(exist_ok=True)
     _shots(shots); end = _voice(voice); _wipe(wipe)
     env = dict(os.environ, SCREEN_EXPLAINER_FONT=FONT)
     cmd = [sys.executable, str(SK / "scripts" / "compose.py"), "--shots", str(shots), "--voice", str(voice),
-           "--scenes", str(scenes or SK / "assets" / "example_scenes.py"), "--out", str(tmp_path / "out.mp4"), "--wipe", str(wipe), *extra]
+           "--scenes", str(scenes or SK / "assets" / "example_scenes.py"), "--out", str(tmp_path / "out.mp4")] + (["--wipe", str(wipe)] if wipe_on else []) + list(extra)
     return subprocess.run(cmd, capture_output=True, text=True, env=env), end
 
 
@@ -185,3 +185,65 @@ def test_compose_wipe_avoids_film_cursor(tmp_path):
     a = np.asarray(Image.open(next(tmp_path.glob("out_t*.png"))).convert("RGB"), np.int16)
     ring = lambda y0, y1, x0, x1: int(((a[y0:y1, x0:x1, 0] > 230) & (a[y0:y1, x0:x1, 1] < 120) & (a[y0:y1, x0:x1, 2] < 40)).sum())
     assert ring(660, 1020, 1540, 1920) < 50 and ring(0, 360, 1540, 1920) > 500     # 右下を避けて右上へ
+
+
+# ---------- 余白ありの割り付け（--layout margin）と章の見出し（--chapters）----------
+def _chapters(tmp_path, spec=None):
+    p = tmp_path / "ch.json"
+    p.write_text(json.dumps(spec or {"chapters": [{"line": 1, "title": "はじめに"}, {"line": 2, "title": "つぎ"}],
+                                     "credits": [{"from": 0.0, "text": ["サンプル: 合成"]}]}, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def _png(tmp_path, t):
+    return np.asarray(Image.open(tmp_path / f"out_t{t:06.2f}.png").convert("RGB"), np.int16)
+
+
+@needs_font
+def test_compose_margin_layout_places_panel_right(tmp_path):
+    r, _ = _run(tmp_path, "--layout", "margin", "--preview", "0.5", wipe_on=False)
+    assert r.returncode == 0, r.stderr
+    a = _png(tmp_path, 0.5)
+    pw = int(1920 * 0.73 / 2) * 2; px = 1920 - 24 - pw
+    assert px == 496
+    assert (np.abs(a[600, 100] - (247, 246, 244)) <= 2).all()       # 余白は明るい無地（マスコットを置く所）
+    assert (np.abs(a[300, px + pw // 2] - (245, 245, 245)) <= 6).all()   # 画面（撮影の背景）は右に寄っている
+    assert (a[800:900, px:px + pw] < 120).any()                    # 字幕は画面のすぐ下に濃い字で（上 34＋画面 744＋30）
+
+
+@needs_font
+def test_compose_margin_rejects_wipe_and_bad_scale(tmp_path):
+    r, _ = _run(tmp_path, "--layout", "margin", "--preview", "0.5")
+    assert r.returncode != 0 and "--wipe" in r.stderr
+    (tmp_path / "b").mkdir(); r, _ = _run(tmp_path / "b", "--layout", "margin", "--scale", "0.95", "--preview", "0.5", wipe_on=False)
+    assert r.returncode != 0 and "--scale" in r.stderr
+
+
+@needs_font
+def test_compose_margin_chapters_stay_in_margin(tmp_path):
+    ch = _chapters(tmp_path)
+    r, _ = _run(tmp_path, "--layout", "margin", "--chapters", str(ch), "--preview", "0.5,3.2", wipe_on=False)
+    assert r.returncode == 0, r.stderr
+    a, b = _png(tmp_path, 0.5), _png(tmp_path, 3.2)
+    rule = a[128, 50]; assert rule[0] > 180 and rule[2] < 100      # 橙の下線（1 行の見出しは 128）
+    assert (a[44:66, 40:80] != b[44:66, 40:80]).any()              # 番号が 01 → 02 に替わる
+    assert (a[148:170, 40:200] < 200).any() and (b[148:170, 40:200] < 200).any()   # 出どころは出し続ける
+
+
+@needs_font
+def test_compose_full_chapters_flash_then_fade(tmp_path):
+    ch = _chapters(tmp_path, {"chapters": [{"at": 0.0, "title": "はじめに"}]})
+    r, end = _run(tmp_path, "--chapters", str(ch), "--preview", "1.0,5.5", wipe_on=False)
+    assert r.returncode == 0, r.stderr
+    a, b = _png(tmp_path, 1.0), _png(tmp_path, 5.5)
+    assert a[60:100, 40:100].mean() < 120                          # 1 秒: 左上に濃い札
+    assert b[60:100, 40:100].mean() > 200                          # 5.5 秒（0.3+3+1 秒の後）: 消えて撮影の明るい地に戻る
+
+
+@needs_font
+@pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg が無い")
+def test_compose_writes_layout_json(tmp_path):
+    r, _ = _run(tmp_path, "--layout", "margin", "--scale", "0.8", "--from", "0", "--to", "0.5", wipe_on=False)
+    assert r.returncode == 0, r.stderr
+    lay = json.loads((tmp_path / "out.layout.json").read_text())
+    assert lay["layout"] == "margin" and lay["margin"] == 1920 - 24 - 1536 and lay["panel"][2] == 1536 and lay["chapters"] is False
