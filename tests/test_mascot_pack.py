@@ -416,3 +416,14 @@ def test_new_does_not_write_into_a_read_only_pack(tmp_path):
         assert (pk / "pack.json").read_text() == before
     finally:
         os.chmod(pk, 0o755); os.chmod(pk / "pack.json", 0o644)
+
+
+
+def test_registry_with_bare_file_name(tmp_path, monkeypatch):
+    """控えの場所をフォルダ無しの名前で渡しても、今のフォルダに置ける（Codex の指摘）。"""
+    p, n = _wan_wf(tmp_path); pk = tmp_path / "pack"
+    assert run("pack.py", pk, "--from", p, "--with-cache").returncode == 0
+    monkeypatch.setenv("VM_PACK_REGISTRY", "registry.json"); monkeypatch.chdir(tmp_path)
+    r = run("pack.py", pk, "--new", tmp_path / "video")
+    assert r.returncode == 0 and "書けなかった" not in r.stdout, r.stdout + r.stderr
+    assert str(tmp_path / "video") in json.loads((tmp_path / "registry.json").read_text())[str(pk)]

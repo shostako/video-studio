@@ -314,7 +314,7 @@ def build(pack, sources, force=False, with_cache=False):
 
 def registry_path():
     """パックから作った作業フォルダの控えの置き場（パックの外。パックは読むだけ）。VM_PACK_REGISTRY か <VIDEO_SCENE_HOME>/pack_workspaces.json。"""
-    return os.environ.get("VM_PACK_REGISTRY") or os.path.join(os.environ.get("VIDEO_SCENE_HOME") or os.path.expanduser("~/.local/share/video-scene"), "pack_workspaces.json")
+    return os.path.abspath(os.path.expanduser(os.environ.get("VM_PACK_REGISTRY") or os.path.join(os.environ.get("VIDEO_SCENE_HOME") or "~/.local/share/video-scene", "pack_workspaces.json")))   # フォルダ無しの名前でも置けるよう絶対パスに
 
 
 def _reg_load():
