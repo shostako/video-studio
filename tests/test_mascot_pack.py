@@ -365,3 +365,17 @@ def test_pack_with_cache_rejects_frames_made_with_other_post_settings(tmp_path):
     r = run("pack.py", tmp_path / "pack", "--from", p, "--from", q, "--with-cache")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "Wan の切り替え 0 組" in r.stdout and "post" in r.stdout
+
+
+
+def test_hand_replace_does_not_touch_linked_pack_cache(tmp_path):
+    """パックから作った作業フォルダで手の部品を置き直しても、リンク先のパックの補間の列は動かさない（Codex の指摘）。"""
+    sys.path.insert(0, str(SCRIPTS)); import hands, lib  # noqa: E401
+    p, n = _wan_wf(tmp_path); c = cfg(p); c["pairs"] = [["home", "point"]]; put(p, c)
+    pk = tmp_path / "pack"; (pk / "ib_interp" / "home_point_x8_rife-v4.6").mkdir(parents=True)
+    assert run("pack.py", pk.with_name("pack2"), "--from", p, "--with-cache").returncode == 0
+    pk = pk.with_name("pack2"); d = pk / "ib_interp" / "home_point_x8_rife-v4.6"; d.mkdir(parents=True, exist_ok=True); (d / "f1.webp").write_bytes(b"x")
+    (pk / "ib_interp" / ".readonly").write_text("")
+    nw = tmp_path / "video"; assert run("pack.py", pk, "--new", nw).returncode == 0
+    hands.archive_old(lib.Proj(str(nw)), "point")
+    assert (d / "f1.webp").exists()
