@@ -113,7 +113,14 @@ def test_render_crop_face_writes_square_and_sidecar(proj, env, tmp_path):
 
 
 def test_render_crop_rejects_white_and_overflow(proj, env, tmp_path):
-    for extra, word in ((["--mode", "white", "--crop", "face"], "alpha"), (["--crop", "0,0,99999"], "はみ出す"), (["--crop", "1,2"], "x,y,辺")):
+    for extra, word in ((["--mode", "white", "--crop", "face"], "alpha"), (["--crop", "0,0,99999"], "はみ出す"), (["--crop", "1,2"], "x,y,辺"), (["--enclosed", "close"], "bg か keep")):
         r = subprocess.run([sys.executable, "-B", str(RENDER), str(proj), "--out", str(tmp_path / "x.webm"), *extra],
                            env=env, capture_output=True, text=True, timeout=120)
         assert r.returncode != 0 and word in r.stderr, (extra, r.stderr)
+
+
+def test_render_enclosed_keep_runs(proj, env, tmp_path):
+    out = tmp_path / "k.webm"
+    render(proj, env, out, "--to", "0.3", "--enclosed", "keep")
+    f = frames(out, env, True)
+    assert (f[..., 3][:, :4, :] < 8).all() and (f[..., 3] > 247).mean() > 0.05   # 外は透明、体は残る

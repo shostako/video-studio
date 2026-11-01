@@ -416,3 +416,36 @@ def test_wipe_box_none_without_figure():
     fg = np.zeros((1280, 720), bool); fg[200:1160, 260:460] = True
     x, y, side = lib.wipe_box(fg)
     assert side == int(0.44 * 959) // 2 * 2 and x + side <= 720
+
+
+# ---------- matte の囲まれた白（enclosed: keep、opt-in）----------
+def _figure_gap():
+    """_figure に、背景の色そのものの囲まれたすき間（脚の間の代わり）と、毛の間の白を足す。シャツは純白（253）の陰影つき。"""
+    import numpy as np
+    img, sh, keeps = _figure()
+    img[174:396, 84:216] = 253; img[174:396:6, 84:216] = 244          # 白いシャツ（陰影の筋が入る）
+    img[196:384, 226:284] = (30, 30, 30); img[200:380, 230:280] = 253   # 体の横に、黒い枠で囲んだ背景の色のすき間（腕と体の間の代わり）
+    return img, sh, keeps
+
+
+def test_matte_enclosed_keep_closes_shirt_but_opens_flat_gap():
+    img, sh, keeps = _figure_gap()
+    old = lib.matte(img, sh, keeps); new = lib.matte(img, sh, keeps, enclosed="keep")
+    assert old[250, 120, 3] == 0                                       # 今まで: 顔の箱の外の囲まれた白（シャツ）は抜ける
+    assert new[250, 120, 3] >= 250                                     # keep: シャツはキャラとして閉じる
+    assert new[290, 255, 3] == 0 and old[290, 255, 3] == 0             # 背景の色そのもののすき間は、どちらでも抜ける
+    assert new[5, 5, 3] == 0                                           # 外の白は透明のまま
+
+
+def test_matte_enclosed_keep_roi_matches_full_crop():
+    import numpy as np
+    img, sh, keeps = _figure_gap()
+    full = lib.matte(img, sh, keeps, enclosed="keep")
+    for roi in [(60, 200, 240, 420), (220, 190, 290, 390), (100, 240, 260, 300)]:
+        assert np.array_equal(lib.matte(img, sh, keeps, roi=roi, enclosed="keep"), full[roi[1]:roi[3], roi[0]:roi[2]])
+
+
+def test_matte_enclosed_rejects_unknown():
+    img, sh, keeps = _figure()
+    with pytest.raises(ValueError):
+        lib.matte(img, sh, keeps, enclosed="close")

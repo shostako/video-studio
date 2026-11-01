@@ -8,6 +8,9 @@
   --check-only   下見。絵を作らず（RIFE・Wan を呼ばず）時間割だけを回して同じ検査をし、Wan で新しく作る組を出す（<出力>.precheck.json）
   --strict       切り替えの検査で問題があれば終了コード 3（動画は書き出したまま残る）
   --no-events    config.events（身振り）を使わず home のまま話す（ワイプの型の顔用）。--no-head は頭の向きの列（config.head）も止める
+  --enclosed bg|keep  囲まれたほぼ白の扱い（既定は config.matte.enclosed、無ければ bg）。bg: 今までどおり、顔の箱の外の囲まれた白は
+                 背景（白いシャツ・おでこの光も透けて、暗い背景に重ねると穴に見える）。keep: 囲まれた白はキャラとして閉じ、内側が
+                 背景の色そのもの（平ら）な所（脚の間・腕と体の間）だけ背景にする。暗い背景に重ねるときに使う
   --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
                  ワイプと同じ決め方）。透明にする計算も範囲の周りだけで行うので速い。決めた範囲は <出力>.crop.json に書き、
                  vm layout --style wipe はその動画をそのまま丸にする
@@ -63,6 +66,8 @@ timing = json.load(open(P.p("voice", "timing.json"))); L = {x["n"]: x["start"] f
 T1 = opt("--to", END, float)
 OUTF = opt("--out", P.p("out", "mascot.webm" if MODE == "alpha" else "mascot_white.mp4"))
 VOICE = P.p("voice", "master.wav")
+ENCL = opt("--enclosed", (C.get("matte") or {}).get("enclosed", "bg"))   # 囲まれた白（白い服・光）を閉じるか（keep、opt-in）
+if ENCL not in ("bg", "keep"): die(f"--enclosed（config.matte.enclosed）は bg か keep: {ENCL}")
 CROP = opt("--crop"); CROP_BOX = None              # 書き出す正方形 (x, y, 辺)（出力の画素）。face は最初のコマで決める
 if CROP:
     if MODE != "alpha": die("--crop は --mode alpha だけ（ワイプ用）")
@@ -450,8 +455,8 @@ def finish(img, sh, boxes, sdd):
     for p1 in boxes:                                                                      # 顔の箱を、息づかい・縮小の変換で最終の画素に写す
         p2 = p1 @ M[:, :2].T + M[:, 2]
         keep.append((int(p2[0, 0] * fxs), int(p2[0, 1] * fys), int(p2[1, 0] * fxs), int(p2[1, 1] * fys)))
-    if CROP_BOX: x_, y_, d_ = CROP_BOX; return matte(img, sh, keep, roi=(x_, y_, x_ + d_, y_ + d_))
-    return matte(img, sh, keep)
+    if CROP_BOX: x_, y_, d_ = CROP_BOX; return matte(img, sh, keep, roi=(x_, y_, x_ + d_, y_ + d_), enclosed=ENCL)
+    return matte(img, sh, keep, enclosed=ENCL)
 
 TAGS, SPEAK, FACEP, LOUD = [], [], [], []         # 検査: 各コマで何を出したか（frame_tag）、口を開けているか、口の部品を貼る姿勢に部品があるか、声が出ているか
 def face_of(pl):
