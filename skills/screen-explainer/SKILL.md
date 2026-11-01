@@ -29,6 +29,8 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 | ワイプ | `--layout margin [--scale 0.73]`。画面を縮めて右に寄せ、字幕はその下。`--chapters` は余白の左上に出し続ける | 丸いワイプを左下に（video-mascot の `vm layout`） |
 | 全身・小 | 同上 | 全身を余白の下に（`vm layout`） |
 
+3 つの型を 1 本に通すなら video-mascot の `vm explain <作業フォルダ> --shots <撮影> --scenes scenes.py --style cursor|wipe|full --out 出力.mp4`（下の 6・7 の組み立てとマスコットの書き出し・重ね・検査をまとめて回す）。
+
 `--scale` を上げると画面の字は大きくなるが、余白（0.73 で 496px、0.8 で 384px、0.83 で 320px）は狭くなる。書き出すと `<出力>.layout.json` に余白の幅が残り、`vm layout` はそれに合わせてマスコットを置く。章の見出しの JSON は video-mascot の `scripts/chapters.py` の先頭に書き方がある。マスコット付きの型では、見出しは compose か `vm layout` のどちらか一方で付ける（両方だと二重に出る。`vm layout` が注意を出す）。
 
 ## 進め方
