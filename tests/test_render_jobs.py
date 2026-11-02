@@ -69,3 +69,10 @@ def test_compose_times_round_trip():
         ta, tb = rj.compose_times(a, a + 17)
         assert int(ta * rj.COMPOSE_FPS) == a and int(tb * rj.COMPOSE_FPS) == a + 17
     assert rj.compose_frames(48.6) == int(49.4 * 30)
+
+
+def test_compose_chunks_leave_the_voice_to_the_parent():
+    """区間に声を付けると -t の丸め（小数 3 桁）でコマが落ちる（--jobs 2 で 2 枚足りなかった）。"""
+    src = (ROOT / "skills/video-mascot/scripts/render_jobs.py").read_text(encoding="utf-8")
+    assert '"--video-only"], dict(os.environ), log)' in src
+    assert '"--video-only"' in (ROOT / "skills/screen-explainer/scripts/compose.py").read_text(encoding="utf-8")

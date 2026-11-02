@@ -101,7 +101,7 @@ def run_compose(cmd, out, jobs, voice_dir):
         chunks = plan_chunks(0, n, jobs, COMPOSE_FPS)
         def one(i):
             a, b = chunks[i]; ta, tb = compose_times(a, b); p = os.path.join(tmp, f"c{i:04d}.mp4"); log = os.path.join(tmp, f"c{i:04d}.log")
-            rc_ = _run(cmd + ["--out", p, "--from", f"{ta:.6f}", "--to", f"{tb:.6f}"], dict(os.environ), log)
+            rc_ = _run(cmd + ["--out", p, "--from", f"{ta:.6f}", "--to", f"{tb:.6f}", "--video-only"], dict(os.environ), log)
             if rc_ != 0: raise RuntimeError(f"組み立ての区間 {a / COMPOSE_FPS:.2f}〜{b / COMPOSE_FPS:.2f} 秒で止まった（終了コード {rc_}）:\n" + _tail(log))
             return p
         with ThreadPoolExecutor(jobs) as ex:
