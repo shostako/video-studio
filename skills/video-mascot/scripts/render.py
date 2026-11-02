@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
-from lib import occlude, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
+from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
@@ -243,10 +243,11 @@ def ib_item(item, src_pose, lerp_parts=False):
         rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
         H, W = clean.shape[:2]
         ref = cv2.warpAffine(PB[src_pose], A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE) if OCC else None
+        pre = occlude_diff(clean, ref) if OCC else None
         for k, (im, px, py) in PARTS[src_pose].items():
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-            if OCC: full = occlude(full, clean, ref)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
+            if OCC: full = occlude(full, clean, ref, pre=pre)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
             yy, xx = np.where(full[:, :, 3] > 0)
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]

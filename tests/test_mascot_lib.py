@@ -563,3 +563,47 @@ def test_render_cache_does_not_hold_full_images():
 def test_render_reads_only_used_poses():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
     assert src.index("P.poses = [p for p in P.poses if p in _used]") < src.index("img = RAW[p] = P.read_pose(p)")
+
+
+def _occlude_old(full, target, ref, thr=40.0, grow=7):
+    """速くする前の occlude。結果が変わらないことの基準。"""
+    d = np.linalg.norm(target.astype(np.float32) - ref.astype(np.float32), axis=2)
+    m = (cv2.GaussianBlur(d, (0, 0), 1.5) > thr).astype(np.uint8)
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    ys, xs = np.nonzero(full[:, :, 3] > 0)
+    if not len(xs): return full.copy()
+    H, W = m.shape; mg = 25
+    bx0, by0, bx1, by1 = max(0, xs.min() - mg), max(0, ys.min() - mg), min(W, xs.max() + mg + 1), min(H, ys.max() + mg + 1)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m); keep_c = np.zeros(n, bool)
+    for k in range(1, n):
+        x, y, w, h_, _a = st[k]
+        if x < bx0 or y < by0 or x + w > bx1 or y + h_ > by1:
+            if ((lab[by0:by1, bx0:bx1] == k).any()): keep_c[k] = True
+    m = keep_c[lab].astype(np.uint8)
+    if grow: m = cv2.dilate(m, np.ones((grow, grow), np.uint8))
+    keep = 1 - np.clip(cv2.GaussianBlur(m.astype(np.float32), (0, 0), 1.5) * 1.5, 0, 1)
+    out = full.copy(); out[:, :, 3] = (full[:, :, 3].astype(np.float32) * keep).astype(np.uint8)
+    return out
+
+
+@pytest.mark.parametrize("seed, hand", [(0, None), (1, (0, 90, 60, 50)), (2, (70, 60, 200, 60)), (3, (95, 95, 20, 20))])
+def test_occlude_matches_the_old_form_with_and_without_a_shared_diff(seed, hand):
+    """手が顔の外から入る・入らない・顔の中で閉じる。部品ごとの計算でも、差分を 1 回だけ計算して渡しても同じ。"""
+    rng = np.random.default_rng(seed)
+    ref = np.full((220, 300, 3), 200, np.uint8); target = ref.copy()
+    if hand: x, y, w, h = hand; target[y:y + h, x:x + w] = (30, 60, 200)
+    parts = []
+    for (x, y, w, h) in [(80, 80, 40, 30), (130, 80, 40, 30), (100, 120, 60, 25)]:
+        full = np.zeros((220, 300, 4), np.uint8); full[y:y + h, x:x + w] = (10, 20, 30, 255)
+        full[y:y + h, x:x + w, 3] = rng.integers(100, 256, (h, w), dtype=np.uint8); parts.append(full)
+    pre = lib.occlude_diff(target, ref)
+    for full in parts:
+        want = _occlude_old(full, target, ref)
+        assert np.array_equal(lib.occlude(full, target, ref), want)
+        assert np.array_equal(lib.occlude(full, target, ref, pre=pre), want)
+    assert np.array_equal(lib.occlude(np.zeros((220, 300, 4), np.uint8), target, ref), np.zeros((220, 300, 4), np.uint8))
+
+
+def test_render_shares_the_occlude_diff():
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre)" in src
