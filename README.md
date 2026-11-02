@@ -61,8 +61,10 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 | | Irodori-TTS | VOICEVOX ENGINE |
 |---|---|---|
-| WSL | 267 秒 | 78 秒 |
-| Windows（Git Bash） | 379 秒 | 131 秒 |
+| WSL | 250 秒 | 67 秒 |
+| Windows（Git Bash） | 369 秒 | 111 秒 |
+
+このあとの全身の型の書き出しは、同じ 4 スレッドの Windows で 47.7 秒の動画が 110 秒だった。
 
 1. [VOICEVOX ENGINE](https://github.com/VOICEVOX/voicevox_engine/releases) の CPU 版の `.vvpp`（約 1.9GB、展開すると約 2.2GB）を落として展開し、起動する。`127.0.0.1:50021` で待つ。`.vvpp` の中身は zip なので 7-Zip は要らない
 
