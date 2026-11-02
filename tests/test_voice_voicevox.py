@@ -151,6 +151,7 @@ class WhisperModel:
 
 @needs_ffmpeg
 def test_full_synth_listens_once_and_reuses_words_for_render(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("pykakasi")
     voice, P, lines = _proj(tmp_path); _fake_words(tmp_path, monkeypatch)
     monkeypatch.setattr(voice, "WS", sys.executable)
     voice.report_match(P, lines, [1, 2], P.cfg["voice"], 1.0)
@@ -165,6 +166,7 @@ def test_full_synth_listens_once_and_reuses_words_for_render(tmp_path, monkeypat
 
 
 def test_full_synth_builds_master_before_listening(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("pykakasi")
     voice, P, lines = _empty_proj(tmp_path); order = []
     info = [{"n": 1, "start": 0.0, "dur": 1.0}, {"n": 2, "start": 2.0, "dur": 1.0}]
     monkeypatch.setattr(voice, "build_master", lambda *a: order.append("build") or info)
@@ -212,24 +214,21 @@ def test_listening_failure_keeps_the_voice_and_says_why(tmp_path, monkeypatch, c
     assert os.path.exists(P.p("voice", "master.wav")) and not os.path.exists(P.p("voice", "master.words.json"))
 
 
-def test_irodori_model_stays_40_steps_by_default_and_can_be_changed(tmp_path, monkeypatch):
-    import subprocess
+def test_reading_match_ignores_how_it_is_written():
+    pytest.importorskip("pykakasi")
     import voice
-    seen = {}
-
-    def fake_run(cmd, **k):
-        seen["src"] = open(cmd[4], encoding="utf-8").read()
-        return subprocess.CompletedProcess(cmd, 0, "", "")
-    monkeypatch.setattr(voice, "IRO", str(tmp_path)); monkeypatch.setattr(voice.subprocess, "run", fake_run)
-    voice.run_irodori([{"text": "x"}], str(tmp_path))
-    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small")' in seen["src"]
-    voice.run_irodori([{"text": "x"}], str(tmp_path), voice.FAST_MODEL)
-    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small-MF")' in seen["src"]
+    assert voice.reading_match("一人あたりの金額が出ます。", "1人当たりの金額が出ます") >= voice.LOW_MATCH
+    assert voice.reading_match("ぜひ試してみてください。", "ぜひためしてみてください") == 1.0
+    assert voice.reading_match("ぜひ試してみてください。", "ぜひ騙してください") < 0.9
+    assert voice.reading_match("ICMです", "です") < voice.LOW_MATCH    # 英字の語が抜けたら下がる
+    assert voice.reading_match("ICM", "") == 0
+    assert voice.reading_match("ICMです", "icmです") == 1.0
 
 
 def test_low_match_says_how_to_fix_the_reading(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("pykakasi")
     voice, P, lines = _empty_proj(tmp_path, 3)
-    monkeypatch.setattr(voice, "hear_all", lambda paths: ["全然ちがう", "だい3ぎょう"])
+    monkeypatch.setattr(voice, "hear_all", lambda paths: ["まるでべつのことば", "だいさんぎょう"])
     voice.report_match(P, lines, [2, 3], P.cfg["voice"], 0.5)
     out = capsys.readouterr().out
     assert "行2 は読みが崩れているかもしれない" in out and "行3 は読みが" not in out

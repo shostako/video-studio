@@ -66,8 +66,6 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 このあとの全身の型の書き出しは、同じ 4 スレッドの Windows で 47.7 秒の動画が 110 秒だった。
 
-急ぐときは、`config.json` の `voice` に `"model": "Aratako/Irodori-TTS-v4.1-Small-MF"` と書くと、同じ声の速い版になる（同じ条件で WSL 100 秒、Windows 114 秒。GPU なら 29 秒）。手本つきで聞き比べて、声はほとんど同じだった。ただし読めない文字列では 40 ステップより荒く崩れて、雑音に近くなる。`vm voice synth` が一致の低い行を知らせるので、聴いて確かめ、崩れていれば `say` にかなで書く（例:「ぜひ試して」→「ぜひ、ためして」）。
-
 1. [VOICEVOX ENGINE](https://github.com/VOICEVOX/voicevox_engine/releases) の CPU 版の `.vvpp`（約 1.9GB、展開すると約 2.2GB）を落として展開し、起動する。`127.0.0.1:50021` で待つ。`.vvpp` の中身は zip なので 7-Zip は要らない
 
    ```bash

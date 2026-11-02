@@ -3,7 +3,7 @@
   vm voice <作業フォルダ> candidates              config.voice.candidates の声の説明文ごとに、試し2行を読ませる → voice/cand/ に wav と聞き比べの1本
   vm voice <作業フォルダ> synth [行番号 ...]       全行（か指定の行）を読ませて voice/l<N>.wav を作る。聞き取りで台本との一致も出す。全行のときは master も作り、語の時刻（書き出しが使う）も残す
   vm voice <作業フォルダ> master                  各行を開始時刻に置いて voice/master.wav と voice/timing.json を作る
-config.voice: {caption, seed, model(Irodori のモデル。既定は DEFAULT_MODEL), ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...]}
+config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...]}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
 import difflib, json, os, re, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -18,14 +18,12 @@ def ff(*a): subprocess.run(["ffmpeg", "-v", "error", "-y", *a], check=True)
 def dur(p): return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", p], capture_output=True, text=True).stdout)
 
 
-DEFAULT_MODEL = "Aratako/Irodori-TTS-v4.1-Small"
-FAST_MODEL = "Aratako/Irodori-TTS-v4.1-Small-MF"   # 4 ステップの蒸留版。CPU で 2〜3 倍速いが、読めない文字列では 40 ステップより荒く崩れる（DECISIONS.md の 2026-11-02）
 RUNNER = r'''
 import json, os, sys
 sys.path.insert(0, %IRO%)
 from irodori_tts.inference_runtime import InferenceRuntime, RuntimeKey, SamplingRequest, default_runtime_device, download_hf_checkpoint, save_wav
 jobs = json.load(open(sys.argv[1], encoding="utf-8")); dev = default_runtime_device()
-rt = InferenceRuntime.from_key(RuntimeKey(checkpoint=download_hf_checkpoint(%MODEL%), model_device=dev,
+rt = InferenceRuntime.from_key(RuntimeKey(checkpoint=download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small"), model_device=dev,
     codec_repo="Aratako/Semantic-DACVAE-Japanese-32dim", model_precision="fp32", codec_device=dev, codec_precision="fp32",
     codec_deterministic_encode=True, codec_deterministic_decode=True, compile_model=False, compile_dynamic=False))
 for j in jobs:
@@ -36,9 +34,9 @@ for j in jobs:
 '''
 
 
-def run_irodori(jobs, tmp, model=DEFAULT_MODEL):
+def run_irodori(jobs, tmp):
     if not os.path.isdir(IRO): die(f"Irodori-TTS が無い: {IRO}（vm の setup.sh を実行）")
-    src = os.path.join(tmp, "runner.py"); open(src, "w", encoding="utf-8").write(RUNNER.replace("%IRO%", json.dumps(IRO)).replace("%MODEL%", json.dumps(model)))   # Python の文字列として埋める（Windows の \U などをエスケープと読ませない）
+    src = os.path.join(tmp, "runner.py"); open(src, "w", encoding="utf-8").write(RUNNER.replace("%IRO%", json.dumps(IRO)))   # Python の文字列として埋める（Windows の \U などをエスケープと読ませない）
     jf = os.path.join(tmp, "jobs.json"); json.dump(jobs, open(jf, "w", encoding="utf-8"), ensure_ascii=False)
     env = dict(os.environ, HF_HUB_DISABLE_TELEMETRY="1")
     r = subprocess.run(["uv", "run", "--no-sync", "python", src, jf], cwd=IRO, env=dict(env, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -152,9 +150,17 @@ def hear_master(P):
 LOW_MATCH = 0.9
 
 
+def reading_match(script, heard):
+    """台本と聞き取りの一致。かなに直して比べる（「一人」と「1人」、「試して」と「ためして」のような書き方の違いでは下げない）。"""
+    import pykakasi
+    from lib import num_to_kanji
+    kk = pykakasi.kakasi()
+    kana = lambda t: re.sub(r"[^ぁ-ゖa-z0-9]", "", "".join(x["hira"] for x in kk.convert(num_to_kanji(t))).lower())    # かなにならない英字は残す（消すと ICM が抜けても気づかない）
+    return difflib.SequenceMatcher(None, kana(script), kana(heard)).ratio()
+
+
 def report_match(P, lines, only, V, gap):
     """作った声を聞き取って、台本との一致を出す。全行を作ったときは、つないだ声を 1 回だけ聞く（行ごとに聞くより速く、書き出しでもう一度聞かずに済む）。"""
-    norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
     if len(only) == len(lines):
         info = build_master(P, V, lines, gap); words = hear_master(P)
         if words is None: return
@@ -162,7 +168,7 @@ def report_match(P, lines, only, V, gap):
         heard_list = [by_line[n] for n in only]
     else: heard_list = hear_all([P.p("voice", f"l{n}.wav") for n in only])
     for n, heard in zip(only, heard_list):
-        r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
+        r = reading_match(lines[n - 1]["text"], heard)
         print(f"行{n} 台本との一致 {r:.2f}: {heard}", flush=True)
         if r < LOW_MATCH: print(f"  行{n} は読みが崩れているかもしれない。聴いて確かめ、崩れていれば、その言葉をかなで書いた文を voice.lines の say に入れる", flush=True)
 
@@ -172,7 +178,6 @@ def main():
     if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master")
     P = Proj(a[0]); cmd = a[1]; V = P.cfg["voice"]; vd = P.p("voice"); os.makedirs(vd, exist_ok=True)
     lines = V["lines"]; gap = float(V.get("gap", 0.5))
-    MODEL = V.get("model", DEFAULT_MODEL)
     if cmd == "check":
         print("Irodori:", "ある" if os.path.isdir(IRO) else "無い", IRO); sys.exit(0 if os.path.isdir(IRO) else 1)
     if cmd == "candidates":
@@ -186,7 +191,7 @@ def main():
                 ref = ref or out    # 1行目の声を手本に2行目を読む（声がそろうか見るため）
         # ref は1行目ができてから決まるので、行ごとに分けて実行
         first = [j for j in jobs if j["ref"] is None]; rest = [j for j in jobs if j["ref"] is not None]
-        run_irodori(first, cd, MODEL); run_irodori(rest, cd, MODEL)
+        run_irodori(first, cd); run_irodori(rest, cd)
         sil = os.path.join(cd, "_sil.wav"); ff("-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", "0.8", sil)
         beep = os.path.join(cd, "_beep.wav"); ff("-f", "lavfi", "-i", "sine=frequency=1200:sample_rate=48000:duration=0.12", "-af", "volume=0.25", beep)
         lst = os.path.join(cd, "_l.txt"); parts = []
@@ -210,10 +215,10 @@ def main():
         jobs = [{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "caption": V["caption"], "seed": V.get("seed", 1234), "ref": ref,
                  "duration_scale": V.get("duration_scale", 1.0), "out": P.p("voice", f"l{n}.wav")} for n in only]
         if ref is None:    # 手本が無ければ、最初に作った行を手本にして残りをそろえる
-            run_irodori(jobs[:1], vd, MODEL); r0 = jobs[0]["out"]
+            run_irodori(jobs[:1], vd); r0 = jobs[0]["out"]
             for j in jobs[1:]: j["ref"] = r0
-            run_irodori(jobs[1:], vd, MODEL)
-        else: run_irodori(jobs, vd, MODEL)
+            run_irodori(jobs[1:], vd)
+        else: run_irodori(jobs, vd)
         report_match(P, lines, only, V, gap)
         return
     if cmd == "master":
