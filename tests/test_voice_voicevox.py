@@ -210,3 +210,26 @@ def test_listening_failure_keeps_the_voice_and_says_why(tmp_path, monkeypatch, c
     out = capsys.readouterr().out
     assert "聞き取りができなかった" in out and "こわれた" in out
     assert os.path.exists(P.p("voice", "master.wav")) and not os.path.exists(P.p("voice", "master.words.json"))
+
+
+def test_irodori_model_stays_40_steps_by_default_and_can_be_changed(tmp_path, monkeypatch):
+    import subprocess
+    import voice
+    seen = {}
+
+    def fake_run(cmd, **k):
+        seen["src"] = open(cmd[4], encoding="utf-8").read()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(voice, "IRO", str(tmp_path)); monkeypatch.setattr(voice.subprocess, "run", fake_run)
+    voice.run_irodori([{"text": "x"}], str(tmp_path))
+    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small")' in seen["src"]
+    voice.run_irodori([{"text": "x"}], str(tmp_path), voice.FAST_MODEL)
+    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small-MF")' in seen["src"]
+
+
+def test_low_match_says_how_to_fix_the_reading(tmp_path, monkeypatch, capsys):
+    voice, P, lines = _empty_proj(tmp_path, 3)
+    monkeypatch.setattr(voice, "hear_all", lambda paths: ["全然ちがう", "だい3ぎょう"])
+    voice.report_match(P, lines, [2, 3], P.cfg["voice"], 0.5)
+    out = capsys.readouterr().out
+    assert "行2 は読みが崩れているかもしれない" in out and "行3 は読みが" not in out
