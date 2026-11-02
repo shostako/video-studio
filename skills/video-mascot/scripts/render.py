@@ -11,6 +11,8 @@
   --enclosed bg|keep  囲まれたほぼ白の扱い（既定は config.matte.enclosed、無ければ bg）。bg: 今までどおり、顔の箱の外の囲まれた白は
                  背景（白いシャツ・おでこの光も透けて、暗い背景に重ねると穴に見える）。keep: 囲まれた白はキャラとして閉じ、内側が
                  背景の色そのもの（平ら）な所（脚の間・腕と体の間）だけ背景にする。暗い背景に重ねるときに使う
+  --work-scale S  元の絵をこの倍率で扱う（0 より大きく 1 以下。既定 1）。切り替えの絵の計算が軽くなる。作り置きはそのまま使う。vm explain の全身の型は 0.64
+  --fps N        コマの速さ（既定は config.fps）。作り置きはそのまま使う。vm explain の全身の型は 30
   --out-height N  出力の高さ（既定は config.out_height、無ければ 1280）。vm explain の全身の型は 720 で書き出す
   --jobs N       区間に分けて N 並列で書き出し、1 本につなぐ（1 区間のメモリは約 1GB）。絵は変わらない
   --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
@@ -28,11 +30,11 @@ poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、�
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
 config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
-import json, math, os, random, re, subprocess, sys
+import copy, json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -61,6 +63,12 @@ try: VH = via_home_config(C.get("via_home"))   # 中割りの無い組を home �
 except ValueError as e_: die(str(e_))
 try: HEADC = head_config(C.get("head"), C["poses"])   # 頭の向きの列（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
+WS = opt("--work-scale", 1.0, float)              # 元の絵を縮めて扱う。作り置きの判定（CP）は元の大きさの絵と設定で行う
+if not 0 < WS <= 1: die(f"--work-scale は 0 より大きく 1 以下: {WS}")
+CP = copy.copy(P); CP.cfg = copy.deepcopy(C)
+if WS != 1.0:
+    P.work_scale = WS; scale_config_pixels(C, WS); P.pad = int(round(P.pad * WS)); scale_motion_pixels(MOT, WS)
+P.fps = opt("--fps", P.fps, int)
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
 FPS = P.fps; PAD = P.pad; OH = opt("--out-height", int(C.get("out_height", 1280)), int); random.seed(int(C.get("seed", 5)))
@@ -134,7 +142,7 @@ LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
 def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
 def legs(img, sc):
     """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。"""
-    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None)
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None, s=WS)
     if info is None: return img, None
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
@@ -147,10 +155,10 @@ for p in P.poses:
     img = RAW[p] = P.read_pose(p)
     if any(k in PCFG[p] for k in ("yaw", "head_yaw", "face", "anchor", "scale")) and img.shape != (H0, W0, 3):   # 向きの違う姿勢は home と同じ大きさで描く決まり
         die(f"姿勢 {p} の絵の大きさ {img.shape[1]}x{img.shape[0]} が home の {W0}x{H0} と違う（同じ大きさにしてから。docs/mascot-views-spec.md）")
-    if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
+    if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0, WS)
     else: PB[p], SH[p] = img, np.zeros(img.shape[:2], np.float32)
 AN = C.get("anchor", {"mode": "boot"}); AMODE = AN.get("mode", "boot")
-DETECT, HEIGHT = {"boot": (boot_anchor, body_height), "feet": (feet_anchor, fg_height)}.get(AMODE, (None, None))   # feet: 色に依らない足元（opt-in）
+DETECT, HEIGHT = {"boot": (lambda im: boot_anchor(im, min_area=scaled_area(2500, WS)), body_height), "feet": (lambda im: feet_anchor(im, min_area=scaled_area(400, WS)), fg_height)}.get(AMODE, (None, None))   # feet: 色に依らない足元（opt-in）
 if DETECT:
     ANCH = {p: tuple(map(float, PCFG[p]["anchor"])) if "anchor" in PCFG[p] else DETECT(PB[p]) for p in P.poses}
     miss = [p for p, v in ANCH.items() if v is None]
@@ -159,7 +167,7 @@ if DETECT:
     for p in P.poses:                             # poses.<名前>.scale: 背の高さで揃えず、この倍率に固定（伸び・お辞儀・屈むなど背が変わるポーズ。opt-in）
         if "scale" in PCFG[p]: SCALE[p] = float(PCFG[p]["scale"])
     if AMODE == "boot":                           # 靴で拾った軸足が足元の線に乗っているか（紺のズボンの裾などを拾うと、大きさの補正も狂う）。知らせるだけ
-        off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p]))]
+        off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p], min_area=scaled_area(400, WS)))]
         if off: print(f"注意: 靴で拾った軸足が足元に無い姿勢: {off}（服の裾などを拾っている。config の anchor を {{\"mode\": \"feet\"}} に。vm views で確かめる）", file=sys.stderr)
 elif AMODE == "manual":
     ANCH = {p: tuple(v) for p, v in AN["points"].items()}
@@ -178,7 +186,7 @@ if LEGS:                                          # 足元と大きさを元の�
         img, a_ = legs(RAW[p], SCALE[p])
         if a_ is None: continue
         ANCH[p] = a_
-        if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
+        if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0, WS)
         else: PB[p] = img
 REF = ANCH[P.home]
 print("軸足:", {p: tuple(round(float(v), 1) for v in a_) for p, a_ in ANCH.items()}, "大きさ:", {p: round(float(v), 3) for p, v in SCALE.items()}, file=sys.stderr)
@@ -187,7 +195,10 @@ for p in P.poses:
     PARTS[p] = {}; mp = P.p(f"parts_{p}", "parts.json")
     if not FACE_ON[p]: continue                   # 顔の見えない姿勢（後ろ向き）は口・目の部品なし
     if not os.path.exists(mp): die(f"部品が無い: parts_{p}（先に vm parts）")
-    for k, (px, py) in json.load(open(mp)).items(): PARTS[p][k] = (cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED), px, py)
+    for k, (px, py) in json.load(open(mp)).items():
+        im_ = cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED)
+        if WS != 1.0: im_ = cv2.resize(im_, (max(1, round(im_.shape[1] * WS)), max(1, round(im_.shape[0] * WS))), interpolation=cv2.INTER_AREA)
+        PARTS[p][k] = (im_, int(round(px * WS)), int(round(py * WS)))
 FB = {"m7": "m1", "m3": "m2", "m6": "m1"}      # 無い形は近い形で代用
 def part_of(parts, k):
     while k and k not in parts: k = FB.get(k)
@@ -200,8 +211,9 @@ def shift(img, a_, sc, interp=cv2.INTER_LINEAR, val=(253, 253, 253)):
 KEEP = {}; HEAD = {}
 for p_ in P.poses:                       # 顔（目と口）の矩形。この中の白（白目・歯）は背景にしない
     if not FACE_ON[p_]: KEEP[p_] = []; HEAD[p_] = None; continue
-    mr, er, _ = map_rois(P, p_); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
-    KEEP[p_] = [(er[0] - 10, er[1] - 10, er[2] + 10, er[3] + 10), (mr[0] - 10, mr[1] - 10, mr[2] + 10, mr[3] - 24)]   # 目と口を別々の箱に（口はあごの下へ広げない）
+    mr, er, _ = map_rois(P, p_, pad=max(1, int(round(8 * WS)))); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
+    m_ = lambda v: int(round(v * WS))
+    KEEP[p_] = [(er[0] - m_(10), er[1] - m_(10), er[2] + m_(10), er[3] + m_(10)), (mr[0] - m_(10), mr[1] - m_(10), mr[2] + m_(10), mr[3] - m_(24))]   # 目と口を別々の箱に（口はあごの下へ広げない）
 
 def face_affine(src, dst, roi):
     x0, y0, x1, y1 = roi
@@ -219,11 +231,11 @@ def ib_item(item, src_pose, lerp_parts=False):
     img = cv2.imread(path)
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
-    if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
+    if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]), interpolation=cv2.INTER_AREA if WS != 1.0 else cv2.INTER_LINEAR)
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     lanc = None
     if legs_on(a_, b_): img, lanc = legs(img, sc)  # 両端とも差し替える姿勢なら、中割りも同じ下半身に（足元の点も差し替えた脚から）
-    clean, shadow = defloor(img, Y0) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
+    clean, shadow = defloor(img, Y0, WS) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
     anc = lanc if lanc is not None else (DETECT(clean) if DETECT and not own else None)
     if anc is None: anc = tuple(np.array(ANCH[a_]) + (np.array(ANCH[b_]) - np.array(ANCH[a_])) * k_ / DIV)
@@ -238,7 +250,7 @@ def ib_item(item, src_pose, lerp_parts=False):
     allp = list(PARTS[src_pose].values())
     if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
     xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
-    roi = (max(0, min(xs) - 80), max(0, min(ys) - 100), min(img.shape[1], max(xs) + 80), min(img.shape[0], max(ys) + 60))
+    roi = (max(0, min(xs) - int(80 * WS)), max(0, min(ys) - int(100 * WS)), min(img.shape[1], max(xs) + int(80 * WS)), min(img.shape[0], max(ys) + int(60 * WS)))
     A, cc = face_affine(PB[src_pose], clean, roi); parts = {}; rig = HEAD[src_pose]
     if cc >= 0.80:
         rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
@@ -248,7 +260,7 @@ def ib_item(item, src_pose, lerp_parts=False):
         for k, (im, px, py) in PARTS[src_pose].items():
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-            if OCC: full = occlude(full, clean, ref, pre=pre)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
+            if OCC: full = occlude(full, clean, ref, pre=pre, grow=2 * int(round(3 * WS)) + 1)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
             yy, xx = np.where(full[:, :, 3] > 0)
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
@@ -267,7 +279,7 @@ class LazySeq:
 def dense_seq(pa, pb, rev, direct):
     def make():
         from interp import dense_paths
-        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
+        paths = dense_paths(CP, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
         return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     return LazySeq(DIV * INTERP["mult"] - 1, make, rev, dry=lambda: (P.p("ib_interp", "_dry"), pa, pb, 0))
 def wan_seq(a_, b_):
@@ -275,7 +287,7 @@ def wan_seq(a_, b_):
     n = DIV * INTERP["mult"] - 1
     def make():
         from wanflf import dense_paths as wan_paths
-        paths = wan_paths(P, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
+        paths = wan_paths(CP, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
         return [(pth, a_, b_, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     return LazySeq(n, make, False, dry=lambda: (P.p("ib_wan", f"{a_}__{b_}", "_dry"), a_, b_, 0))
 def wan_ok(a_, b_):                               # Wan で動かす組か（engine: wan、向きの同じ組、interp.pairs で絞れる）
@@ -372,7 +384,7 @@ def compose(pl, mth, blk, look=None):
     if isinstance(blk, tuple):                    # 細かいまばたき: 2つの段を割合で溶かす
         lo_, hi_, al_ = blk; i_lo = img.copy(); paste(i_lo, part_of(parts, lo_)); paste(img, part_of(parts, hi_)); img = cv2.addWeighted(img, al_, i_lo, 1 - al_, 0)
     else: paste(img, part_of(parts, blk))
-    k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
+    k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = int(round(30 * WS)) if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
     return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k], rig)
 
 # ---------- 頭の向きの列（config.head、opt-in）----------
@@ -395,7 +407,7 @@ def head_items():
         cfg = dict(INTERP or INTERP_DEFAULTS); cfg["mult"] = HEADC["mult"]
         ch = HEADC["chain"]; items = [(P.pose_path(ch[0]), ch[0], ch[0], 0)]
         for pa_, pb_ in zip(ch, ch[1:]):
-            paths = dense_paths(P, pa_, pb_, DIV, cfg, log=lambda m: print(m, file=sys.stderr), direct=True)
+            paths = dense_paths(CP, pa_, pb_, DIV, cfg, log=lambda m: print(m, file=sys.stderr), direct=True)
             items += [(pth, pa_, pb_, k_) for pth, k_ in zip(paths, dense_ks(DIV, HEADC["mult"]))] + [(P.pose_path(pb_), pb_, pb_, 0)]
         HEAD_ITEMS = items
     return HEAD_ITEMS
@@ -481,9 +493,9 @@ for f in range(f0, min(f1, NALL)):
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0
     elif MOT is None:
-        s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * math.sin(2 * math.pi * tt / 5.3); dy = -2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]
+        s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * WS * math.sin(2 * math.pi * tt / 5.3); dy = (-2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]) * WS
     else:
-        s, dx, dy = 1.0, 0.0, -2.5 * sm[f]
+        s, dx, dy = 1.0, 0.0, -2.5 * WS * sm[f]
         if MOT["breath"]:
             b_ = MOT["breath"]; v_ = 2 * breath_wave(tt, b_["period"], b_["jitter"], b_["inhale"], SEED) - 1; s += b_["scale"] * v_; dy -= b_["lift"] * v_
         if MOT["body"]: dx = MOT["body"]["sway"] * wobble(tt, MOT["body"]["period"], SEED + 1)
@@ -537,7 +549,7 @@ for sw, e_ in zip(SW, ev):
     if item["engine"] == "wan":
         wd = P.p("ib_wan", f"{e_[1]}__{e_[2]}", f"n{DIV * INTERP['mult'] - 1}")
         from wanflf import need as wan_need
-        nd_ = wan_need(P, e_[1], e_[2], DIV * INTERP["mult"] - 1, INTERP)   # 作り置きが今の絵・設定に合うか（None）、後処理だけ（rife）、Wan で作る（wan）
+        nd_ = wan_need(CP, e_[1], e_[2], DIV * INTERP["mult"] - 1, INTERP)   # 作り置きが今の絵・設定に合うか（None）、後処理だけ（rife）、Wan で作る（wan）
         item["wan_dir"] = wd; item["wan_ready"] = nd_ is None
         if nd_: item["wan_need"] = nd_
     SWL.append(item)
@@ -559,7 +571,7 @@ if DRY:                                           # 下見: これから Wan で
     rtodo = []
     for pa_, pb_, dr_, m_ in sorted(rjobs):
         cfg_ = dict(INTERP or INTERP_DEFAULTS); cfg_["mult"] = m_
-        if not rife_ready(P, pa_, pb_, DIV, cfg_, direct=dr_): rtodo.append(f"{pa_}→{pb_}")
+        if not rife_ready(CP, pa_, pb_, DIV, cfg_, direct=dr_): rtodo.append(f"{pa_}→{pb_}")
     rtodo += [f"{x}（Wan の後処理）" for x in post]
     print(f"RIFE で新しく作る列: {len(rtodo)}{'（' + '、'.join(rtodo) + '）' if rtodo else ''}", file=sys.stderr)
 MOFF = mouth_off_spans(SPEAK, FACEP, FPS, f0)    # 口の検査: 口の部品の無い姿勢（face: false）で話している所（口が止まって見える）

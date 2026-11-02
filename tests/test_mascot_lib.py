@@ -606,4 +606,73 @@ def test_occlude_matches_the_old_form_with_and_without_a_shared_diff(seed, hand)
 
 def test_render_shares_the_occlude_diff():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
-    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre)" in src
+    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre," in src
+
+
+def test_scale_config_pixels():
+    c = {"pad": 100, "face": {"mouth_roi": [100, 200, 300, 400], "occlude": True},
+         "poses": {"a": {"face": {"eye_roi": [10, 20, 30, 40]}, "anchor": [100, 200]}, "b": {"desc": "x"}},
+         "anchor": {"mode": "manual", "points": {"a": [50, 60]}}, "floor": {"y0": 1000}}
+    lib.scale_config_pixels(c, 0.5)
+    assert c["pad"] == 50 and c["face"]["mouth_roi"] == [50, 100, 150, 200] and c["face"]["occlude"] is True
+    assert c["poses"]["a"]["face"]["eye_roi"] == [5, 10, 15, 20] and c["poses"]["a"]["anchor"] == [50, 100]
+    assert c["anchor"]["points"]["a"] == [25, 30] and c["floor"]["y0"] == 500
+
+
+def test_read_pose_scales_only_when_asked(tmp_path):
+    (tmp_path / "config.json").write_text('{"poses": {"home": {}}}', encoding="utf-8")
+    P = lib.Proj(str(tmp_path)); cv2.imwrite(P.pose_path("home"), np.zeros((100, 60, 3), np.uint8))
+    assert P.read_pose("home").shape[:2] == (100, 60)
+    P.work_scale = 0.5; assert P.read_pose("home").shape[:2] == (50, 30)
+
+
+def test_cache_checks_use_the_original_size():
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    for a in ("dense_paths(CP, pa, pb,", "wan_paths(CP, a_, b_,", "dense_paths(CP, pa_, pb_,", "rife_ready(CP, pa_, pb_,", "wan_need(CP, e_[1], e_[2],"): assert a in src
+    assert "dense_paths(P," not in src and "wan_paths(P," not in src and "rife_ready(P," not in src and "wan_need(P," not in src
+
+
+def test_anchor_area_thresholds_follow_the_work_scale():
+    """元の絵で 2500 を超える靴（4000 画素）は、0.64 倍でも足元として見つかる（面積は約 4 割になる）。"""
+    img = np.full((1000, 600, 3), 253, np.uint8); img[900:940, 100:200] = 10   # 100×40 = 4000 画素の黒い靴
+    assert lib.boot_anchor(img) is not None
+    small = cv2.resize(img, None, fx=0.64, fy=0.64, interpolation=cv2.INTER_AREA)
+    assert lib.boot_anchor(small) is None                                     # しきい値が元のままだと見つからない
+    assert lib.boot_anchor(small, min_area=lib.scaled_area(2500, 0.64)) is not None
+    assert lib.scaled_area(400, 1.0) == 400
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "boot_anchor(im, min_area=scaled_area(2500, WS))" in src and "feet_anchor(im, min_area=scaled_area(400, WS))" in src
+
+
+def test_scale_motion_pixels():
+    m = lib.motion_config({})
+    lib.scale_motion_pixels(m, 0.5)
+    assert m["breath"]["lift"] == 1.0 and m["body"]["sway"] == 0.75 and m["head"]["nod"] == 1.0
+    assert m["switch"]["anticipate_px"] == 2.5 and m["switch"]["overshoot_px"] == 2.0
+    assert m["head"]["roll"] == 0.8 and m["breath"]["scale"] == 0.004 and m["breath"]["period"] == 3.6    # 度・割合・秒は変えない
+    assert lib.scale_motion_pixels(None, 0.5) is None
+    off = lib.motion_config({"breath": False}); lib.scale_motion_pixels(off, 0.5); assert off["breath"] is None
+
+
+def test_render_scales_every_pixel_literal_with_the_work_scale():
+    """動きの画素の値を倍率に合わせないと、絵を縮めた分だけ動きが相対的に大きくなる（0.64 倍で約 1.5 倍）。"""
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "scale_motion_pixels(MOT, WS)" in src and src.index("MOT = motion_config") < src.index("scale_motion_pixels(MOT, WS)")
+    for bad in ("dx = 1.5 * math.sin", "s, dx, dy = 1.0, 0.0, -2.5 * sm[f]", "pad_ = 30 if"): assert bad not in src
+    assert "grow=2 * int(round(3 * WS)) + 1" in src      # WS = 1 で既定の 7 のまま
+
+
+def test_defloor_keeps_a_shoe_at_the_work_scale():
+    """元の絵で 600 を超える靴（1000 画素）は、0.64 倍の掃除でも消えない。"""
+    img = np.full((1000, 600, 3), 253, np.uint8); img[900:925, 100:140] = 10
+    s = 0.64; small = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA); y0 = int(round(800 * s))
+    y, x = int(912 * s), int(120 * s)
+    assert lib.defloor(img, 800)[0][912, 120, 0] < 60
+    assert lib.defloor(small, y0)[0][y, x, 0] > 200                          # 倍率を渡さないと消える
+    assert lib.defloor(small, y0, s)[0][y, x, 0] < 60
+
+
+def test_defloor_at_scale_one_is_unchanged():
+    img = np.full((400, 300, 3), 253, np.uint8); img[330:360, 60:120] = 10; img[370:380, 20:280] = 200
+    a, b = lib.defloor(img, 300), lib.defloor(img, 300, 1.0)
+    assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])

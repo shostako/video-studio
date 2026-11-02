@@ -14,6 +14,7 @@ class Proj:
     ib/ib_<a>_<b>_<k>.png（中割り k=1..5）  voice/（l<N>.wav と master.wav、timing.json）  out/"""
     def __init__(self, path):
         self.root = os.path.abspath(path)
+        self.work_scale = 1.0   # 絵を読むときの倍率（vm render --work-scale）
         cfg = os.path.join(self.root, "config.json")
         if not os.path.exists(cfg): sys.exit(f"ERROR: config.json が無い: {self.root}")
         self.cfg = json.load(open(cfg, encoding="utf-8"))
@@ -30,7 +31,7 @@ class Proj:
     def read_pose(self, n):
         im = cv2.imread(self.pose_path(n))
         if im is None: sys.exit(f"ERROR: 姿勢の絵が無い: {self.pose_path(n)}")
-        return im
+        return im if self.work_scale == 1.0 else cv2.resize(im, None, fx=self.work_scale, fy=self.work_scale, interpolation=cv2.INTER_AREA)
 
     def ib_path(self, a, b, k):
         """中割り k（1..div-1）の絵。既定の6等分は ib_<a>_<b>_<k>.png、それ以外は ib_<a>_<b>_<k>_<div>.png。"""
@@ -110,22 +111,24 @@ def die(msg, code=2):
 
 
 # ---------- 足元（台座・靴の反射）を消す ----------
-def defloor(img, y0=1180):
+def defloor(img, y0=1180, s=1.0):
     """透明な台座と靴の反射を消し、靴の下に薄い接地の影を足す。靴（黒）とズボン（紺）の形は残す。
-    戻り値: (きれいな絵 BGR（影なし・背景は BG）, 影の濃さ 0..1)。影は別に持ち、重ねる時に焼き込むか透明の影にする。"""
+    戻り値: (きれいな絵 BGR（影なし・背景は BG）, 影の濃さ 0..1)。影は別に持ち、重ねる時に焼き込むか透明の影にする。
+    s: 絵の倍率（vm render --work-scale）。画素で決めた値をこの倍率に合わせる。"""
+    px = lambda v: max(1, int(round(v * s))); k5 = np.ones((2 * px(2) + 1,) * 2, np.uint8)   # s = 1 で 5×5
     H, W = img.shape[:2]; g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY); hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     dark = (g < 105).astype(np.uint8); blue = ((hsv[:, :, 1] > 70) & (g < 170)).astype(np.uint8)
-    fg = (dark | blue); fg[:y0 - 40] = 0
-    fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    fg = (dark | blue); fg[:y0 - px(40)] = 0
+    fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, k5)
     n, lab, st, _ = cv2.connectedComponentsWithStats(fg); keep = np.zeros_like(fg)
     for i in range(1, n):
-        if st[i, cv2.CC_STAT_AREA] > 600: keep[lab == i] = 1
-    a = np.clip(cv2.GaussianBlur(cv2.dilate(keep, np.ones((5, 5), np.uint8)).astype(np.float32), (0, 0), 1.6) * 1.15, 0, 1)
-    shoe = ((g < 70) & (np.arange(H)[:, None] > y0 + 60)).astype(np.float32)
-    sh = cv2.GaussianBlur(cv2.warpAffine(shoe, np.float32([[1, 0, 0], [0, 1, 14]]), (W, H)), (0, 0), 15); sh = np.clip(sh * 0.34, 0, 0.34)
+        if st[i, cv2.CC_STAT_AREA] > scaled_area(600, s): keep[lab == i] = 1
+    a = np.clip(cv2.GaussianBlur(cv2.dilate(keep, k5).astype(np.float32), (0, 0), 1.6 * s) * 1.15, 0, 1)
+    shoe = ((g < 70) & (np.arange(H)[:, None] > y0 + px(60))).astype(np.float32)
+    sh = cv2.GaussianBlur(cv2.warpAffine(shoe, np.float32([[1, 0, 0], [0, 1, 14 * s]]), (W, H)), (0, 0), 15 * s); sh = np.clip(sh * 0.34, 0, 0.34)
     bgc = np.full((H, W, 3), BG, np.float32)
     res = img.astype(np.float32) * a[:, :, None] + bgc * (1 - a[:, :, None])
-    below = np.zeros((H, W, 1), np.float32); below[y0:] = 1; below[y0 - 30:y0] = np.linspace(0, 1, 30)[:, None, None]
+    below = np.zeros((H, W, 1), np.float32); below[y0:] = 1; below[y0 - px(30):y0] = np.linspace(0, 1, px(30))[:, None, None]
     clean = (img.astype(np.float32) * (1 - below) + res * below).astype(np.uint8)
     shadow = (sh * below[:, :, 0] * (1 - a)).astype(np.float32)          # 影は足元の外側だけ
     return clean, shadow
@@ -379,6 +382,42 @@ def partial_voice_ref(only, n_lines, exists):
     for n in range(1, n_lines + 1):
         if n not in only and exists(n): return n
     return None
+
+
+MOTION_PIXELS = {"breath": ("lift",), "body": ("sway",), "head": ("nod",), "switch": ("anticipate_px", "overshoot_px")}
+
+
+def scale_motion_pixels(mot, s):
+    """motion_config の結果の画素の値（持ち上げ・揺れ・うなずき・予備動作）を絵の倍率 s に合わせる。元の mot を書き換える。"""
+    if not mot: return mot
+    for k, names in MOTION_PIXELS.items():
+        if mot.get(k):
+            for n in names: mot[k][n] = mot[k][n] * s
+    return mot
+
+
+def scaled_area(area, s):
+    """元の絵で決めた面積のしきい値を、絵の倍率 s の絵に合わせる（面積は s の 2 乗）。"""
+    return area * s * s
+
+
+FACE_ROIS = ("mouth_roi", "eye_roi", "jaw_roi")
+
+
+def scale_config_pixels(cfg, s):
+    """config の画素の値（顔の範囲・足元の点）を絵の倍率 s に合わせる。元の cfg を書き換える。"""
+    sc = lambda v: [int(round(x * s)) for x in v]
+    def rois(d):
+        for k in FACE_ROIS:
+            if k in d: d[k] = sc(d[k])
+    if isinstance(cfg.get("face"), dict): rois(cfg["face"])
+    for v in cfg.get("poses", {}).values():
+        if isinstance(v.get("face"), dict): rois(v["face"])
+        if "anchor" in v: v["anchor"] = [x * s for x in v["anchor"]]
+    an = cfg.get("anchor")
+    if isinstance(an, dict) and isinstance(an.get("points"), dict): an["points"] = {k: [x * s for x in p] for k, p in an["points"].items()}
+    if isinstance(cfg.get("floor"), dict) and "y0" in cfg["floor"]: cfg["floor"]["y0"] = int(round(cfg["floor"]["y0"] * s))
+    if "pad" in cfg: cfg["pad"] = int(round(cfg["pad"] * s))
 
 
 def used_poses(events, home, head=None, legs_from=None):
@@ -1099,7 +1138,7 @@ def _main_blob(m):
     return lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
 
 
-def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None):
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, s=1.0):
     """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
     切れ目の高さは canon の背で測る。canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
     切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
@@ -1109,7 +1148,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。"""
     H, W = img.shape[:2]
     if canon.shape != img.shape: raise ValueError(f"legs_lock: 絵の大きさが基準と違う（{img.shape[1]}x{img.shape[0]} と {canon.shape[1]}x{canon.shape[0]}）")
-    pv = feet_anchor(canon) or (W / 2.0, float(H))
+    pv = feet_anchor(canon, min_area=scaled_area(400, s)) or (W / 2.0, float(H))
     M0 = np.float32([[canon_scale, 0, pv[0] * (1 - canon_scale)], [0, canon_scale, pv[1] * (1 - canon_scale)]])
     if canon_scale != 1.0: canon = cv2.warpAffine(canon, M0, (W, H), flags=cv2.INTER_AREA if canon_scale < 1 else cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     mi0 = fg_mask(img); rows = np.where(_main_blob(mi0).any(1))[0]             # 足元と背は人物の塊だけで測る（床の薄い影を拾わない）
@@ -1123,7 +1162,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     a = mi0[y0:cy].sum(0).astype(np.float32)
     cs = cv2.warpAffine(canon, np.float32([[1, 0, 0], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     b = fg_mask(cs)[y0:cy].sum(0).astype(np.float32)
-    if dx is None: dx = max(range(-40, 41), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
+    if dx is None: dx = max(range(-int(round(40 * s)), int(round(40 * s)) + 1), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
     else: dx = int(dx)                                # 横のずらしを決め打ち（legs_lock.fix_x。カメラ固定の絵で足元を揺らさない）
     c = cv2.warpAffine(canon, np.float32([[1, 0, dx], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     wr = np.clip((np.arange(H) - y0) / fb, 0, 1).astype(np.float32)
@@ -1139,7 +1178,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     for i, y in enumerate(range(y0, cy)):
         if tf is None or tc is None: break
         t = wr[y]; ef, ec = tf[i], tc[i]
-        if ef[3] - ef[0] < 10 or ec[3] - ec[0] < 10: continue
+        if ef[3] - ef[0] < 10 * s or ec[3] - ec[0] < 10 * s: continue
         E = (1 - t) * ef + t * ec                                       # 途中の輪郭（左端・股の左・股の右・右端）
         if np.any(np.diff(E) < 0): continue
         for src, dst, e in ((img, imgW, ef), (c, cW, ec)):

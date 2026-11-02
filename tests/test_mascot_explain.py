@@ -109,11 +109,12 @@ def test_explain_positional_work_survives_same_named_options(tmp_path, env):
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
 
 
-def test_full_style_renders_at_720_unless_config_says_otherwise(tmp_path):
+def test_full_style_settings(tmp_path):
     import json
     import explain
     c = tmp_path / "config.json"
     c.write_text(json.dumps({"poses": {}}), encoding="utf-8")
-    assert explain.full_height_args(str(c)) == ["--out-height", "720"]
+    assert explain.full_args(str(c)) == ["--out-height", "720", "--work-scale", "0.64", "--fps", "30"]
+    assert explain.full_args(str(c), fine=True) == []
     c.write_text(json.dumps({"out_height": 1000}), encoding="utf-8")
-    assert explain.full_height_args(str(c)) == []
+    assert explain.full_args(str(c)) == ["--work-scale", "0.64", "--fps", "30"]

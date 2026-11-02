@@ -13,6 +13,7 @@
   --chapters 章の見出しとサンプルの出どころ（下の形の JSON）。付けなければ見出しは出さない
   --margin   主動画の左の余白の幅（既定は主動画の隣の <名前>.layout.json の margin、無ければ 496）
   --place-only  位置を出すだけで書き出さない
+  --fps      完成の動画のコマの速さ（既定 60）。vm explain の全身の型は 30
 最後に CROP x,y,幅,高さ（完成の動画でマスコットのいる範囲）を出す。vm check <出力> --switches ... --crop に渡す。
 
 章の JSON:
@@ -30,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import die, wipe_box
 from check import probe as vprobe
 
-W, H, FPS = 1920, 1080, 60
+W, H, FPS = 1920, 1080, 60   # FPS は --fps で変えられる
 FIG_CX, FIG_TOP, FIG_FEET = 463, 195, 1521     # 立ち姿（941x1672）での体の中心 x・頭の上・足元。白背景の mp4 で測れないときの目安
 INK, ACC, SUB = (28, 33, 44), (232, 120, 30), (110, 114, 122)
 _WINFONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts") if os.name == "nt" else "/mnt/c/Windows/Fonts"
@@ -188,6 +189,8 @@ def wipe_layers(d, pad=26):
 
 
 def main():
+    global FPS
+    FPS = opt("--fps", FPS, int)
     a = [x for x in sys.argv[1:] if not x.startswith("--")]
     vals = {sys.argv[i + 1] for i, x in enumerate(sys.argv[:-1]) if x.startswith("--") and x not in ("--full", "--place-only")}
     a = [x for x in a if x not in vals]
