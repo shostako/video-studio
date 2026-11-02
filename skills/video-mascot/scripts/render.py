@@ -30,11 +30,11 @@ poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、�
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
 config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
-import copy, json, math, os, random, re, subprocess, sys
+import copy, hashlib, json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, LazyParts, EccCache, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -222,6 +222,11 @@ def face_affine(src, dst, roi):
     try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_AFFINE, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), mask, 5)
     except cv2.error: pass
     return cv2.invertAffineTransform(M), cc
+ECC = EccCache(os.path.join(os.environ.get("VIDEO_SCENE_HOME", os.path.expanduser("~/.local/share/video-scene")), "cache", "ecc.jsonl"))
+_pose_ids = {}
+def pose_id(p):                                   # 姿勢の絵の中身の印（顔の合わせの控えの鍵）
+    if p not in _pose_ids: _pose_ids[p] = hashlib.md5(PB[p].tobytes()).hexdigest()
+    return _pose_ids[p]
 IBCACHE = {}; IBCACHE_MAX = 48   # 中割りの絵の控え。補間で枚数が増えるとメモリを食い潰すので、古いものから捨てる
 def ib_item(item, src_pose, lerp_parts=False):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
@@ -251,18 +256,26 @@ def ib_item(item, src_pose, lerp_parts=False):
     if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
     xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
     roi = (max(0, min(xs) - int(80 * WS)), max(0, min(ys) - int(100 * WS)), min(img.shape[1], max(xs) + int(80 * WS)), min(img.shape[0], max(ys) + int(60 * WS)))
-    A, cc = face_affine(PB[src_pose], clean, roi); parts = {}; rig = HEAD[src_pose]
+    ek = EccCache.key(pose_id(src_pose), clean, roi); hit = ECC.get(ek)
+    if hit is None: A, cc = face_affine(PB[src_pose], clean, roi); ECC.put(ek, A, cc)
+    else: A, cc = hit
+    parts = {}; rig = HEAD[src_pose]
     if cc >= 0.80:
         rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
-        H, W = clean.shape[:2]
-        ref = cv2.warpAffine(PB[src_pose], A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE) if OCC else None
-        pre = occlude_diff(clean, ref) if OCC else None
-        for k, (im, px, py) in PARTS[src_pose].items():
+        H, W = clean.shape[:2]; memo = {}
+        def part(k):                              # 引かれた部品だけ写す（1 コマで使うのは数個）
+            im, px, py = PARTS[src_pose][k]
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-            if OCC: full = occlude(full, clean, ref, pre=pre, grow=2 * int(round(3 * WS)) + 1)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
+            if OCC:                               # 中割りで顔の前に来た手には貼らない（config.face.occlude）
+                if "pre" not in memo:
+                    ref_ = cv2.warpAffine(PB[src_pose], A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                    memo["ref"], memo["pre"] = ref_, occlude_diff(clean, ref_)
+                full = occlude(full, clean, memo["ref"], pre=memo["pre"], grow=2 * int(round(3 * WS)) + 1)
             yy, xx = np.where(full[:, :, 3] > 0)
-            if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
+            if not len(xx): return None
+            return (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
+        parts = LazyParts(PARTS[src_pose], part)
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
 
 DRY = "--check-only" in sys.argv                  # 下見: 絵を作らず時間割だけを回して、切り替えの検査をする（RIFE・Wan を呼ばない）

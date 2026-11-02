@@ -606,7 +606,7 @@ def test_occlude_matches_the_old_form_with_and_without_a_shared_diff(seed, hand)
 
 def test_render_shares_the_occlude_diff():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
-    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre," in src
+    assert 'memo["ref"], memo["pre"] = ref_, occlude_diff(clean, ref_)' in src and 'occlude(full, clean, memo["ref"], pre=memo["pre"],' in src
 
 
 def test_scale_config_pixels():
@@ -676,3 +676,41 @@ def test_defloor_at_scale_one_is_unchanged():
     img = np.full((400, 300, 3), 253, np.uint8); img[330:360, 60:120] = 10; img[370:380, 20:280] = 200
     a, b = lib.defloor(img, 300), lib.defloor(img, 300, 1.0)
     assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
+
+
+# ---------- 切り替えの絵の遅延と控え ----------
+def test_lazy_parts_make_only_what_is_used():
+    made = []
+    def make(k):
+        made.append(k); return None if k == "gone" else (k, 1, 2)
+    p = lib.LazyParts({"m1": 0, "e1": 0, "gone": 0}, make)
+    assert "zz" not in p and made == []                 # 無い名前では作らない
+    assert p.get("m1") == ("m1", 1, 2) and made == ["m1"]
+    assert p["m1"] == ("m1", 1, 2) and made == ["m1"]   # 2 回作らない
+    assert "gone" not in p and p.get("gone") is None    # 空になった部品は「無い」（part_of の代用に流れる）
+    with pytest.raises(KeyError): p["gone"]
+    assert list(p) == ["m1", "e1"] and len(p) == 2 and p.keys() == ["m1", "e1"] and p.items()[1] == ("e1", ("e1", 1, 2))
+
+
+def test_ecc_cache_round_trip_is_exact(tmp_path):
+    path = tmp_path / "c" / "ecc.jsonl"
+    A = np.array([[1.0000123, 0.0001, 3.14159], [-0.0002, 0.99998, -2.71828]], np.float32)
+    img = np.zeros((8, 8, 3), np.uint8); k = lib.EccCache.key("pose", img, (1, 2, 3, 4))
+    c = lib.EccCache(str(path)); assert c.get(k) is None
+    c.put(k, A, 0.987654321)
+    got, cc = lib.EccCache(str(path)).get(k)            # 別のプロセスが読み直しても全ビット同じ
+    assert got.dtype == np.float32 and np.array_equal(got, A) and cc == 0.987654321
+    img2 = img.copy(); img2[0, 0, 0] = 1
+    assert lib.EccCache.key("pose", img2, (1, 2, 3, 4)) != k and lib.EccCache.key("pose2", img, (1, 2, 3, 4)) != k and lib.EccCache.key("pose", img, (1, 2, 3, 5)) != k
+
+
+def test_ecc_cache_ignores_broken_lines(tmp_path):
+    path = tmp_path / "ecc.jsonl"; path.write_text('{"broken\n["a", [[1, 0, 0], [0, 1, 0]], 0.9]\n', encoding="utf-8")
+    assert lib.EccCache(str(path)).get("a")[1] == 0.9
+
+
+def test_render_uses_the_cache_and_lazy_parts():
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "ECC.get(ek)" in src and "LazyParts(PARTS[src_pose], part)" in src
+    imported = {a.name for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ImportFrom) and n.module == "lib" for a in n.names}
+    assert {"LazyParts", "EccCache"} <= imported

@@ -1,5 +1,5 @@
 """video-mascot の共通部分: 設定の読み込み、足元の台座消し、軸足の靴の位置、背景の切り抜き、口パクと姿勢の時間割の純関数。"""
-import json, math, os, random, sys
+import hashlib, json, math, os, random, sys
 import cv2, numpy as np
 
 BG = 253          # マスコットの絵の背景（/img が描く「ほぼ白」）の明るさ
@@ -427,6 +427,58 @@ def used_poses(events, home, head=None, legs_from=None):
     if isinstance(head, dict): used |= set(head.get("chain") or [])
     if legs_from: used.add(legs_from)
     return used
+
+
+class LazyParts:
+    """部品の名前 → (絵, x, y)。1 コマで使うのは 12 個のうち数個なので、引かれた時に作る（make(名前) は作れなければ None）。
+    作った結果が空の部品は「無い」扱いで、`in` も偽になる（part_of の代用に流れる。全部を先に作るときと同じ）。"""
+    def __init__(self, names, make): self._names, self._make, self._done = tuple(names), make, {}
+    def _get(self, k):
+        if k not in self._names: return None
+        if k not in self._done: self._done[k] = self._make(k)
+        return self._done[k]
+    def __contains__(self, k): return self._get(k) is not None
+    def __getitem__(self, k):
+        v = self._get(k)
+        if v is None: raise KeyError(k)
+        return v
+    def get(self, k, default=None):
+        v = self._get(k); return default if v is None else v
+    def __iter__(self): return (k for k in self._names if self._get(k) is not None)
+    def __len__(self): return sum(1 for _ in self)
+    def keys(self): return list(self)
+    def items(self): return [(k, self[k]) for k in self]
+    def values(self): return [self[k] for k in self]
+
+
+class EccCache:
+    """顔の合わせ（findTransformECC、1 回 50〜150 ms）の結果の控え。鍵は絵の中身なので、絵や設定が変われば自然に外れる。
+    1 行 1 件で追記する（--jobs の複数のプロセスが同時に書く。読めない行は捨てる）。"""
+    def __init__(self, path):
+        self.path, self.data = path, {}
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    try: k, A, cc = json.loads(line); self.data[k] = (np.array(A, np.float32), float(cc))
+                    except (ValueError, TypeError): continue
+        except OSError:
+            pass
+
+    @staticmethod
+    def key(src_id, dst, roi):
+        return hashlib.md5(b"%s|%r|" % (src_id.encode(), tuple(int(v) for v in roi)) + dst.tobytes()).hexdigest()
+
+    def get(self, k):
+        v = self.data.get(k)
+        return None if v is None else (v[0].copy(), v[1])
+
+    def put(self, k, A, cc):
+        self.data[k] = (np.array(A, np.float32), float(cc))
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            with open(self.path, "a", encoding="utf-8") as f: f.write(json.dumps([k, np.asarray(A, np.float64).tolist(), float(cc)]) + "\n")
+        except OSError:
+            pass                                   # 控えが書けなくても絵は作れる
 
 
 POSE_SAME = {"point": "point_r", "point_r": "point"}   # キャラで名前が違うだけの同じ身振り（画面の右を指す。蘭 point、凜 point_r）
