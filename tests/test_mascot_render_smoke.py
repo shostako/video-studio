@@ -42,8 +42,8 @@ def render(proj, env, out, *args):
     return r.stderr
 
 
-def frames(path, env, rgba):
-    dec = ["-c:v", "libvpx-vp9"] if rgba else []                    # 透明を読むには libvpx で開く
+def frames(path, env, rgba, vp9=True):
+    dec = ["-c:v", "libvpx-vp9"] if rgba and vp9 else []            # VP9 の透明を読むには libvpx で開く
     raw = subprocess.run(["ffmpeg", "-v", "error", *dec, "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgba" if rgba else "rgb24", "-"],
                          env=env, capture_output=True, check=True).stdout
     ow = 2 * round(OH * (synth_mascot.W + 2 * 40) / synth_mascot.H / 2)
@@ -82,16 +82,16 @@ def test_render_motion_typo_is_an_error(proj, env, tmp_path):
 def test_render_idle_false_stops_the_default_breathing(proj, env, tmp_path):
     """config.idle: false（opt-in）: 声のない所で姿勢を変えない間、コマが変わらない（既定は息づかいで少しずつ動く）。"""
     import json
-    on, off = tmp_path / "on.mp4", tmp_path / "off.mp4"
-    render(proj, env, on, "--mode", "white")
+    on, off = tmp_path / "on.mkv", tmp_path / "off.mkv"              # 劣化の無い FFV1 で比べる（mp4 の圧縮の誤差は CI で時々 5 まで出る）
+    render(proj, env, on, "--mode", "alpha")
     cfg = json.loads((proj / "config.json").read_text(encoding="utf-8")); cfg2 = dict(cfg, idle=False)
     (proj / "config.json").write_text(json.dumps(cfg2, ensure_ascii=False), encoding="utf-8")
-    try: render(proj, env, off, "--mode", "white")
+    try: render(proj, env, off, "--mode", "alpha")
     finally: (proj / "config.json").write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
-    a, b = frames(on, env, False), frames(off, env, False)
+    a, b = frames(on, env, True, vp9=False), frames(off, env, True, vp9=False)
     i0, i1 = int(3.15 * FPS), int(3.35 * FPS)                         # 声の後・姿勢も止まっている所（END 3.4 の手前）
     still = lambda x: np.abs(x[i0:i1].astype(np.int16) - x[i0].astype(np.int16)).max()
-    assert still(b) <= 2                                               # 止めると動かない（圧縮の誤差だけ）
+    assert still(b) == 0                                               # 止めると 1 画素も動かない
     assert still(a) > still(b)                                          # 既定は動いている
 
 
