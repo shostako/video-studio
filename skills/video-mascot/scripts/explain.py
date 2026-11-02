@@ -11,7 +11,7 @@
   流れ: （wipe・full）vm render の下見（--strict。足りない作り置き・口の問題で止まる）→ screen-explainer の compose.py で主動画
         → vm render → vm layout → （full）vm check。途中の物は毎回新しく作る <出力の名前>_work_<ランダム>/ に置き、--keep が無ければ最後に消す
   使える段は既存のコマンドを順に呼ぶだけ。1 段ずつ確かめたいときは、それぞれのコマンドを直に使う。"""
-import json, os, re, shutil, subprocess, sys
+import json, os, re, shutil, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import die
@@ -22,13 +22,14 @@ COMPOSE = os.path.join(HERE, "..", "..", "screen-explainer", "scripts", "compose
 
 def step(title, cmd):
     """1 段を動かす。失敗したらその段の名前で止める。標準出力を返す。"""
-    print(f"== {title}", flush=True)
+    print(f"== {title}", flush=True); t0 = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True)
     tail = [l for l in (r.stdout + r.stderr).splitlines() if l.strip() and not re.match(r"^\s*(\d+/\d+|[\d.]+s / [\d.]+s)\s*$", l)]   # 進み具合の行は出さない
     for l in tail[-8:]: print("   " + l, flush=True)
     if r.returncode != 0:
         print((r.stdout + r.stderr)[-3000:], file=sys.stderr)
         die(f"{title} で止まった（終了コード {r.returncode}）", r.returncode if r.returncode in (2, 3) else 2)
+    print(f"   {time.time() - t0:.0f} 秒", flush=True)
     return r.stdout
 
 
@@ -42,9 +43,10 @@ def wipe_args(config_path, fine=False):
 def compose_step(title, cmd, out, jobs, work):
     """画面の組み立て。--jobs が 2 以上なら区間に分けて並列に（時刻だけで絵が決まる）。"""
     if int(jobs) < 2: return step(title, cmd + ["--out", out])
-    print(f"== {title}（{jobs} 並列）", flush=True)
+    print(f"== {title}（{jobs} 並列）", flush=True); t0 = time.time()
     import render_jobs
     render_jobs.run_compose(cmd, out, int(jobs), work)
+    print(f"   {time.time() - t0:.0f} 秒", flush=True)
 
 
 # 全身の型は完成で高さ約 700 まで縮めるので、それより細かく作っても絵に出ない。ユーザーが動画を見比べて決めた（2026-11-02）
