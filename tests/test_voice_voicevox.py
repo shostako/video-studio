@@ -210,3 +210,18 @@ def test_listening_failure_keeps_the_voice_and_says_why(tmp_path, monkeypatch, c
     out = capsys.readouterr().out
     assert "聞き取りができなかった" in out and "こわれた" in out
     assert os.path.exists(P.p("voice", "master.wav")) and not os.path.exists(P.p("voice", "master.words.json"))
+
+
+def test_irodori_model_defaults_to_meanflow_and_can_be_changed(tmp_path, monkeypatch):
+    import subprocess
+    import voice
+    seen = {}
+
+    def fake_run(cmd, **k):
+        seen["src"] = open(cmd[4], encoding="utf-8").read()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(voice, "IRO", str(tmp_path)); monkeypatch.setattr(voice.subprocess, "run", fake_run)
+    voice.run_irodori([{"text": "x"}], str(tmp_path))
+    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small-MF")' in seen["src"]
+    voice.run_irodori([{"text": "x"}], str(tmp_path), "Aratako/Irodori-TTS-v4.1-Small")
+    assert 'download_hf_checkpoint("Aratako/Irodori-TTS-v4.1-Small")' in seen["src"]
