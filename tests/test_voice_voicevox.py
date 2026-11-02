@@ -1,5 +1,6 @@
 """声のエンジンの選択肢 VOICEVOX。本物のエンジンの代わりに、同じ HTTP の形の小さなサーバーで確かめる。"""
 import json
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -60,3 +61,44 @@ def test_no_engine_says_how_to_fix(capsys, tmp_path):
 def test_voice_py_only_uses_it_when_asked():
     src = (ROOT / "skills/video-mascot/scripts/voice.py").read_text(encoding="utf-8")
     assert 'if cmd == "synth" and V.get("engine") == "voicevox":' in src and src.count("voice_voicevox") == 2     # import と呼び出しだけ（外すのが簡単）
+
+
+def _fake_whisper(tmp_path, monkeypatch, fail_after=None):
+    """本物の聞き取りの代わりに、呼ばれた回数を記録する偽物を子プロセスに読ませる。"""
+    import voice
+    (tmp_path / "common.py").write_text("def read_audio(p): return p\n", encoding="utf-8")
+    (tmp_path / "faster_whisper.py").write_text(f"""
+import os, sys
+class X:
+    def __init__(self, text): self.text = text
+class WhisperModel:
+    n = 0
+    def __init__(self, *a, **k):
+        with open(os.environ["LOADS"], "a") as f: f.write("x")
+    def transcribe(self, path, **k):
+        WhisperModel.n += 1
+        if {fail_after!r} is not None and WhisperModel.n > {fail_after!r}: raise RuntimeError("こわれた")
+        print("ライブラリの独り言")
+        return [X("聞いた "), X(os.path.basename(path))], None
+""", encoding="utf-8")
+    monkeypatch.setattr(voice, "SCENE_SCRIPTS", str(tmp_path)); monkeypatch.setattr(voice, "WS", sys.executable)
+    monkeypatch.setenv("LOADS", str(tmp_path / "loads")); monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    return voice
+
+
+def test_hear_all_loads_model_once_and_keeps_order(tmp_path, monkeypatch):
+    voice = _fake_whisper(tmp_path, monkeypatch)
+    assert list(voice.hear_all(["a/l1.wav", "a/l2.wav", "a/l3.wav"])) == ["聞いた l1.wav", "聞いた l2.wav", "聞いた l3.wav"]
+    assert (tmp_path / "loads").read_text() == "x"
+
+
+def test_hear_all_failure_keeps_going_and_says_why(tmp_path, monkeypatch, capsys):
+    voice = _fake_whisper(tmp_path, monkeypatch, fail_after=1)
+    assert list(voice.hear_all(["a/l1.wav", "a/l2.wav", "a/l3.wav"])) == ["聞いた l1.wav", "", ""]
+    out = capsys.readouterr().out
+    assert "2 件できなかった" in out and "こわれた" in out
+
+
+def test_scene_scripts_points_at_the_sibling_skill():
+    import voice
+    assert os.path.exists(os.path.join(voice.SCENE_SCRIPTS, "common.py"))

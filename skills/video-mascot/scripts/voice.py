@@ -5,7 +5,7 @@
   vm voice <作業フォルダ> master                  各行を開始時刻に置いて voice/master.wav と voice/timing.json を作る
 config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...]}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
-import difflib, json, os, re, subprocess, sys
+import difflib, json, os, re, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, die, partial_voice_ref
 
@@ -45,14 +45,36 @@ def run_irodori(jobs, tmp):
     if r.returncode != 0: die("Irodori の実行に失敗:\n" + "\n".join(r.stderr.splitlines()[-12:]), 6)
 
 
-def hear(path):
-    code = ("import sys,os; sys.path.insert(0, os.path.expanduser('~/.claude/skills/video-scene/scripts'));"
-            "from ear import read_audio; from faster_whisper import WhisperModel;"
-            "m=WhisperModel('medium',device='cpu',compute_type='int8');"
-            f"s,_=m.transcribe(read_audio({path!r}),language='ja',vad_filter=False,condition_on_previous_text=False); print(''.join(x.text for x in s))")
-    out = subprocess.run([WS, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                         env=dict(os.environ, PYTHONUTF8="1")).stdout.strip().splitlines()
-    return out[-1] if out else ""
+SCENE_SCRIPTS = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-scene", "scripts")
+HEAR_CODE = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from common import read_audio
+from faster_whisper import WhisperModel
+m = WhisperModel('medium', device='cpu', compute_type='int8')
+for path in sys.argv[2:]:
+    s, _ = m.transcribe(read_audio(path), language='ja', vad_filter=False, condition_on_previous_text=False)
+    print(json.dumps(''.join(x.text for x in s)), flush=True)
+"""
+
+
+def hear_all(paths):
+    """声のファイルを順に聞き取って、1 件ずつ文字を返す。モデルを読むのは 1 回（行ごとに読むと、読むだけで 1 行数秒かかる）。
+    聞き取りは確認なので、失敗しても声は残す。読めなかった分は "" を返して、理由をログに出す。"""
+    with tempfile.TemporaryFile() as err:    # 終わるまで読まないので、パイプにしない（溢れると相手が止まる）
+        p = subprocess.Popen([WS, "-c", HEAR_CODE, SCENE_SCRIPTS, *paths], stdout=subprocess.PIPE, stderr=err, text=True, encoding="utf-8", errors="replace",
+                             env=dict(os.environ, PYTHONUTF8="1"))
+        got = 0
+        for line in p.stdout:
+            try: text = json.loads(line)
+            except ValueError: continue    # ライブラリが標準出力に書いた行
+            if not isinstance(text, str): continue
+            got += 1; yield text
+        p.wait()
+        if got < len(paths):
+            err.seek(0); tail = err.read().decode("utf-8", "replace").strip().splitlines()[-3:]
+            print(f"聞き取りが {len(paths) - got} 件できなかった（声はできている）: " + " / ".join(tail), flush=True)
+    for _ in range(len(paths) - got): yield ""
 
 
 def clean_tail(src, dst, n):
@@ -76,9 +98,9 @@ def clean_tail(src, dst, n):
 def report_match(P, lines, only):
     """作った声を聞き取って、台本との一致を出す。"""
     norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
-    for n in only:
-        heard = hear(P.p("voice", f"l{n}.wav")); r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
-        print(f"行{n} 台本との一致 {r:.2f}: {heard}")
+    for n, heard in zip(only, hear_all([P.p("voice", f"l{n}.wav") for n in only])):
+        r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
+        print(f"行{n} 台本との一致 {r:.2f}: {heard}", flush=True)
 
 
 def main():
