@@ -30,6 +30,18 @@ SCRIPT_KEYS = {"name", "voice", "events", "events_kw", "events_script", "events_
 SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face", "anchor"}
 
 
+DEFAULT_VOICE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "data", "voices", "default")
+
+
+def add_default_voice(cfg, work):
+    """パックから作る作業フォルダの声の設定を、同梱の手本の声にする（誰が作っても同じ声になる）。台本は lines に書く。"""
+    if "voice" in cfg: return
+    ref = os.path.join(DEFAULT_VOICE, "ref.wav")
+    if not os.path.exists(ref): return
+    shutil.copy(ref, os.path.join(work, "voice", "ref.wav"))
+    cfg["voice"] = {**json.load(open(os.path.join(DEFAULT_VOICE, "voice.json"), encoding="utf-8")), "ref": "voice/ref.wav", "lines": []}
+
+
 def md5(path):
     if not os.path.exists(path): return None
     h = hashlib.md5()
@@ -416,6 +428,7 @@ def new(pack, dst, name=None, own_cache=False):
             else: dir_link(sp, os.path.join(tmp, sub))
         cf = os.path.join(tmp, "config.json"); c = json.load(open(cf, encoding="utf-8"))
         c["name"] = name or os.path.basename(dst); c["from_pack"] = pack
+        add_default_voice(c, tmp)
         json.dump(c, open(cf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         os.rename(tmp, dst)
     except BaseException:                          # 途中で落ちたら、半端な複製を残さない

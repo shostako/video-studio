@@ -3,6 +3,7 @@
 *.webm
 *.mov
 *.wav
+!skills/video-mascot/data/voices/*/ref.wav
 *.mp3
 *.m4a
 *.png

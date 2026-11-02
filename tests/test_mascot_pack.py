@@ -452,3 +452,18 @@ def test_new_accepts_bare_pack_name(tmp_path, monkeypatch):
     assert cfg(tmp_path / "v1")["from_pack"] == str(pk)
     r = run("pack.py", "nope", "--new", tmp_path / "v2", env=e)
     assert r.returncode != 0 and str(home / "packs" / "nope") in r.stderr
+
+
+def test_default_voice_is_bundled_and_set_up(tmp_path):
+    import pack as pk
+    ref = Path(pk.DEFAULT_VOICE) / "ref.wav"
+    assert ref.stat().st_size > 100000
+    cfg = json.loads((Path(pk.DEFAULT_VOICE) / "voice.json").read_text(encoding="utf-8"))
+    assert cfg["caption"] and cfg["seed"] == 2024
+    work = tmp_path / "w"; (work / "voice").mkdir(parents=True)
+    c = {}
+    pk.add_default_voice(c, str(work))
+    assert c["voice"]["ref"] == "voice/ref.wav" and c["voice"]["lines"] == [] and (work / "voice" / "ref.wav").stat().st_size == ref.stat().st_size
+    keep = {"voice": {"caption": "自分の声"}}
+    pk.add_default_voice(keep, str(work))
+    assert keep == {"voice": {"caption": "自分の声"}}    # 書いてあれば触らない
