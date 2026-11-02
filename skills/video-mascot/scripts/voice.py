@@ -18,7 +18,8 @@ def ff(*a): subprocess.run(["ffmpeg", "-v", "error", "-y", *a], check=True)
 def dur(p): return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", p], capture_output=True, text=True).stdout)
 
 
-DEFAULT_MODEL = "Aratako/Irodori-TTS-v4.1-Small-MF"   # 4 ステップの蒸留版。40 ステップの v4.1-Small より CPU で 3 倍以上速く、手本があれば声はほとんど同じ（2026-11-02 ユーザーの判定）
+DEFAULT_MODEL = "Aratako/Irodori-TTS-v4.1-Small"
+FAST_MODEL = "Aratako/Irodori-TTS-v4.1-Small-MF"   # 4 ステップの蒸留版。CPU で 2〜3 倍速いが、読めない文字列では 40 ステップより荒く崩れる（DECISIONS.md の 2026-11-02）
 RUNNER = r'''
 import json, os, sys
 sys.path.insert(0, %IRO%)
@@ -148,6 +149,9 @@ def hear_master(P):
     return json.load(open(out, encoding="utf-8"))
 
 
+LOW_MATCH = 0.9
+
+
 def report_match(P, lines, only, V, gap):
     """作った声を聞き取って、台本との一致を出す。全行を作ったときは、つないだ声を 1 回だけ聞く（行ごとに聞くより速く、書き出しでもう一度聞かずに済む）。"""
     norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
@@ -160,6 +164,7 @@ def report_match(P, lines, only, V, gap):
     for n, heard in zip(only, heard_list):
         r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
         print(f"行{n} 台本との一致 {r:.2f}: {heard}", flush=True)
+        if r < LOW_MATCH: print(f"  行{n} は読みが崩れているかもしれない。聴いて確かめ、崩れていれば、その言葉をかなで書いた文を voice.lines の say に入れる", flush=True)
 
 
 def main():
