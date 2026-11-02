@@ -1,7 +1,7 @@
 """台詞から声を作る（Irodori-TTS、手元で動く、無料）。
   vm voice <作業フォルダ> check                   Irodori が使えるか確かめる
   vm voice <作業フォルダ> candidates              config.voice.candidates の声の説明文ごとに、試し2行を読ませる → voice/cand/ に wav と聞き比べの1本
-  vm voice <作業フォルダ> synth [行番号 ...]       全行（か指定の行）を読ませて voice/l<N>.wav を作る。聞き取りで台本との一致も出す
+  vm voice <作業フォルダ> synth [行番号 ...]       全行（か指定の行）を読ませて voice/l<N>.wav を作る。聞き取りで台本との一致も出す。全行のときは master も作り、語の時刻（書き出しが使う）も残す
   vm voice <作業フォルダ> master                  各行を開始時刻に置いて voice/master.wav と voice/timing.json を作る
 config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...]}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
@@ -45,7 +45,8 @@ def run_irodori(jobs, tmp):
     if r.returncode != 0: die("Irodori の実行に失敗:\n" + "\n".join(r.stderr.splitlines()[-12:]), 6)
 
 
-SCENE_SCRIPTS = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-scene", "scripts")
+HERE = os.path.dirname(os.path.realpath(__file__))
+SCENE_SCRIPTS = os.path.join(HERE, "..", "..", "video-scene", "scripts")
 HEAR_CODE = """
 import json, sys
 sys.path.insert(0, sys.argv[1])
@@ -95,10 +96,67 @@ def clean_tail(src, dst, n):
     return dst
 
 
-def report_match(P, lines, only):
-    """作った声を聞き取って、台本との一致を出す。"""
+def build_master(P, V, lines, gap):
+    """各行を開始時刻に置いて master.wav と timing.json を作り、行の時刻を返す。中身が同じなら master.wav を書き換えない
+    （更新時刻が変わらなければ、聞き取り済みの語の時刻 master.words.json がそのまま使える）。"""
+    t = 0.0; info = []
+    for i, l in enumerate(lines, 1):
+        p = P.p("voice", f"l{i}.wav")
+        if not os.path.exists(p): die(f"行{i} の声が無い: {p}（先に synth）")
+        d = dur(p); st = float(l["start"]) if l.get("start") is not None else t
+        info.append({"n": i, "start": round(st, 3), "dur": round(d, 3)}); t = st + d + gap
+    end = float(V.get("end") or max(x["start"] + x["dur"] for x in info) + 0.6)
+    args = ["ffmpeg", "-v", "error", "-y"]; flt = []; labs = []
+    cd_ = P.p("voice", "_clean"); os.makedirs(cd_, exist_ok=True)
+    for k, x in enumerate(info):
+        args += ["-i", clean_tail(P.p("voice", f"l{x['n']}.wav"), os.path.join(cd_, f"l{x['n']}.wav"), x["n"])]
+        flt.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=mono,loudnorm=I=-18:TP=-1.5:LRA=11,adelay={int(x['start'] * 1000)}:all=1,asetpts=N/SR/TB,apad=whole_dur={end}[a{k}]"); labs.append(f"[a{k}]")
+    flt.append("".join(labs) + f"amix=inputs={len(info)}:normalize=0:duration=longest,atrim=0:{end},loudnorm=I=-16:TP=-1.5:LRA=11[out]")
+    out = P.p("voice", "master.wav"); tmp = P.p("voice", "master.part.wav")
+    subprocess.run(args + ["-filter_complex", ";".join(flt), "-map", "[out]", "-ar", "48000", "-ac", "1", tmp], check=True)
+    if same_bytes(tmp, out): os.remove(tmp)
+    else: os.replace(tmp, out)
+    json.dump({"lines": info, "end": end}, open(P.p("voice", "timing.json"), "w"), indent=1)
+    return info
+
+
+def same_bytes(a, b):
+    if not os.path.exists(b) or os.path.getsize(a) != os.path.getsize(b): return False
+    with open(a, "rb") as f, open(b, "rb") as g: return f.read() == g.read()
+
+
+def heard_by_line(words, info, margin=0.3):
+    """全体の語の時刻 [[語, 始め, 終わり], ...] を行ごとの文字に分ける。行の間の無音に出た語はどの行にも入れない。"""
+    out = {x["n"]: "" for x in info}
+    for w, s, e in words:
+        mid = (s + e) / 2
+        for x in info:
+            if x["start"] - margin <= mid <= x["start"] + x["dur"] + margin: out[x["n"]] += w; break
+    return out
+
+
+def hear_master(P):
+    """master.wav を 1 回聞いて master.words.json を作り、語の時刻を返す。書き出し（render.py）が同じものを読むので、聞き取りが 2 回にならない。
+    聞き取りは確認なので、失敗しても声は残す（None を返して理由を出す。語の時刻は書き出しのときに作り直される）。"""
+    wav = P.p("voice", "master.wav"); out = P.p("voice", "master.words.json")
+    with tempfile.TemporaryFile() as err:
+        r = subprocess.run([WS, os.path.join(HERE, "words.py"), wav, out], stdout=subprocess.DEVNULL, stderr=err, env=dict(os.environ, PYTHONUTF8="1"))
+        if r.returncode != 0:
+            err.seek(0); print("聞き取りができなかった（声はできている）: " + " / ".join(err.read().decode("utf-8", "replace").strip().splitlines()[-3:]), flush=True)
+            return None
+    return json.load(open(out, encoding="utf-8"))
+
+
+def report_match(P, lines, only, V, gap):
+    """作った声を聞き取って、台本との一致を出す。全行を作ったときは、つないだ声を 1 回だけ聞く（行ごとに聞くより速く、書き出しでもう一度聞かずに済む）。"""
     norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
-    for n, heard in zip(only, hear_all([P.p("voice", f"l{n}.wav") for n in only])):
+    if len(only) == len(lines):
+        info = build_master(P, V, lines, gap); words = hear_master(P)
+        if words is None: return
+        by_line = heard_by_line(words, info)
+        heard_list = [by_line[n] for n in only]
+    else: heard_list = hear_all([P.p("voice", f"l{n}.wav") for n in only])
+    for n, heard in zip(only, heard_list):
         r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
         print(f"行{n} 台本との一致 {r:.2f}: {heard}", flush=True)
 
@@ -135,7 +193,7 @@ def main():
         import voice_voicevox
         only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1))
         voice_voicevox.synth_jobs([{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "out": P.p("voice", f"l{n}.wav")} for n in only], V)
-        report_match(P, lines, only)
+        report_match(P, lines, only, V, gap)
         return
     if cmd == "synth":
         only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1)); ref = V.get("ref"); ref = P.p(ref) if ref and not os.path.isabs(ref) else ref
@@ -149,24 +207,10 @@ def main():
             for j in jobs[1:]: j["ref"] = r0
             run_irodori(jobs[1:], vd)
         else: run_irodori(jobs, vd)
-        report_match(P, lines, only)
+        report_match(P, lines, only, V, gap)
         return
     if cmd == "master":
-        starts = []; t = 0.0; info = []
-        for i, l in enumerate(lines, 1):
-            p = P.p("voice", f"l{i}.wav")
-            if not os.path.exists(p): die(f"行{i} の声が無い: {p}（先に synth）")
-            d = dur(p); st = float(l["start"]) if l.get("start") is not None else t
-            info.append({"n": i, "start": round(st, 3), "dur": round(d, 3)}); t = st + d + gap
-        end = float(V.get("end") or max(x["start"] + x["dur"] for x in info) + 0.6)
-        args = ["ffmpeg", "-v", "error", "-y"]; flt = []; labs = []
-        cd_ = P.p("voice", "_clean"); os.makedirs(cd_, exist_ok=True)
-        for k, x in enumerate(info):
-            args += ["-i", clean_tail(P.p("voice", f"l{x['n']}.wav"), os.path.join(cd_, f"l{x['n']}.wav"), x["n"])]
-            flt.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=mono,loudnorm=I=-18:TP=-1.5:LRA=11,adelay={int(x['start'] * 1000)}:all=1,asetpts=N/SR/TB,apad=whole_dur={end}[a{k}]"); labs.append(f"[a{k}]")
-        flt.append("".join(labs) + f"amix=inputs={len(info)}:normalize=0:duration=longest,atrim=0:{end},loudnorm=I=-16:TP=-1.5:LRA=11[out]")
-        subprocess.run(args + ["-filter_complex", ";".join(flt), "-map", "[out]", "-ar", "48000", "-ac", "1", P.p("voice", "master.wav")], check=True)
-        json.dump({"lines": info, "end": end}, open(P.p("voice", "timing.json"), "w"), indent=1)
+        info = build_master(P, V, lines, gap)
         for x in info: print(f"行{x['n']}: {x['start']:.2f}s〜{x['start'] + x['dur']:.2f}s")
         print("master.wav", round(dur(P.p("voice", "master.wav")), 2), "秒"); return
     die(f"知らないコマンド: {cmd}")

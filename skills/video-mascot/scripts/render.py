@@ -101,10 +101,8 @@ rms = frame_levels(x, SR, FPS, NALL, WIN)
 lvl = np.clip(rms / (np.percentile(rms[rms > 0], 95) + 1e-6), 0, 1.5) * MS
 WORDS = P.p("voice", "master.words.json")
 if not os.path.exists(WORDS) or os.path.getmtime(WORDS) < os.path.getmtime(VOICE):
-    from faster_whisper import WhisperModel
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-scene", "scripts")); from ear import read_audio
-    segs, _ = WhisperModel("medium", device="cpu", compute_type="int8").transcribe(read_audio(VOICE), language="ja", word_timestamps=True, condition_on_previous_text=False)
-    json.dump([[w.word, w.start, w.end] for s in segs for w in s.words], open(WORDS, "w"), ensure_ascii=False)
+    from words import write_words
+    write_words(VOICE, WORDS)
 words = json.load(open(WORDS))
 import pykakasi; KK = pykakasi.kakasi()
 WH = [(h, s, e) for h, (w, s, e) in zip(words_hira([w for w, _, _ in words], KK.convert), words)]   # 語のひらがなと時刻（行の文脈ごとに読む。数字は漢数字にして読む）
