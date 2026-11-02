@@ -55,6 +55,14 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 - 姿勢の切り替えを新しく作るとき（キャラ作り）: NVIDIA の GPU（8GB 以上）、ComfyUI portable と Wan2.2 I2V・Lightning の LoRA、RIFE（rife-ncnn-vulkan）。パックの作り置きを使うだけなら要らない
 - Veo の場面: Gemini API の鍵（**別料金**）
 
+## GPU の無い PC で声を作る
+
+既定の声（Irodori-TTS）は GPU が無いと時間がかかる（8 行・36 秒の声で、CPU 4 スレッドの実測 337 秒）。VOICEVOX ENGINE を選ぶと速くなる（同じ条件で 91 秒。聞き取りの時間を含む）。
+
+1. [VOICEVOX ENGINE](https://github.com/VOICEVOX/voicevox_engine/releases) の CPU 版を入れて起動する（約 1.9GB。`127.0.0.1:50021` で待つ）
+2. `config.json` の `voice` に `"engine": "voicevox"` と `"speaker": 話者の番号` を書く。番号を書かずに `vm voice <作業フォルダ> synth` を流すと、使える話者の一覧が出る
+3. 話者ごとの[利用規約](https://voicevox.hiroshiba.jp/)に従い、動画に「VOICEVOX:話者の名前」と書く
+
 ## 入れ方
 
 ```bash

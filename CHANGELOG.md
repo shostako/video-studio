@@ -4,6 +4,7 @@
 
 ## 未リリース
 
+- **声のエンジンに VOICEVOX を選べる**: `voice.engine: "voicevox"` と `voice.speaker`。GPU が要らない。既定は Irodori-TTS のまま
 - **ワイプの型も軽く**: `vm explain --style wipe` は元の絵 0.64 倍・高さ 1070・30fps で書き出す。47 秒の動画で 129 秒 → 62 秒（`--jobs 4`）。元の細かさは `--fine`
 - **全身の型を軽く**: `vm explain --style full` は元の絵を 0.64 倍で扱い、30fps で書き出す。49 秒の動画で 128 秒（`--jobs 4`）、朝は 713 秒。元の細かさは `--fine`
 - **`vm explain --jobs` は画面の組み立ても並列に**: 49 秒の動画の組み立てが 70 秒 → 19 秒、全身の型の全体が 211 秒（`--jobs 4`）

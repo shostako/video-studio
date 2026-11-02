@@ -73,6 +73,14 @@ def clean_tail(src, dst, n):
     return dst
 
 
+def report_match(P, lines, only):
+    """作った声を聞き取って、台本との一致を出す。"""
+    norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
+    for n in only:
+        heard = hear(P.p("voice", f"l{n}.wav")); r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
+        print(f"行{n} 台本との一致 {r:.2f}: {heard}")
+
+
 def main():
     a = [x for x in sys.argv[1:]]
     if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master")
@@ -101,6 +109,12 @@ def main():
                 n = os.path.join(cd, f"C{i}_l{j + 1}_n.wav"); ff("-i", os.path.join(cd, f"C{i}_l{j + 1}.wav"), "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000", "-ac", "1", n); parts += [n, sil]
         open(lst, "w").write("".join(f"file '{p}'\n" for p in parts)); out = os.path.join(cd, "聞き比べ.wav")
         ff("-f", "concat", "-safe", "0", "-i", lst, "-ar", "48000", "-ac", "1", out); print("聞き比べ:", out, "（「ピッ」のあと C1 → C2 … の順）"); return
+    if cmd == "synth" and V.get("engine") == "voicevox":
+        import voice_voicevox
+        only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1))
+        voice_voicevox.synth_jobs([{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "out": P.p("voice", f"l{n}.wav")} for n in only], V)
+        report_match(P, lines, only)
+        return
     if cmd == "synth":
         only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1)); ref = V.get("ref"); ref = P.p(ref) if ref and not os.path.isabs(ref) else ref
         if ref is None:    # 一部の行だけ作り直すときは、残す行の声を手本にする（手本なしで作ると別の声になる）
@@ -113,10 +127,7 @@ def main():
             for j in jobs[1:]: j["ref"] = r0
             run_irodori(jobs[1:], vd)
         else: run_irodori(jobs, vd)
-        norm = lambda t: re.sub(r"[\s、。，．,.!?！？「」…ー〜]", "", t)
-        for n in only:
-            heard = hear(P.p("voice", f"l{n}.wav")); r = difflib.SequenceMatcher(None, norm(lines[n - 1]["text"]), norm(heard)).ratio()
-            print(f"行{n} 台本との一致 {r:.2f}: {heard}")
+        report_match(P, lines, only)
         return
     if cmd == "master":
         starts = []; t = 0.0; info = []
