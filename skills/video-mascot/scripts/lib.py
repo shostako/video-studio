@@ -14,6 +14,7 @@ class Proj:
     ib/ib_<a>_<b>_<k>.png（中割り k=1..5）  voice/（l<N>.wav と master.wav、timing.json）  out/"""
     def __init__(self, path):
         self.root = os.path.abspath(path)
+        self.work_scale = 1.0   # 絵を読むときの倍率（vm render --work-scale）
         cfg = os.path.join(self.root, "config.json")
         if not os.path.exists(cfg): sys.exit(f"ERROR: config.json が無い: {self.root}")
         self.cfg = json.load(open(cfg, encoding="utf-8"))
@@ -30,7 +31,7 @@ class Proj:
     def read_pose(self, n):
         im = cv2.imread(self.pose_path(n))
         if im is None: sys.exit(f"ERROR: 姿勢の絵が無い: {self.pose_path(n)}")
-        return im
+        return im if self.work_scale == 1.0 else cv2.resize(im, None, fx=self.work_scale, fy=self.work_scale, interpolation=cv2.INTER_AREA)
 
     def ib_path(self, a, b, k):
         """中割り k（1..div-1）の絵。既定の6等分は ib_<a>_<b>_<k>.png、それ以外は ib_<a>_<b>_<k>_<div>.png。"""
@@ -379,6 +380,25 @@ def partial_voice_ref(only, n_lines, exists):
     for n in range(1, n_lines + 1):
         if n not in only and exists(n): return n
     return None
+
+
+FACE_ROIS = ("mouth_roi", "eye_roi", "jaw_roi")
+
+
+def scale_config_pixels(cfg, s):
+    """config の画素の値（顔の範囲・足元の点）を絵の倍率 s に合わせる。元の cfg を書き換える。"""
+    sc = lambda v: [int(round(x * s)) for x in v]
+    def rois(d):
+        for k in FACE_ROIS:
+            if k in d: d[k] = sc(d[k])
+    if isinstance(cfg.get("face"), dict): rois(cfg["face"])
+    for v in cfg.get("poses", {}).values():
+        if isinstance(v.get("face"), dict): rois(v["face"])
+        if "anchor" in v: v["anchor"] = [x * s for x in v["anchor"]]
+    an = cfg.get("anchor")
+    if isinstance(an, dict) and isinstance(an.get("points"), dict): an["points"] = {k: [x * s for x in p] for k, p in an["points"].items()}
+    if isinstance(cfg.get("floor"), dict) and "y0" in cfg["floor"]: cfg["floor"]["y0"] = int(round(cfg["floor"]["y0"] * s))
+    if "pad" in cfg: cfg["pad"] = int(round(cfg["pad"] * s))
 
 
 def used_poses(events, home, head=None, legs_from=None):

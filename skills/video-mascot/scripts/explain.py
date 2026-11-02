@@ -1,6 +1,6 @@
 """画面操作の解説動画を、型を選んで 1 本に組む入口（撮影・台本・声は先に用意する）。
   vm explain <作業フォルダ> --shots <撮影フォルダ> --scenes <scenes.py> --style cursor|wipe|full --out 出力.mp4
-             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N]
+             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N] [--fine]
 
   型（2026-11-01 にユーザーと決めた 3 つ）:
     cursor  カーソルだけ。画面を全面に出し、章が替わった所に左上へ見出しを数秒出す（マスコットなし）
@@ -40,12 +40,16 @@ def compose_step(title, cmd, out, jobs, work):
     render_jobs.run_compose(cmd, out, int(jobs), work)
 
 
-FULL_HEIGHT = 720   # 全身の型は完成で高さ約 700 まで縮めるので、それより大きく作っても絵に出ない（1280 の 1.2 倍速。ユーザーが見て決めた）
+# 全身の型は完成で高さ約 700 まで縮めるので、それより細かく作っても絵に出ない。ユーザーが動画を見比べて決めた（2026-11-02）
+FULL_HEIGHT, FULL_WORK_SCALE, FULL_FPS = 720, 0.64, 30
 
 
-def full_height_args(config_path):
-    """全身の型の書き出しの高さ。config に out_height を書いてあれば、それに従う。"""
-    return [] if "out_height" in json.load(open(config_path, encoding="utf-8")) else ["--out-height", str(FULL_HEIGHT)]
+def full_args(config_path, fine=False):
+    """全身の型の書き出しの設定。--fine は元の細かさ（config の fps、元の絵の大きさ、config の out_height か 1280）。
+    config に out_height を書いてあれば、それに従う。"""
+    if fine: return []
+    h = [] if "out_height" in json.load(open(config_path, encoding="utf-8")) else ["--out-height", str(FULL_HEIGHT)]
+    return h + ["--work-scale", str(FULL_WORK_SCALE), "--fps", str(FULL_FPS)]
 
 
 def main():
@@ -54,7 +58,7 @@ def main():
     ap.add_argument("work"); ap.add_argument("--shots", required=True); ap.add_argument("--scenes", required=True)
     ap.add_argument("--style", required=True, choices=["cursor", "wipe", "full"]); ap.add_argument("--out", required=True)
     ap.add_argument("--scale", default="0.73"); ap.add_argument("--chapters"); ap.add_argument("--clip-bottom"); ap.add_argument("--clip-right")
-    ap.add_argument("--keep", action="store_true"); ap.add_argument("--jobs", default="1")
+    ap.add_argument("--keep", action="store_true"); ap.add_argument("--jobs", default="1"); ap.add_argument("--fine", action="store_true")
     A = ap.parse_args()
     work, shots, scenes, style, out = os.path.abspath(A.work), A.shots, A.scenes, A.style, A.out
     for p in (work, shots, scenes, COMPOSE):
@@ -73,10 +77,10 @@ def main():
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
         compose_step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale], main_mp4, A.jobs, work)
-        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else full_height_args(os.path.join(work, "config.json"))   # ワイプは顔の周りだけを書き出す（速い）
+        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else full_args(os.path.join(work, "config.json"), A.fine)   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", "--jobs", A.jobs, *extra))
-        lay = step("余白に置く", vm("layout", main_mp4, work, "--mascot", face, "--style", "full" if style == "full" else "wipe", "--out", out, "--full"))
+        lay = step("余白に置く", vm("layout", main_mp4, work, "--mascot", face, "--style", "full" if style == "full" else "wipe", "--out", out, "--full", *(["--fps", str(FULL_FPS)] if style == "full" and not A.fine else [])))
         if style == "full":
             crop = next((l.split()[1] for l in lay.splitlines() if l.startswith("CROP ")), None)
             if not crop: die("vm layout が CROP を出さなかった")

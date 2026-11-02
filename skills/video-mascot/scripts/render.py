@@ -11,6 +11,8 @@
   --enclosed bg|keep  囲まれたほぼ白の扱い（既定は config.matte.enclosed、無ければ bg）。bg: 今までどおり、顔の箱の外の囲まれた白は
                  背景（白いシャツ・おでこの光も透けて、暗い背景に重ねると穴に見える）。keep: 囲まれた白はキャラとして閉じ、内側が
                  背景の色そのもの（平ら）な所（脚の間・腕と体の間）だけ背景にする。暗い背景に重ねるときに使う
+  --work-scale S  元の絵をこの倍率で扱う（0 より大きく 1 以下。既定 1）。切り替えの絵の計算が軽くなる。作り置きはそのまま使う。vm explain の全身の型は 0.64
+  --fps N        コマの速さ（既定は config.fps）。作り置きはそのまま使う。vm explain の全身の型は 30
   --out-height N  出力の高さ（既定は config.out_height、無ければ 1280）。vm explain の全身の型は 720 で書き出す
   --jobs N       区間に分けて N 並列で書き出し、1 本につなぐ（1 区間のメモリは約 1GB）。絵は変わらない
   --crop face|x,y,辺  ワイプ用に、顔の周りの正方形だけを書き出す（alpha のみ）。face は最初のコマの人物から測る（vm layout の
@@ -28,11 +30,11 @@ poses.<名前>.yaw / head_yaw / face / anchor（向きの違う姿勢）は、�
 体は姿勢の絵1枚を固定し、口7形・目2段の部品を声の大きさと母音で毎コマ選んで貼る。姿勢の変わり目は中割り5枚（15fps）。
 config の fps を 60、inbetween_div を 12、inbetween_fps を 30 にすると倍の細かさ（中割り11枚・まばたきは段の間を溶かす）。
 姿勢の切り替え時刻は config.events（台詞のキーワードの声の時刻）で決める。軸足（向かって左の靴）の底を全部の絵でそろえる。"""
-import json, math, os, random, re, subprocess, sys
+import copy, json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -61,6 +63,12 @@ try: VH = via_home_config(C.get("via_home"))   # 中割りの無い組を home �
 except ValueError as e_: die(str(e_))
 try: HEADC = head_config(C.get("head"), C["poses"])   # 頭の向きの列（None は使わない＝今までどおり）
 except ValueError as e_: die(str(e_))
+WS = opt("--work-scale", 1.0, float)              # 元の絵を縮めて扱う。作り置きの判定（CP）は元の大きさの絵と設定で行う
+if not 0 < WS <= 1: die(f"--work-scale は 0 より大きく 1 以下: {WS}")
+CP = copy.copy(P); CP.cfg = copy.deepcopy(C)
+if WS != 1.0:
+    P.work_scale = WS; scale_config_pixels(C, WS); P.pad = int(round(P.pad * WS))
+P.fps = opt("--fps", P.fps, int)
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
 FPS = P.fps; PAD = P.pad; OH = opt("--out-height", int(C.get("out_height", 1280)), int); random.seed(int(C.get("seed", 5)))
@@ -187,7 +195,10 @@ for p in P.poses:
     PARTS[p] = {}; mp = P.p(f"parts_{p}", "parts.json")
     if not FACE_ON[p]: continue                   # 顔の見えない姿勢（後ろ向き）は口・目の部品なし
     if not os.path.exists(mp): die(f"部品が無い: parts_{p}（先に vm parts）")
-    for k, (px, py) in json.load(open(mp)).items(): PARTS[p][k] = (cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED), px, py)
+    for k, (px, py) in json.load(open(mp)).items():
+        im_ = cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED)
+        if WS != 1.0: im_ = cv2.resize(im_, (max(1, round(im_.shape[1] * WS)), max(1, round(im_.shape[0] * WS))), interpolation=cv2.INTER_AREA)
+        PARTS[p][k] = (im_, int(round(px * WS)), int(round(py * WS)))
 FB = {"m7": "m1", "m3": "m2", "m6": "m1"}      # 無い形は近い形で代用
 def part_of(parts, k):
     while k and k not in parts: k = FB.get(k)
@@ -219,7 +230,7 @@ def ib_item(item, src_pose, lerp_parts=False):
     img = cv2.imread(path)
     if img is None: die(f"中割りの絵が無い: {path}")
     ref = PB[src_pose]
-    if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]))
+    if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]), interpolation=cv2.INTER_AREA if WS != 1.0 else cv2.INTER_LINEAR)
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     lanc = None
     if legs_on(a_, b_): img, lanc = legs(img, sc)  # 両端とも差し替える姿勢なら、中割りも同じ下半身に（足元の点も差し替えた脚から）
@@ -267,7 +278,7 @@ class LazySeq:
 def dense_seq(pa, pb, rev, direct):
     def make():
         from interp import dense_paths
-        paths = dense_paths(P, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
+        paths = dense_paths(CP, pa, pb, DIV, INTERP, log=lambda m: print(m, file=sys.stderr), direct=direct)
         return [(pth, pa, pb, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     return LazySeq(DIV * INTERP["mult"] - 1, make, rev, dry=lambda: (P.p("ib_interp", "_dry"), pa, pb, 0))
 def wan_seq(a_, b_):
@@ -275,7 +286,7 @@ def wan_seq(a_, b_):
     n = DIV * INTERP["mult"] - 1
     def make():
         from wanflf import dense_paths as wan_paths
-        paths = wan_paths(P, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
+        paths = wan_paths(CP, a_, b_, n, INTERP, log=lambda m: print(m, file=sys.stderr))
         return [(pth, a_, b_, k) for pth, k in zip(paths, dense_ks(DIV, INTERP["mult"]))]
     return LazySeq(n, make, False, dry=lambda: (P.p("ib_wan", f"{a_}__{b_}", "_dry"), a_, b_, 0))
 def wan_ok(a_, b_):                               # Wan で動かす組か（engine: wan、向きの同じ組、interp.pairs で絞れる）
@@ -395,7 +406,7 @@ def head_items():
         cfg = dict(INTERP or INTERP_DEFAULTS); cfg["mult"] = HEADC["mult"]
         ch = HEADC["chain"]; items = [(P.pose_path(ch[0]), ch[0], ch[0], 0)]
         for pa_, pb_ in zip(ch, ch[1:]):
-            paths = dense_paths(P, pa_, pb_, DIV, cfg, log=lambda m: print(m, file=sys.stderr), direct=True)
+            paths = dense_paths(CP, pa_, pb_, DIV, cfg, log=lambda m: print(m, file=sys.stderr), direct=True)
             items += [(pth, pa_, pb_, k_) for pth, k_ in zip(paths, dense_ks(DIV, HEADC["mult"]))] + [(P.pose_path(pb_), pb_, pb_, 0)]
         HEAD_ITEMS = items
     return HEAD_ITEMS
@@ -537,7 +548,7 @@ for sw, e_ in zip(SW, ev):
     if item["engine"] == "wan":
         wd = P.p("ib_wan", f"{e_[1]}__{e_[2]}", f"n{DIV * INTERP['mult'] - 1}")
         from wanflf import need as wan_need
-        nd_ = wan_need(P, e_[1], e_[2], DIV * INTERP["mult"] - 1, INTERP)   # 作り置きが今の絵・設定に合うか（None）、後処理だけ（rife）、Wan で作る（wan）
+        nd_ = wan_need(CP, e_[1], e_[2], DIV * INTERP["mult"] - 1, INTERP)   # 作り置きが今の絵・設定に合うか（None）、後処理だけ（rife）、Wan で作る（wan）
         item["wan_dir"] = wd; item["wan_ready"] = nd_ is None
         if nd_: item["wan_need"] = nd_
     SWL.append(item)
@@ -559,7 +570,7 @@ if DRY:                                           # 下見: これから Wan で
     rtodo = []
     for pa_, pb_, dr_, m_ in sorted(rjobs):
         cfg_ = dict(INTERP or INTERP_DEFAULTS); cfg_["mult"] = m_
-        if not rife_ready(P, pa_, pb_, DIV, cfg_, direct=dr_): rtodo.append(f"{pa_}→{pb_}")
+        if not rife_ready(CP, pa_, pb_, DIV, cfg_, direct=dr_): rtodo.append(f"{pa_}→{pb_}")
     rtodo += [f"{x}（Wan の後処理）" for x in post]
     print(f"RIFE で新しく作る列: {len(rtodo)}{'（' + '、'.join(rtodo) + '）' if rtodo else ''}", file=sys.stderr)
 MOFF = mouth_off_spans(SPEAK, FACEP, FPS, f0)    # 口の検査: 口の部品の無い姿勢（face: false）で話している所（口が止まって見える）

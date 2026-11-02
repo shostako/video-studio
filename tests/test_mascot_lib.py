@@ -607,3 +607,26 @@ def test_occlude_matches_the_old_form_with_and_without_a_shared_diff(seed, hand)
 def test_render_shares_the_occlude_diff():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
     assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre)" in src
+
+
+def test_scale_config_pixels():
+    c = {"pad": 100, "face": {"mouth_roi": [100, 200, 300, 400], "occlude": True},
+         "poses": {"a": {"face": {"eye_roi": [10, 20, 30, 40]}, "anchor": [100, 200]}, "b": {"desc": "x"}},
+         "anchor": {"mode": "manual", "points": {"a": [50, 60]}}, "floor": {"y0": 1000}}
+    lib.scale_config_pixels(c, 0.5)
+    assert c["pad"] == 50 and c["face"]["mouth_roi"] == [50, 100, 150, 200] and c["face"]["occlude"] is True
+    assert c["poses"]["a"]["face"]["eye_roi"] == [5, 10, 15, 20] and c["poses"]["a"]["anchor"] == [50, 100]
+    assert c["anchor"]["points"]["a"] == [25, 30] and c["floor"]["y0"] == 500
+
+
+def test_read_pose_scales_only_when_asked(tmp_path):
+    (tmp_path / "config.json").write_text('{"poses": {"home": {}}}', encoding="utf-8")
+    P = lib.Proj(str(tmp_path)); cv2.imwrite(P.pose_path("home"), np.zeros((100, 60, 3), np.uint8))
+    assert P.read_pose("home").shape[:2] == (100, 60)
+    P.work_scale = 0.5; assert P.read_pose("home").shape[:2] == (50, 30)
+
+
+def test_cache_checks_use_the_original_size():
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    for a in ("dense_paths(CP, pa, pb,", "wan_paths(CP, a_, b_,", "dense_paths(CP, pa_, pb_,", "rife_ready(CP, pa_, pb_,", "wan_need(CP, e_[1], e_[2],"): assert a in src
+    assert "dense_paths(P," not in src and "wan_paths(P," not in src and "rife_ready(P," not in src and "wan_need(P," not in src
