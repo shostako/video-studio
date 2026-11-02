@@ -660,3 +660,19 @@ def test_render_scales_every_pixel_literal_with_the_work_scale():
     assert "scale_motion_pixels(MOT, WS)" in src and src.index("MOT = motion_config") < src.index("scale_motion_pixels(MOT, WS)")
     for bad in ("dx = 1.5 * math.sin", "s, dx, dy = 1.0, 0.0, -2.5 * sm[f]", "pad_ = 30 if"): assert bad not in src
     assert "grow=2 * int(round(3 * WS)) + 1" in src      # WS = 1 で既定の 7 のまま
+
+
+def test_defloor_keeps_a_shoe_at_the_work_scale():
+    """元の絵で 600 を超える靴（1000 画素）は、0.64 倍の掃除でも消えない。"""
+    img = np.full((1000, 600, 3), 253, np.uint8); img[900:925, 100:140] = 10
+    s = 0.64; small = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA); y0 = int(round(800 * s))
+    y, x = int(912 * s), int(120 * s)
+    assert lib.defloor(img, 800)[0][912, 120, 0] < 60
+    assert lib.defloor(small, y0)[0][y, x, 0] > 200                          # 倍率を渡さないと消える
+    assert lib.defloor(small, y0, s)[0][y, x, 0] < 60
+
+
+def test_defloor_at_scale_one_is_unchanged():
+    img = np.full((400, 300, 3), 253, np.uint8); img[330:360, 60:120] = 10; img[370:380, 20:280] = 200
+    a, b = lib.defloor(img, 300), lib.defloor(img, 300, 1.0)
+    assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
