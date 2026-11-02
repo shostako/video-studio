@@ -32,6 +32,14 @@ def step(title, cmd):
     return r.stdout
 
 
+FULL_HEIGHT = 720   # 全身の型は完成で高さ約 700 まで縮めるので、それより大きく作っても絵に出ない（1280 の 1.2 倍速。ユーザーが見て決めた）
+
+
+def full_height_args(config_path):
+    """全身の型の書き出しの高さ。config に out_height を書いてあれば、それに従う。"""
+    return [] if "out_height" in json.load(open(config_path, encoding="utf-8")) else ["--out-height", str(FULL_HEIGHT)]
+
+
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -57,7 +65,7 @@ def main():
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
         step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale, "--out", main_mp4])
-        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else []   # ワイプは顔の周りだけを書き出す（速い）
+        face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else full_height_args(os.path.join(work, "config.json"))   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", "--jobs", A.jobs, *extra))
         lay = step("余白に置く", vm("layout", main_mp4, work, "--mascot", face, "--style", "full" if style == "full" else "wipe", "--out", out, "--full"))
