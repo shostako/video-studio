@@ -77,6 +77,50 @@ def frame_count(path):
     except ValueError: return -1
 
 
+COMPOSE_FPS = 30   # compose.py の FPS
+COMPOSE_TAIL = 0.8  # compose.py の END = timing["end"] + 0.8
+
+
+def compose_frames(end):
+    """compose.py が書くコマ数（range(int(from * FPS), int(to * FPS))）。"""
+    return int((end + COMPOSE_TAIL) * COMPOSE_FPS)
+
+
+def compose_times(a, b):
+    """compose.py の int(t * FPS) が a と b に戻る秒。"""
+    return (a + 0.5) / COMPOSE_FPS, (b + 0.5) / COMPOSE_FPS
+
+
+def run_compose(cmd, out, jobs, voice_dir):
+    """screen-explainer の compose.py（cmd は --out より前まで）を区間に分けて並列に動かし、つないで声を 1 回だけ付ける。"""
+    timing = json.load(open(os.path.join(voice_dir, "voice", "timing.json")))
+    n = compose_frames(timing["end"]); end = n / COMPOSE_FPS
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=os.path.splitext(os.path.basename(out))[0] + "_jobs_", dir=os.path.dirname(os.path.abspath(out)))
+    try:
+        chunks = plan_chunks(0, n, jobs, COMPOSE_FPS)
+        def one(i):
+            a, b = chunks[i]; ta, tb = compose_times(a, b); p = os.path.join(tmp, f"c{i:04d}.mp4"); log = os.path.join(tmp, f"c{i:04d}.log")
+            rc_ = _run(cmd + ["--out", p, "--from", f"{ta:.6f}", "--to", f"{tb:.6f}"], dict(os.environ), log)
+            if rc_ != 0: raise RuntimeError(f"組み立ての区間 {a / COMPOSE_FPS:.2f}〜{b / COMPOSE_FPS:.2f} 秒で止まった（終了コード {rc_}）:\n" + _tail(log))
+            return p
+        with ThreadPoolExecutor(jobs) as ex:
+            try: parts = list(ex.map(one, range(len(chunks))))
+            except RuntimeError as e: die(str(e))
+        lst = os.path.join(tmp, "list.txt"); open(lst, "w", encoding="utf-8").write(concat_list(parts))
+        joined = os.path.join(tmp, "joined.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-map", "0:v", "-c", "copy", joined], check=True)
+        got = frame_count(joined)
+        if got != n: die(f"組み立てのコマ数が合わない: {got}（{n} のはず）")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", joined, "-i", os.path.join(voice_dir, "voice", "master.wav"), "-map", "0:v", "-map", "1:a", "-af", "apad",
+                        "-t", f"{end:.3f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", "-f", "mp4", out + ".part"], check=True)
+        os.replace(out + ".part", out)
+        shutil.copy(os.path.splitext(parts[0])[0] + ".layout.json", os.path.splitext(out)[0] + ".layout.json")
+        print("out", out, f"{end:.1f}s", flush=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def run(argv, jobs, f0, f1, fps, mode, out, crop, voice, t0, t1):
     """argv は render.py の引数（作業フォルダから）。終了コードで終わる。"""
     render = os.path.join(HERE, "render.py"); py = [sys.executable, "-B", render]

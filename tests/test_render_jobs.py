@@ -57,3 +57,15 @@ def test_concat_list_escapes_quotes():
 
 def test_merged_check_points_to_the_output():
     assert rj.merged_check({"problems": 2, "video": None}, "o.webm")["problems"] == 2
+
+
+def test_compose_constants_match_compose_py():
+    src = (ROOT / "skills/screen-explainer/scripts/compose.py").read_text(encoding="utf-8")
+    assert f"FPS = 1920, 1080, 1020, {rj.COMPOSE_FPS}" in src and f'END = timing["end"] + {rj.COMPOSE_TAIL}' in src
+
+
+def test_compose_times_round_trip():
+    for a in range(0, 5000, 3):
+        ta, tb = rj.compose_times(a, a + 17)
+        assert int(ta * rj.COMPOSE_FPS) == a and int(tb * rj.COMPOSE_FPS) == a + 17
+    assert rj.compose_frames(48.6) == int(49.4 * 30)

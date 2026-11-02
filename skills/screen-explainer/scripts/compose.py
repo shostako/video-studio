@@ -323,6 +323,17 @@ def wipe_pos(t):
     prev = CORNERS[S[i - 1]["corner"]]; e = ease((t - s["t0"]) / 0.6)
     return (prev[0] + (cur[0] - prev[0]) * e, prev[1] + (cur[1] - prev[1]) * e)
 
+_view_memo = [None, None]
+def view_image(base, stable, box):
+    """base の box を画面の大きさにした RGBA。カメラが止まっている間は同じ絵になるので、前のコマの結果を写す（拡大縮小が書き出しの半分以上を占める）。
+    stable: base が撮影の絵そのもの（溶かしの途中や連番でない）。"""
+    key = (id(base), box) if stable else None
+    if key is not None and _view_memo[0] == key: return _view_memo[1].copy()
+    fr = base.crop(box).resize((W, VIEW_H), Image.BILINEAR).convert("RGBA")
+    _view_memo[0], _view_memo[1] = key, fr.copy() if key is not None else None
+    return fr
+
+
 def frame(t):
     s = scene_at(t); u = (t - s["t0"]) / s["d"]
     names = s["imgs"]; k = max((i for i, (a, _) in enumerate(names) if u >= a), default=0)
@@ -338,7 +349,7 @@ def frame(t):
     fm = film_at(s, u)
     if fm: base = film_img(fm[0])                                    # 連番は重ねずにそのまま流す
     vx, vy, vw, vh = view_of(track(s["cam"], u, mv=0.9, d=s["d"])); z = W / vw
-    fr = base.crop((int(vx), int(vy), int(vx + vw), int(vy + vh))).resize((W, VIEW_H), Image.BILINEAR).convert("RGBA")
+    fr = view_image(base, not fm and any(base is v for v in _img.values()), (int(vx), int(vy), int(vx + vw), int(vy + vh)))
     tr = lambda x, y: ((x - vx) * z, (y - vy) * z)
     ov = Image.new("RGBA", (W, VIEW_H), (0, 0, 0, 0)); d = ImageDraw.Draw(ov)
     for a, b, r in s["hl"]:                                          # 強調の枠（現れて 0.35 秒で太さが落ち着く）

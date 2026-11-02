@@ -32,6 +32,14 @@ def step(title, cmd):
     return r.stdout
 
 
+def compose_step(title, cmd, out, jobs, work):
+    """画面の組み立て。--jobs が 2 以上なら区間に分けて並列に（時刻だけで絵が決まる）。"""
+    if int(jobs) < 2: return step(title, cmd + ["--out", out])
+    print(f"== {title}（{jobs} 並列）", flush=True)
+    import render_jobs
+    render_jobs.run_compose(cmd, out, int(jobs), work)
+
+
 FULL_HEIGHT = 720   # 全身の型は完成で高さ約 700 まで縮めるので、それより大きく作っても絵に出ない（1280 の 1.2 倍速。ユーザーが見て決めた）
 
 
@@ -61,10 +69,10 @@ def main():
         if v: comp += [k, v]
 
     if style == "cursor":
-        step("画面の組み立て（カーソルだけ）", comp + ["--out", out])
+        compose_step("画面の組み立て（カーソルだけ）", comp, out, A.jobs, work)
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
-        step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale, "--out", main_mp4])
+        compose_step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale], main_mp4, A.jobs, work)
         face = os.path.join(tmp, "mascot.webm"); extra = ["--no-events", "--crop", "face"] if style == "wipe" else full_height_args(os.path.join(work, "config.json"))   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", "--jobs", A.jobs, *extra))
