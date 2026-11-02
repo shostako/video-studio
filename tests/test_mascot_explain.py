@@ -118,3 +118,14 @@ def test_full_style_settings(tmp_path):
     assert explain.full_args(str(c), fine=True) == []
     c.write_text(json.dumps({"out_height": 1000}), encoding="utf-8")
     assert explain.full_args(str(c)) == ["--work-scale", "0.64", "--fps", "30"]
+
+
+def test_wipe_style_settings(tmp_path):
+    import json
+    import explain
+    c = tmp_path / "config.json"
+    c.write_text(json.dumps({"poses": {}}), encoding="utf-8")
+    assert explain.wipe_args(str(c)) == ["--out-height", "1070", "--work-scale", "0.64", "--fps", "30"]
+    assert explain.wipe_args(str(c), fine=True) == []
+    c.write_text(json.dumps({"out_height": 1000}), encoding="utf-8")
+    assert explain.wipe_args(str(c)) == ["--work-scale", "0.64", "--fps", "30"]
