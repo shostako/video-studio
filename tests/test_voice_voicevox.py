@@ -102,3 +102,81 @@ def test_hear_all_failure_keeps_going_and_says_why(tmp_path, monkeypatch, capsys
 def test_scene_scripts_points_at_the_sibling_skill():
     import voice
     assert os.path.exists(os.path.join(voice.SCENE_SCRIPTS, "common.py"))
+
+
+def _proj(tmp_path, n=2):
+    """本物の ffmpeg で行の声を作った作業フォルダ。"""
+    import subprocess
+    import voice
+    from lib import Proj
+    w = tmp_path / "w"; (w / "voice").mkdir(parents=True)
+    lines = [{"text": f"だい{i}ぎょう"} for i in range(1, n + 1)]
+    (w / "config.json").write_text(json.dumps({"poses": {"a": "a.png"}, "voice": {"caption": "x", "lines": lines}}), encoding="utf-8")
+    for i in range(1, n + 1):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1", "-ac", "1", str(w / "voice" / f"l{i}.wav")], check=True)
+    return voice, Proj(str(w)), lines
+
+
+def _fake_words(tmp_path, monkeypatch):
+    (tmp_path / "faster_whisper.py").write_text("""
+import os
+class W:
+    def __init__(self, word, start, end): self.word, self.start, self.end = word, start, end
+class S:
+    text = ""
+    words = [W("だい1", 0.1, 0.5), W("ぎょう", 0.5, 0.9), W("幻", 1.5, 1.52), W("だい2", 2.0, 2.4), W("ぎょう", 2.4, 2.8)]
+class WhisperModel:
+    def __init__(self, *a, **k):
+        with open(os.environ["LOADS"], "a") as f: f.write("x")
+    def transcribe(self, audio, **k):
+        assert k["word_timestamps"] and k["condition_on_previous_text"] is False
+        return [S()], None
+""", encoding="utf-8")
+    monkeypatch.setenv("LOADS", str(tmp_path / "loads")); monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+
+
+def test_full_synth_listens_once_and_reuses_words_for_render(tmp_path, monkeypatch, capsys):
+    voice, P, lines = _proj(tmp_path); _fake_words(tmp_path, monkeypatch)
+    monkeypatch.setattr(voice, "WS", sys.executable)
+    voice.report_match(P, lines, [1, 2], P.cfg["voice"], 1.0)
+    out = capsys.readouterr().out
+    assert "行1 台本との一致 1.00: だい1ぎょう" in out and "行2 台本との一致 1.00: だい2ぎょう" in out
+    assert (tmp_path / "loads").read_text() == "x"
+    wav, words = P.p("voice", "master.wav"), P.p("voice", "master.words.json")
+    before = os.path.getmtime(wav)
+    os.utime(words, (before + 5, before + 5))
+    voice.build_master(P, P.cfg["voice"], lines, 1.0)    # vm voice master を流しても
+    assert os.path.getmtime(wav) == before and os.path.getmtime(words) > os.path.getmtime(wav)    # 書き出しは聞き直さない
+
+
+def test_partial_synth_hears_only_those_lines(tmp_path, monkeypatch):
+    voice, P, lines = _proj(tmp_path, 3)
+    monkeypatch.setattr(voice, "hear_all", lambda paths: ["x" for _ in paths])
+    monkeypatch.setattr(voice, "hear_master", lambda P: pytest.fail("一部の行では全体を聞かない"))
+    voice.report_match(P, lines, [2], P.cfg["voice"], 0.5)
+
+
+def test_changed_voice_changes_master_so_render_listens_again(tmp_path):
+    import subprocess
+    voice, P, lines = _proj(tmp_path)
+    voice.build_master(P, P.cfg["voice"], lines, 0.5); a = open(P.p("voice", "master.wav"), "rb").read()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=1", "-ac", "1", P.p("voice", "l2.wav")], check=True)
+    voice.build_master(P, P.cfg["voice"], lines, 0.5)
+    assert open(P.p("voice", "master.wav"), "rb").read() != a
+
+
+def test_heard_by_line_drops_words_in_the_silence():
+    import voice
+    info = [{"n": 1, "start": 0.0, "dur": 1.0}, {"n": 2, "start": 2.0, "dur": 1.0}]
+    words = [["あ", 0.1, 0.5], ["幻", 1.5, 1.6], ["い", 2.1, 2.5], ["う", 1.25, 1.27]]
+    assert voice.heard_by_line(words, info) == {1: "あう", 2: "い"}
+
+
+def test_listening_failure_keeps_the_voice_and_says_why(tmp_path, monkeypatch, capsys):
+    voice, P, lines = _proj(tmp_path)
+    (tmp_path / "faster_whisper.py").write_text("class WhisperModel:\n    def __init__(self, *a, **k): raise RuntimeError('こわれた')\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path)); monkeypatch.setattr(voice, "WS", sys.executable)
+    voice.report_match(P, lines, [1, 2], P.cfg["voice"], 1.0)
+    out = capsys.readouterr().out
+    assert "聞き取りができなかった" in out and "こわれた" in out
+    assert os.path.exists(P.p("voice", "master.wav")) and not os.path.exists(P.p("voice", "master.words.json"))
