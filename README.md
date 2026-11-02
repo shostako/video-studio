@@ -93,7 +93,7 @@ Windows 版の Claude Code は、コマンドを Git Bash で動かす。スキ�
 ```bash
 vm pack rin --new ~/.local/share/video-scene/work/my-howto      # パックから作業フォルダ（名前だけなら ~/.local/share/video-scene/packs/ の中）
 # config.json に声の設定と台詞、身振りを書く（パックには声の設定が入っていない）。例:
-#   "voice": {"caption": "ニュースのナレーターのような、癖のない落ち着いた女性の声。丁寧に、聞き取りやすく説明している。クリアな音質。", "seed": 2024, "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
+#   "voice": {"caption": "余裕のある大人の女性。艶のある低めの声。相手をからかうように楽しげに、てきぱきと早めに説明している。クリアな音質。", "seed": 2024, "ref": "voice/ref.wav", "lines": [{"text": "このエクセルの使い方を説明する。"}, ...]},
 #   "events": [{"line": 1, "kw": "せつめい", "pose": "open"}, ...]   （行 1 の声の「せつめい」の直前に open へ。書き方は skills/video-mascot/references/config-spec.md）
 #   声を選ぶなら voice.candidates に説明文を数通り書いて vm voice <作業フォルダ> candidates で聞き比べ、決めた 1 本を voice.ref に
 vm voice ~/.local/share/video-scene/work/my-howto synth && vm voice ~/.local/share/video-scene/work/my-howto master   # 声

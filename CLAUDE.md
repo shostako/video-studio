@@ -33,6 +33,6 @@
 - **既定の挙動は変えない**。新しい機能は opt-in で足す。既定の切り替えが要ると思ったら、`DECISIONS.md` の「未決」に書いて止まる。
 - 判断に迷う仕様は推測で進めず、`DECISIONS.md` の「未決」に書いて止まる。
 - `.github/workflows/` の YAML は変えない（Claude の GitHub App には workflows 権限が無く、push が拒否される）。検査を増やすときは `scripts/ci.sh` か `requirements-ci.txt`。ジョブ名 `ci` は `main` の保護ルールが参照している。
-- このリポは public。顧客名・実際の図面・本物の声や絵は入れない。サンプルは合成する。
+- このリポは public。顧客名・実際の図面・本物の声や絵は入れない。サンプルは合成する（`skills/video-mascot/data/voices/` の手本は Irodori-TTS の合成音声）。
 - コードは Python 3.12 前提（f-string の式の中でバックスラッシュを使っている）。
 - 作業ログは `logs/yyyy-MM.md` に `## yyyy-MM-dd 概要` の見出しで書く。
