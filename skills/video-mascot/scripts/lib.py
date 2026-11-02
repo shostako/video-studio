@@ -382,6 +382,18 @@ def partial_voice_ref(only, n_lines, exists):
     return None
 
 
+MOTION_PIXELS = {"breath": ("lift",), "body": ("sway",), "head": ("nod",), "switch": ("anticipate_px", "overshoot_px")}
+
+
+def scale_motion_pixels(mot, s):
+    """motion_config の結果の画素の値（持ち上げ・揺れ・うなずき・予備動作）を絵の倍率 s に合わせる。元の mot を書き換える。"""
+    if not mot: return mot
+    for k, names in MOTION_PIXELS.items():
+        if mot.get(k):
+            for n in names: mot[k][n] = mot[k][n] * s
+    return mot
+
+
 def scaled_area(area, s):
     """元の絵で決めた面積のしきい値を、絵の倍率 s の絵に合わせる（面積は s の 2 乗）。"""
     return area * s * s

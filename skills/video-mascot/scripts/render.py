@@ -34,7 +34,7 @@ import copy, json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scaled_area, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -67,7 +67,7 @@ WS = opt("--work-scale", 1.0, float)              # 元の絵を縮めて扱う�
 if not 0 < WS <= 1: die(f"--work-scale は 0 より大きく 1 以下: {WS}")
 CP = copy.copy(P); CP.cfg = copy.deepcopy(C)
 if WS != 1.0:
-    P.work_scale = WS; scale_config_pixels(C, WS); P.pad = int(round(P.pad * WS))
+    P.work_scale = WS; scale_config_pixels(C, WS); P.pad = int(round(P.pad * WS)); scale_motion_pixels(MOT, WS)
 P.fps = opt("--fps", P.fps, int)
 PCFG = C["poses"]; VIEW = {p: pose_view(PCFG[p]) for p in PCFG}; FACE_ON = {p: PCFG[p].get("face", True) is not False for p in PCFG}
 T0 = opt("--from", 0.0, float); MS = opt("--mouth-scale", float(C.get("mouth_scale", 1.0)), float)
@@ -212,7 +212,8 @@ KEEP = {}; HEAD = {}
 for p_ in P.poses:                       # 顔（目と口）の矩形。この中の白（白目・歯）は背景にしない
     if not FACE_ON[p_]: KEEP[p_] = []; HEAD[p_] = None; continue
     mr, er, _ = map_rois(P, p_); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
-    KEEP[p_] = [(er[0] - 10, er[1] - 10, er[2] + 10, er[3] + 10), (mr[0] - 10, mr[1] - 10, mr[2] + 10, mr[3] - 24)]   # 目と口を別々の箱に（口はあごの下へ広げない）
+    m_ = lambda v: int(round(v * WS))
+    KEEP[p_] = [(er[0] - m_(10), er[1] - m_(10), er[2] + m_(10), er[3] + m_(10)), (mr[0] - m_(10), mr[1] - m_(10), mr[2] + m_(10), mr[3] - m_(24))]   # 目と口を別々の箱に（口はあごの下へ広げない）
 
 def face_affine(src, dst, roi):
     x0, y0, x1, y1 = roi
@@ -249,7 +250,7 @@ def ib_item(item, src_pose, lerp_parts=False):
     allp = list(PARTS[src_pose].values())
     if not allp: IBCACHE[key] = (clean, shadow, {}, anc, sc, None); return IBCACHE[key]
     xs = [p_[1] for p_ in allp] + [p_[1] + p_[0].shape[1] for p_ in allp]; ys = [p_[2] for p_ in allp] + [p_[2] + p_[0].shape[0] for p_ in allp]
-    roi = (max(0, min(xs) - 80), max(0, min(ys) - 100), min(img.shape[1], max(xs) + 80), min(img.shape[0], max(ys) + 60))
+    roi = (max(0, min(xs) - int(80 * WS)), max(0, min(ys) - int(100 * WS)), min(img.shape[1], max(xs) + int(80 * WS)), min(img.shape[0], max(ys) + int(60 * WS)))
     A, cc = face_affine(PB[src_pose], clean, roi); parts = {}; rig = HEAD[src_pose]
     if cc >= 0.80:
         rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
@@ -259,7 +260,7 @@ def ib_item(item, src_pose, lerp_parts=False):
         for k, (im, px, py) in PARTS[src_pose].items():
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-            if OCC: full = occlude(full, clean, ref, pre=pre)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
+            if OCC: full = occlude(full, clean, ref, pre=pre, grow=2 * int(round(3 * WS)) + 1)   # 中割りで顔の前に来た手には貼らない（config.face.occlude）
             yy, xx = np.where(full[:, :, 3] > 0)
             if len(xx): parts[k] = (full[yy.min():yy.max() + 1, xx.min():xx.max() + 1].copy(), int(xx.min()), int(yy.min()))   # copy: 切り抜きが全面の絵を掴んだまま控えに残らない
     IBCACHE[key] = (clean, shadow, parts, anc, sc, rig); return IBCACHE[key]
@@ -383,7 +384,7 @@ def compose(pl, mth, blk, look=None):
     if isinstance(blk, tuple):                    # 細かいまばたき: 2つの段を割合で溶かす
         lo_, hi_, al_ = blk; i_lo = img.copy(); paste(i_lo, part_of(parts, lo_)); paste(img, part_of(parts, hi_)); img = cv2.addWeighted(img, al_, i_lo, 1 - al_, 0)
     else: paste(img, part_of(parts, blk))
-    k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = 30 if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
+    k = KEEP[pl[2] if pl[0] == "ib" else pl[1]]; m1 = shift_m(anc, sc); pad_ = int(round(30 * WS)) if pl[0] == "ib" else 0     # 中割りは顔が少し動くので広めに
     return shift(img, anc, sc), shift(shadow, anc, sc, val=0), (m1, [(b[0] - pad_, b[1] - pad_, b[2] + pad_, b[3] + pad_) for b in k], rig)
 
 # ---------- 頭の向きの列（config.head、opt-in）----------
@@ -492,9 +493,9 @@ for f in range(f0, min(f1, NALL)):
     if MOT is None and IDLE_OFF:                   # config.idle: false（opt-in）で、止まっている間の息づかいを全部止める
         s, dx, dy = 1.0, 0.0, 0.0
     elif MOT is None:
-        s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * math.sin(2 * math.pi * tt / 5.3); dy = -2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]
+        s = 1 + 0.004 * math.sin(2 * math.pi * tt / 3.6); dx = 1.5 * WS * math.sin(2 * math.pi * tt / 5.3); dy = (-2.0 * math.sin(2 * math.pi * tt / 3.6) - 2.5 * sm[f]) * WS
     else:
-        s, dx, dy = 1.0, 0.0, -2.5 * sm[f]
+        s, dx, dy = 1.0, 0.0, -2.5 * WS * sm[f]
         if MOT["breath"]:
             b_ = MOT["breath"]; v_ = 2 * breath_wave(tt, b_["period"], b_["jitter"], b_["inhale"], SEED) - 1; s += b_["scale"] * v_; dy -= b_["lift"] * v_
         if MOT["body"]: dx = MOT["body"]["sway"] * wobble(tt, MOT["body"]["period"], SEED + 1)

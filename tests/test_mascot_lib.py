@@ -606,7 +606,7 @@ def test_occlude_matches_the_old_form_with_and_without_a_shared_diff(seed, hand)
 
 def test_render_shares_the_occlude_diff():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
-    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre)" in src
+    assert "pre = occlude_diff(clean, ref) if OCC else None" in src and "occlude(full, clean, ref, pre=pre," in src
 
 
 def test_scale_config_pixels():
@@ -642,3 +642,21 @@ def test_anchor_area_thresholds_follow_the_work_scale():
     assert lib.scaled_area(400, 1.0) == 400
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
     assert "boot_anchor(im, min_area=scaled_area(2500, WS))" in src and "feet_anchor(im, min_area=scaled_area(400, WS))" in src
+
+
+def test_scale_motion_pixels():
+    m = lib.motion_config({})
+    lib.scale_motion_pixels(m, 0.5)
+    assert m["breath"]["lift"] == 1.0 and m["body"]["sway"] == 0.75 and m["head"]["nod"] == 1.0
+    assert m["switch"]["anticipate_px"] == 2.5 and m["switch"]["overshoot_px"] == 2.0
+    assert m["head"]["roll"] == 0.8 and m["breath"]["scale"] == 0.004 and m["breath"]["period"] == 3.6    # 度・割合・秒は変えない
+    assert lib.scale_motion_pixels(None, 0.5) is None
+    off = lib.motion_config({"breath": False}); lib.scale_motion_pixels(off, 0.5); assert off["breath"] is None
+
+
+def test_render_scales_every_pixel_literal_with_the_work_scale():
+    """動きの画素の値を倍率に合わせないと、絵を縮めた分だけ動きが相対的に大きくなる（0.64 倍で約 1.5 倍）。"""
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "scale_motion_pixels(MOT, WS)" in src and src.index("MOT = motion_config") < src.index("scale_motion_pixels(MOT, WS)")
+    for bad in ("dx = 1.5 * math.sin", "s, dx, dy = 1.0, 0.0, -2.5 * sm[f]", "pad_ = 30 if"): assert bad not in src
+    assert "grow=2 * int(round(3 * WS)) + 1" in src      # WS = 1 で既定の 7 のまま
