@@ -1,6 +1,6 @@
 """画面操作の解説動画を、型を選んで 1 本に組む入口（撮影・台本・声は先に用意する）。
   vm explain <作業フォルダ> --shots <撮影フォルダ> --scenes <scenes.py> --style cursor|wipe|full --out 出力.mp4
-             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N] [--fine]
+             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N|auto] [--fine]
 
   型（2026-11-01 にユーザーと決めた 3 つ）:
     cursor  カーソルだけ。画面を全面に出し、章が替わった所に左上へ見出しを数秒出す（マスコットなし）
@@ -66,8 +66,10 @@ def main():
     ap.add_argument("work"); ap.add_argument("--shots", required=True); ap.add_argument("--scenes", required=True)
     ap.add_argument("--style", required=True, choices=["cursor", "wipe", "full"]); ap.add_argument("--out", required=True)
     ap.add_argument("--scale", default="0.73"); ap.add_argument("--chapters"); ap.add_argument("--clip-bottom"); ap.add_argument("--clip-right")
-    ap.add_argument("--keep", action="store_true"); ap.add_argument("--jobs", default="1"); ap.add_argument("--fine", action="store_true")
+    ap.add_argument("--keep", action="store_true"); ap.add_argument("--jobs", default="auto"); ap.add_argument("--fine", action="store_true")
     A = ap.parse_args()
+    import render_jobs
+    A.jobs = str(render_jobs.resolve_jobs(A.jobs)); print(f"並列の数: {A.jobs}", flush=True)
     work, shots, scenes, style, out = os.path.abspath(A.work), A.shots, A.scenes, A.style, A.out
     for p in (work, shots, scenes, COMPOSE):
         if not os.path.exists(p): die(f"無い: {p}")

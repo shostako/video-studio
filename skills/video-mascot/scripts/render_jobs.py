@@ -11,6 +11,51 @@ MIN_CHUNK, MAX_CHUNK = 5.0, 30.0   # 区間の秒。短いと起動の分が無�
 VALUE_FLAGS = ("--jobs", "--from", "--to", "--out", "--crop")
 
 
+MAX_AUTO_JOBS = 4       # 4 スレッドの PC でも 2 より速いが、それより増やしても並列の効きが小さい
+GB_PER_JOB = 1.0        # 1 区間のメモリの上限の目安（実測 0.6〜1.0GB）
+GB_RESERVED = 1.0       # 組み立て後の配置と OS の分
+
+
+def available_gb():
+    """使えるメモリ（GB）。分からなければ None。"""
+    try:
+        with open("/proc/meminfo", encoding="ascii") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"): return int(line.split()[1]) / 1024 ** 2
+    except OSError:
+        pass
+    if os.name == "nt":
+        import ctypes
+        class M(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+        m = M(); m.dwLength = ctypes.sizeof(M)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)): return m.ullAvailPhys / 1024 ** 3
+    return None
+
+
+def cpu_threads():
+    """このプロセスが使える CPU のスレッド数（taskset などの制限を反映する）。"""
+    try: return len(os.sched_getaffinity(0))
+    except AttributeError: return os.cpu_count() or 1
+
+
+def auto_jobs(cpus, mem_gb):
+    """--jobs の自動の値。CPU のスレッド数と空きメモリの小さい方で、上限 MAX_AUTO_JOBS。メモリが分からなければ控えめに 2 まで。"""
+    by_mem = 2 if mem_gb is None else int((mem_gb - GB_RESERVED) / GB_PER_JOB)
+    return max(1, min(cpus, by_mem, MAX_AUTO_JOBS))
+
+
+def resolve_jobs(value):
+    """--jobs の値（数か auto）を数に。"""
+    if str(value) == "auto": return auto_jobs(cpu_threads(), available_gb())
+    try: n = int(value)
+    except ValueError: die(f"--jobs は 1 以上の数か auto: {value}")
+    if n < 1: die(f"--jobs は 1 以上の数か auto: {value}")
+    return n
+
+
 def plan_chunks(f0, f1, jobs, fps):
     """コマの範囲 [f0, f1) を区間 [(a, b), ...] に分ける。worker より多く分けて、重い区間に引きずられにくくする。"""
     if f1 <= f0: return []
@@ -72,9 +117,14 @@ def _tail(log, n=8):
 
 
 def frame_count(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path], capture_output=True, text=True)
-    try: return int(r.stdout.strip().split(",")[0])
-    except ValueError: return -1
+    """動画のコマ数。数えられなければ -1。ffprobe が無い・動かない環境でも ffmpeg だけで数える（パケットを 1 行ずつ書く形式を使い、進み具合の表示に頼らない）。"""
+    if shutil.which("ffprobe"):
+        r = subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path], capture_output=True, text=True)
+        try: return int(r.stdout.strip().split(",")[0])
+        except ValueError: pass
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:v", "-c", "copy", "-f", "framecrc", "-"], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0: return -1
+    return sum(1 for line in r.stdout.splitlines() if line and not line.startswith("#"))
 
 
 COMPOSE_FPS = 30   # compose.py の FPS

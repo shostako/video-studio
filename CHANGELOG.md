@@ -4,6 +4,7 @@
 
 ## 未リリース
 
+- **`vm explain` の並列の数を自動で決める**: CPU のスレッド数と空きメモリから（上限 4）。`--jobs N` で指定できる
 - **声のエンジンに VOICEVOX を選べる**: `voice.engine: "voicevox"` と `voice.speaker`。GPU が要らない。既定は Irodori-TTS のまま
 - **ワイプの型も軽く**: `vm explain --style wipe` は元の絵 0.64 倍・高さ 1070・30fps で書き出す。47 秒の動画で 129 秒 → 62 秒（`--jobs 4`）。元の細かさは `--fine`
 - **全身の型を軽く**: `vm explain --style full` は元の絵を 0.64 倍で扱い、30fps で書き出す。49 秒の動画で 128 秒（`--jobs 4`）、朝は 713 秒。元の細かさは `--fine`

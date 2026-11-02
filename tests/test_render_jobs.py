@@ -1,6 +1,8 @@
 """vm render --jobs の区間の分け方と引数（動画は作らない）。"""
 import math
 import sys
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -76,3 +78,29 @@ def test_compose_chunks_leave_the_voice_to_the_parent():
     src = (ROOT / "skills/video-mascot/scripts/render_jobs.py").read_text(encoding="utf-8")
     assert '"--video-only"], dict(os.environ), log)' in src
     assert '"--video-only"' in (ROOT / "skills/screen-explainer/scripts/compose.py").read_text(encoding="utf-8")
+
+
+def test_auto_jobs():
+    assert rj.auto_jobs(24, 16.0) == 4           # 上限
+    assert rj.auto_jobs(2, 16.0) == 2            # CPU で決まる
+    assert rj.auto_jobs(8, 3.5) == 2             # メモリで決まる
+    assert rj.auto_jobs(8, 1.5) == 1 and rj.auto_jobs(1, 16.0) == 1 and rj.auto_jobs(8, 0.2) == 1
+    assert rj.auto_jobs(8, None) == 2            # メモリが分からなければ控えめに
+
+
+def test_resolve_jobs(capsys):
+    assert rj.resolve_jobs("3") == 3 and rj.resolve_jobs(1) == 1 and 1 <= rj.resolve_jobs("auto") <= rj.MAX_AUTO_JOBS
+    for bad in ("0", "x"):
+        with pytest.raises(SystemExit): rj.resolve_jobs(bad)
+
+
+def test_frame_count_without_ffprobe(tmp_path, monkeypatch):
+    import shutil, subprocess
+    if not shutil.which("ffmpeg"): pytest.skip("ffmpeg が要る")
+    v = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64:r=30", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v)], check=True)
+    assert rj.frame_count(str(v)) == 30
+    real = shutil.which
+    monkeypatch.setattr(rj.shutil, "which", lambda n: None if n == "ffprobe" else real(n))
+    assert rj.frame_count(str(v)) == 30
+    assert rj.frame_count(str(tmp_path / "none.mp4")) == -1
