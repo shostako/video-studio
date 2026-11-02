@@ -1,7 +1,7 @@
 """vm render --jobs N: 書き出す範囲を短い区間に分けて並列に書き出し、1 本につなぐ。
 各区間は render.py を別のプロセスで動かす（コマの中身は時刻だけで決まり、前のコマに頼らない）。
 区間の切れ目は圧縮の切れ目になるだけで、絵は変わらない。つなぎはコピーなので圧縮し直さない。"""
-import json, math, os, re, shutil, subprocess, sys, tempfile
+import json, math, os, shutil, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 from lib import die
@@ -117,13 +117,14 @@ def _tail(log, n=8):
 
 
 def frame_count(path):
-    if shutil.which("ffprobe") is None:   # ffmpeg だけの環境
-        r = subprocess.run(["ffmpeg", "-v", "info", "-i", path, "-map", "0:v", "-c", "copy", "-f", "null", "-"], capture_output=True, text=True, errors="replace")
-        m = re.findall(r"frame=\s*(\d+)", r.stderr)
-        return int(m[-1]) if m else -1
-    r = subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path], capture_output=True, text=True)
-    try: return int(r.stdout.strip().split(",")[0])
-    except ValueError: return -1
+    """動画のコマ数。数えられなければ -1。ffprobe が無い・動かない環境でも ffmpeg だけで数える（パケットを 1 行ずつ書く形式を使い、進み具合の表示に頼らない）。"""
+    if shutil.which("ffprobe"):
+        r = subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path], capture_output=True, text=True)
+        try: return int(r.stdout.strip().split(",")[0])
+        except ValueError: pass
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:v", "-c", "copy", "-f", "framecrc", "-"], capture_output=True, text=True, errors="replace")
+    if r.returncode != 0: return -1
+    return sum(1 for line in r.stdout.splitlines() if line and not line.startswith("#"))
 
 
 COMPOSE_FPS = 30   # compose.py の FPS

@@ -92,3 +92,15 @@ def test_resolve_jobs(capsys):
     assert rj.resolve_jobs("3") == 3 and rj.resolve_jobs(1) == 1 and 1 <= rj.resolve_jobs("auto") <= rj.MAX_AUTO_JOBS
     for bad in ("0", "x"):
         with pytest.raises(SystemExit): rj.resolve_jobs(bad)
+
+
+def test_frame_count_without_ffprobe(tmp_path, monkeypatch):
+    import shutil, subprocess
+    if not shutil.which("ffmpeg"): pytest.skip("ffmpeg が要る")
+    v = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64:r=30", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(v)], check=True)
+    assert rj.frame_count(str(v)) == 30
+    real = shutil.which
+    monkeypatch.setattr(rj.shutil, "which", lambda n: None if n == "ffprobe" else real(n))
+    assert rj.frame_count(str(v)) == 30
+    assert rj.frame_count(str(tmp_path / "none.mp4")) == -1
