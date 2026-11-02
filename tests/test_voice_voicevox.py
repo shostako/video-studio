@@ -220,6 +220,9 @@ def test_reading_match_ignores_how_it_is_written():
     assert voice.reading_match("一人あたりの金額が出ます。", "1人当たりの金額が出ます") >= voice.LOW_MATCH
     assert voice.reading_match("ぜひ試してみてください。", "ぜひためしてみてください") == 1.0
     assert voice.reading_match("ぜひ試してみてください。", "ぜひ騙してください") < 0.9
+    assert voice.reading_match("ICMです", "です") < voice.LOW_MATCH    # 英字の語が抜けたら下がる
+    assert voice.reading_match("ICM", "") == 0
+    assert voice.reading_match("ICMです", "icmです") == 1.0
 
 
 def test_low_match_says_how_to_fix_the_reading(tmp_path, monkeypatch, capsys):

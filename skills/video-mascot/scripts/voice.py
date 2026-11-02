@@ -155,7 +155,7 @@ def reading_match(script, heard):
     import pykakasi
     from lib import num_to_kanji
     kk = pykakasi.kakasi()
-    kana = lambda t: re.sub(r"[^ぁ-ゖ]", "", "".join(x["hira"] for x in kk.convert(num_to_kanji(t))))
+    kana = lambda t: re.sub(r"[^ぁ-ゖa-z0-9]", "", "".join(x["hira"] for x in kk.convert(num_to_kanji(t))).lower())    # かなにならない英字は残す（消すと ICM が抜けても気づかない）
     return difflib.SequenceMatcher(None, kana(script), kana(heard)).ratio()
 
 
