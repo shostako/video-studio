@@ -1596,23 +1596,31 @@ def home_route(a, b, home, has_pair):
 
 
 
-def occlude(full, target, ref, thr=40.0, grow=7):
-    """写した部品（絵全体の大きさの RGBA）の透明度を、写す先の絵 target が写す元の絵 ref（写す先の座標に合わせたもの）と
-    大きく違う所で 0 にする。顔の前にある手（顎に手を当てる姿勢など）の上に、元の絵の顔（口・あご）を貼らないため。
-    違う所は grow 画素だけ広げ、縁はぼかす。戻り値は新しい RGBA（full は書き換えない）。"""
+def occlude_diff(target, ref, thr=40.0):
+    """occlude の前半: 写す先と写す元の違う所の塊。1 枚の絵に部品が何枚あっても同じ結果なので、1 回だけ計算して pre で渡す。"""
     b_, g_, r_ = cv2.split(target.astype(np.float32) - ref.astype(np.float32))   # np.linalg.norm(axis=2) は 1 枚 15 ms 掛かる
     d = cv2.sqrt(cv2.multiply(b_, b_) + cv2.multiply(g_, g_) + cv2.multiply(r_, r_))
     m = (cv2.GaussianBlur(d, (0, 0), 1.5) > thr).astype(np.uint8)
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m)
+    return n, lab, st
+
+
+def occlude(full, target, ref, thr=40.0, grow=7, pre=None):
+    """写した部品（絵全体の大きさの RGBA）の透明度を、写す先の絵 target が写す元の絵 ref（写す先の座標に合わせたもの）と
+    大きく違う所で 0 にする。顔の前にある手（顎に手を当てる姿勢など）の上に、元の絵の顔（口・あご）を貼らないため。
+    違う所は grow 画素だけ広げ、縁はぼかす。戻り値は新しい RGBA（full は書き換えない）。"""
     ys, xs = np.nonzero(full[:, :, 3] > 0)
     if not len(xs): return full.copy()
-    H, W = m.shape; mg = 25                          # 部品の範囲（少し広げた箱）
+    n, lab, st = pre if pre is not None else occlude_diff(target, ref, thr)
+    H, W = lab.shape; mg = 25                        # 部品の範囲（少し広げた箱）
     bx0, by0, bx1, by1 = max(0, xs.min() - mg), max(0, ys.min() - mg), min(W, xs.max() + mg + 1), min(H, ys.max() + mg + 1)
-    n, lab, st, _ = cv2.connectedComponentsWithStats(m); keep_c = np.zeros(n, bool)
+    keep_c = np.zeros(n, bool)
     for k in range(1, n):                            # 違う所の塊のうち、部品の箱の外まで続くもの（＝顔の外から入ってきた手）だけ
         x, y, w, h_, _a = st[k]
         if x < bx0 or y < by0 or x + w > bx1 or y + h_ > by1:
             if ((lab[by0:by1, bx0:bx1] == k).any()): keep_c[k] = True
+    if not keep_c.any(): return full.copy()          # 手が入っていない（ほとんどの絵）。下の計算をしても透明度は同じ
     m = keep_c[lab].astype(np.uint8)                 # 顔の中で閉じた違い（目や口の描き方の差）は手と見なさない
     if grow: m = cv2.dilate(m, np.ones((grow, grow), np.uint8))
     keep = 1 - np.clip(cv2.GaussianBlur(m.astype(np.float32), (0, 0), 1.5) * 1.5, 0, 1)
