@@ -34,7 +34,7 @@ import copy, json, math, os, random, re, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
-from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, plan_at, choose_mouth as choose, smooth_mouth
+from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scaled_area, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
@@ -142,7 +142,7 @@ LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
 def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
 def legs(img, sc):
     """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。"""
-    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None)
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None, min_area=scaled_area(400, WS))
     if info is None: return img, None
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
@@ -158,7 +158,7 @@ for p in P.poses:
     if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0)
     else: PB[p], SH[p] = img, np.zeros(img.shape[:2], np.float32)
 AN = C.get("anchor", {"mode": "boot"}); AMODE = AN.get("mode", "boot")
-DETECT, HEIGHT = {"boot": (boot_anchor, body_height), "feet": (feet_anchor, fg_height)}.get(AMODE, (None, None))   # feet: 色に依らない足元（opt-in）
+DETECT, HEIGHT = {"boot": (lambda im: boot_anchor(im, min_area=scaled_area(2500, WS)), body_height), "feet": (lambda im: feet_anchor(im, min_area=scaled_area(400, WS)), fg_height)}.get(AMODE, (None, None))   # feet: 色に依らない足元（opt-in）
 if DETECT:
     ANCH = {p: tuple(map(float, PCFG[p]["anchor"])) if "anchor" in PCFG[p] else DETECT(PB[p]) for p in P.poses}
     miss = [p for p, v in ANCH.items() if v is None]
@@ -167,7 +167,7 @@ if DETECT:
     for p in P.poses:                             # poses.<名前>.scale: 背の高さで揃えず、この倍率に固定（伸び・お辞儀・屈むなど背が変わるポーズ。opt-in）
         if "scale" in PCFG[p]: SCALE[p] = float(PCFG[p]["scale"])
     if AMODE == "boot":                           # 靴で拾った軸足が足元の線に乗っているか（紺のズボンの裾などを拾うと、大きさの補正も狂う）。知らせるだけ
-        off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p]))]
+        off = [p for p in P.poses if "anchor" not in PCFG[p] and (lambda f_: f_ is not None and abs(ANCH[p][1] - f_[1]) > 0.01 * H0)(feet_anchor(PB[p], min_area=scaled_area(400, WS)))]
         if off: print(f"注意: 靴で拾った軸足が足元に無い姿勢: {off}（服の裾などを拾っている。config の anchor を {{\"mode\": \"feet\"}} に。vm views で確かめる）", file=sys.stderr)
 elif AMODE == "manual":
     ANCH = {p: tuple(v) for p, v in AN["points"].items()}

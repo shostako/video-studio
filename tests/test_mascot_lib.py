@@ -630,3 +630,15 @@ def test_cache_checks_use_the_original_size():
     src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
     for a in ("dense_paths(CP, pa, pb,", "wan_paths(CP, a_, b_,", "dense_paths(CP, pa_, pb_,", "rife_ready(CP, pa_, pb_,", "wan_need(CP, e_[1], e_[2],"): assert a in src
     assert "dense_paths(P," not in src and "wan_paths(P," not in src and "rife_ready(P," not in src and "wan_need(P," not in src
+
+
+def test_anchor_area_thresholds_follow_the_work_scale():
+    """元の絵で 2500 を超える靴（4000 画素）は、0.64 倍でも足元として見つかる（面積は約 4 割になる）。"""
+    img = np.full((1000, 600, 3), 253, np.uint8); img[900:940, 100:200] = 10   # 100×40 = 4000 画素の黒い靴
+    assert lib.boot_anchor(img) is not None
+    small = cv2.resize(img, None, fx=0.64, fy=0.64, interpolation=cv2.INTER_AREA)
+    assert lib.boot_anchor(small) is None                                     # しきい値が元のままだと見つからない
+    assert lib.boot_anchor(small, min_area=lib.scaled_area(2500, 0.64)) is not None
+    assert lib.scaled_area(400, 1.0) == 400
+    src = (Path(lib.__file__).parent / "render.py").read_text(encoding="utf-8")
+    assert "boot_anchor(im, min_area=scaled_area(2500, WS))" in src and "feet_anchor(im, min_area=scaled_area(400, WS))" in src

@@ -382,6 +382,11 @@ def partial_voice_ref(only, n_lines, exists):
     return None
 
 
+def scaled_area(area, s):
+    """元の絵で決めた面積のしきい値を、絵の倍率 s の絵に合わせる（面積は s の 2 乗）。"""
+    return area * s * s
+
+
 FACE_ROIS = ("mouth_roi", "eye_roi", "jaw_roi")
 
 
@@ -1119,7 +1124,7 @@ def _main_blob(m):
     return lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
 
 
-def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None):
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, min_area=400):
     """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
     切れ目の高さは canon の背で測る。canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
     切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
@@ -1129,7 +1134,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。"""
     H, W = img.shape[:2]
     if canon.shape != img.shape: raise ValueError(f"legs_lock: 絵の大きさが基準と違う（{img.shape[1]}x{img.shape[0]} と {canon.shape[1]}x{canon.shape[0]}）")
-    pv = feet_anchor(canon) or (W / 2.0, float(H))
+    pv = feet_anchor(canon, min_area=min_area) or (W / 2.0, float(H))
     M0 = np.float32([[canon_scale, 0, pv[0] * (1 - canon_scale)], [0, canon_scale, pv[1] * (1 - canon_scale)]])
     if canon_scale != 1.0: canon = cv2.warpAffine(canon, M0, (W, H), flags=cv2.INTER_AREA if canon_scale < 1 else cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     mi0 = fg_mask(img); rows = np.where(_main_blob(mi0).any(1))[0]             # 足元と背は人物の塊だけで測る（床の薄い影を拾わない）
