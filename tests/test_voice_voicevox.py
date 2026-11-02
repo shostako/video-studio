@@ -1,6 +1,7 @@
 """声のエンジンの選択肢 VOICEVOX。本物のエンジンの代わりに、同じ HTTP の形の小さなサーバーで確かめる。"""
 import json
 import os
+import shutil
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -104,6 +105,19 @@ def test_scene_scripts_points_at_the_sibling_skill():
     assert os.path.exists(os.path.join(voice.SCENE_SCRIPTS, "common.py"))
 
 
+needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg が無い")
+
+
+def _empty_proj(tmp_path, n=2):
+    """声のファイルが要らないテスト用の作業フォルダ。"""
+    import voice
+    from lib import Proj
+    w = tmp_path / "w"; w.mkdir()
+    lines = [{"text": f"だい{i}ぎょう"} for i in range(1, n + 1)]
+    (w / "config.json").write_text(json.dumps({"poses": {"a": "a.png"}, "voice": {"caption": "x", "lines": lines}}), encoding="utf-8")
+    return voice, Proj(str(w)), lines
+
+
 def _proj(tmp_path, n=2):
     """本物の ffmpeg で行の声を作った作業フォルダ。"""
     import subprocess
@@ -135,6 +149,7 @@ class WhisperModel:
     monkeypatch.setenv("LOADS", str(tmp_path / "loads")); monkeypatch.setenv("PYTHONPATH", str(tmp_path))
 
 
+@needs_ffmpeg
 def test_full_synth_listens_once_and_reuses_words_for_render(tmp_path, monkeypatch, capsys):
     voice, P, lines = _proj(tmp_path); _fake_words(tmp_path, monkeypatch)
     monkeypatch.setattr(voice, "WS", sys.executable)
@@ -149,13 +164,27 @@ def test_full_synth_listens_once_and_reuses_words_for_render(tmp_path, monkeypat
     assert os.path.getmtime(wav) == before and os.path.getmtime(words) > os.path.getmtime(wav)    # 書き出しは聞き直さない
 
 
+def test_full_synth_builds_master_before_listening(tmp_path, monkeypatch, capsys):
+    voice, P, lines = _empty_proj(tmp_path); order = []
+    info = [{"n": 1, "start": 0.0, "dur": 1.0}, {"n": 2, "start": 2.0, "dur": 1.0}]
+    monkeypatch.setattr(voice, "build_master", lambda *a: order.append("build") or info)
+    monkeypatch.setattr(voice, "hear_master", lambda P: order.append("hear") or [["だい1ぎょう", 0.1, 0.9], ["だい2ぎょう", 2.1, 2.9]])
+    monkeypatch.setattr(voice, "hear_all", lambda paths: pytest.fail("全行のときは行ごとに聞かない"))
+    voice.report_match(P, lines, [1, 2], P.cfg["voice"], 1.0)
+    assert order == ["build", "hear"]
+    out = capsys.readouterr().out
+    assert "行1 台本との一致 1.00" in out and "行2 台本との一致 1.00" in out
+
+
 def test_partial_synth_hears_only_those_lines(tmp_path, monkeypatch):
-    voice, P, lines = _proj(tmp_path, 3)
+    voice, P, lines = _empty_proj(tmp_path, 3)
+    monkeypatch.setattr(voice, "build_master", lambda *a: pytest.fail("一部の行ではつながない"))
     monkeypatch.setattr(voice, "hear_all", lambda paths: ["x" for _ in paths])
     monkeypatch.setattr(voice, "hear_master", lambda P: pytest.fail("一部の行では全体を聞かない"))
     voice.report_match(P, lines, [2], P.cfg["voice"], 0.5)
 
 
+@needs_ffmpeg
 def test_changed_voice_changes_master_so_render_listens_again(tmp_path):
     import subprocess
     voice, P, lines = _proj(tmp_path)
@@ -172,6 +201,7 @@ def test_heard_by_line_drops_words_in_the_silence():
     assert voice.heard_by_line(words, info) == {1: "あう", 2: "い"}
 
 
+@needs_ffmpeg
 def test_listening_failure_keeps_the_voice_and_says_why(tmp_path, monkeypatch, capsys):
     voice, P, lines = _proj(tmp_path)
     (tmp_path / "faster_whisper.py").write_text("class WhisperModel:\n    def __init__(self, *a, **k): raise RuntimeError('こわれた')\n", encoding="utf-8")
