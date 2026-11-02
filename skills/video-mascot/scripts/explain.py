@@ -86,7 +86,7 @@ def main():
         compose_step("画面の組み立て（カーソルだけ）", comp, out, A.jobs, work)
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
-        face = os.path.join(tmp, "mascot.webm"); cfg_ = os.path.join(work, "config.json"); extra = ["--no-events", "--crop", "face", *wipe_args(cfg_, A.fine)] if style == "wipe" else full_args(cfg_, A.fine)   # ワイプは顔の周りだけを書き出す（速い）
+        face = os.path.join(tmp, "mascot.mkv"); cfg_ = os.path.join(work, "config.json"); extra = ["--no-events", "--crop", "face", *wipe_args(cfg_, A.fine)] if style == "wipe" else full_args(cfg_, A.fine)   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
         compose_step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale], main_mp4, A.jobs, work)
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", "--jobs", A.jobs, *extra))

@@ -129,3 +129,12 @@ def test_wipe_style_settings(tmp_path):
     assert explain.wipe_args(str(c), fine=True) == []
     c.write_text(json.dumps({"out_height": 1000}), encoding="utf-8")
     assert explain.wipe_args(str(c)) == ["--work-scale", "0.64", "--fps", "30"]
+
+
+def test_explain_uses_a_lossless_intermediate():
+    src = (ROOT / "skills/video-mascot/scripts/explain.py").read_text(encoding="utf-8")
+    assert 'face = os.path.join(tmp, "mascot.mkv")' in src
+    layout = (ROOT / "skills/video-mascot/scripts/layout.py").read_text(encoding="utf-8")
+    assert 'return mp.endswith((".webm", ".mkv"))' in layout    # mkv も透明として読む（読まないと白地の乗算になる）
+    render = (ROOT / "skills/video-mascot/scripts/render.py").read_text(encoding="utf-8")
+    assert 'if OUTF.endswith(".mkv"):' in render and '"ffv1"' in render

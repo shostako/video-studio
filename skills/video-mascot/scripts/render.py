@@ -462,6 +462,9 @@ f0, f1 = int(T0 * FPS), int(math.ceil(T1 * FPS))
 if min(f1, NALL) <= f0: die(f"書き出すコマが無い（{T0}〜{T1} 秒、声は {NALL / FPS:.2f} 秒まで。--from / --to を見直す）")
 if CROP_BOX and (CROP_BOX[0] + CROP_BOX[2] > OW or CROP_BOX[1] + CROP_BOX[2] > OH): die(f"--crop {CROP} が出力（{OW}x{OH}）からはみ出す")
 def alpha_enc(w_, h_):                            # 透明つきの VP9。行ごとの並列（-row-mt）で、画質・大きさはほぼ同じまま速くする
+    if OUTF.endswith(".mkv"):                       # 途中の物（vm explain）。FFV1 は劣化が無く、VP9 より 1 桁軽い。大きさは 30 倍
+        return subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{w_}x{h_}", "-r", str(FPS), "-i", "-",
+                                 "-c:v", "ffv1", "-level", "3", "-slices", "4", "-pix_fmt", "bgra", OUTF], stdin=subprocess.PIPE)
     return subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{w_}x{h_}", "-r", str(FPS), "-i", "-",
                              "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "20", "-auto-alt-ref", "0",
                              "-row-mt", "1", "-threads", "8", OUTF], stdin=subprocess.PIPE)
