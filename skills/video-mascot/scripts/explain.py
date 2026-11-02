@@ -8,7 +8,7 @@
     full    同じ割り付けで、余白に小さな全身のマスコット（台本の身振り＝config.events で動く）。見出しは余白の左上
   作業フォルダ: 声（config.json の voice.lines と voice/master.wav・timing.json。vm voice で作る）。wipe と full はマスコットの
     作業フォルダ（vm pack <パック> --new で作るのが楽。Wan・RIFE の無い PC でも作り置きのある身振りは書き出せる）
-  流れ: screen-explainer の compose.py で主動画 → （wipe・full）vm render の下見（--strict。足りない作り置き・口の問題で止まる）
+  流れ: （wipe・full）vm render の下見（--strict。足りない作り置き・口の問題で止まる）→ screen-explainer の compose.py で主動画
         → vm render → vm layout → （full）vm check。途中の物は毎回新しく作る <出力の名前>_work_<ランダム>/ に置き、--keep が無ければ最後に消す
   使える段は既存のコマンドを順に呼ぶだけ。1 段ずつ確かめたいときは、それぞれのコマンドを直に使う。"""
 import json, os, re, shutil, subprocess, sys
@@ -86,9 +86,9 @@ def main():
         compose_step("画面の組み立て（カーソルだけ）", comp, out, A.jobs, work)
     else:
         main_mp4 = os.path.join(tmp, "main.mp4")
-        compose_step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale], main_mp4, A.jobs, work)
         face = os.path.join(tmp, "mascot.webm"); cfg_ = os.path.join(work, "config.json"); extra = ["--no-events", "--crop", "face", *wipe_args(cfg_, A.fine)] if style == "wipe" else full_args(cfg_, A.fine)   # ワイプは顔の周りだけを書き出す（速い）
         step("マスコットの下見", vm("render", work, "--mode", "alpha", "--out", face, "--check-only", "--strict", *extra))
+        compose_step(f"画面の組み立て（余白あり・倍率 {A.scale}）", comp + ["--layout", "margin", "--scale", A.scale], main_mp4, A.jobs, work)
         step("マスコットの書き出し", vm("render", work, "--mode", "alpha", "--out", face, "--strict", "--jobs", A.jobs, *extra))
         lay = step("余白に置く", vm("layout", main_mp4, work, "--mascot", face, "--style", "full" if style == "full" else "wipe", "--out", out, "--full", *(["--fps", str(FULL_FPS)] if not A.fine else [])))
         if style == "full":
