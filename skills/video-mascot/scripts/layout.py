@@ -5,7 +5,7 @@
   --wipe-size  ワイプの直径（既定は余白の幅 − 80 で、400 まで）
   --wipe-box   マスコットの動画のどこを切り抜くか（x,y,辺。画素）。既定は最初のコマの人物から顔の周りを測る。
              vm render --crop で顔の周りだけを書き出した動画（隣に <名前>.crop.json）は、そのまま丸にする
-  --mascot   重ねるマスコット（既定 <作業フォルダ>/out/mascot.webm）。.webm は透明で、.mp4 は白背景を乗算で重ねる
+  --mascot   重ねるマスコット（既定 <作業フォルダ>/out/mascot.webm）。.webm と .mkv（FFV1、vm explain の途中の物）は透明で、.mp4 は白背景を乗算で重ねる
   --frame    full（全身。既定）か bust（胸から上）。--size は大きさ（全身は S=高さ 560px・L=880px、胸から上は S=幅 340・L=496）
   --bg-from  主動画のどこから使うか（秒、既定 0）
   --audio    付ける声（既定 <作業フォルダ>/voice/master_clean.wav、無ければ master.wav）
@@ -79,6 +79,14 @@ def text_rgba(text, size, color, maxw=None):
     return np.asarray(im).copy()
 
 
+def is_alpha(mp): return mp.endswith((".webm", ".mkv"))
+
+
+def alpha_decoder(mp):
+    """透明つきの VP9 は ffmpeg の既定の復号器だと透明を落とす。FFV1 と mp4 は指定が要らない。"""
+    return ["-c:v", "libvpx-vp9"] if mp.endswith(".webm") else []
+
+
 def blend(img, rgba, x, y, alpha=1.0):
     """img（RGB, uint8）の (x, y) に rgba を重ねる（はみ出しは切る）。"""
     h, w = rgba.shape[:2]; x0, y0 = max(0, x), max(0, y); x1, y1 = min(img.shape[1], x + w), min(img.shape[0], y + h)
@@ -137,8 +145,8 @@ def place(mp, frame, size, margin):
     if room < 60: die(f"余白が狭すぎてマスコットを置けない（{margin}px）")
     if frame == "full":
         k = mh / 1672; top, feet, cx = FIG_TOP * k, FIG_FEET * k, FIG_CX * k; x0f, x1f = cx - 0.3 * (feet - top), cx + 0.3 * (feet - top)
-        if mp.endswith(".webm"):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心・左右の端を測る（キャラで背が揃う）
-            raw = subprocess.run(["ffmpeg", "-v", "error", "-c:v", "libvpx-vp9", "-i", mp, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], capture_output=True).stdout
+        if is_alpha(mp):      # 透明の素材: 最初のコマのアルファから人物の上端・下端・中心・左右の端を測る（キャラで背が揃う）
+            raw = subprocess.run(["ffmpeg", "-v", "error"] + alpha_decoder(mp) + ["-i", mp, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], capture_output=True).stdout
             if len(raw) == mw * mh * 4:
                 al = np.frombuffer(raw, np.uint8).reshape(mh, mw, 4)[:, :, 3] > 128; ys, xs = np.where(al)
                 if len(ys):
@@ -158,8 +166,8 @@ def place(mp, frame, size, margin):
 
 def first_frame(mp):
     """最初のコマの (幅, 高さ, 人物の画素の真偽の配列)。透明の webm はアルファ、白背景の mp4 は白でない所。"""
-    mw, mh, _ = probe(mp); alpha = mp.endswith(".webm")
-    raw = subprocess.run(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if alpha else []) + ["-i", mp, "-frames:v", "1", "-f", "rawvideo",
+    mw, mh, _ = probe(mp); alpha = is_alpha(mp)
+    raw = subprocess.run(["ffmpeg", "-v", "error"] + alpha_decoder(mp) + ["-i", mp, "-frames:v", "1", "-f", "rawvideo",
                           "-pix_fmt", "rgba" if alpha else "rgb24", "-"], capture_output=True).stdout
     nc = 4 if alpha else 3
     if len(raw) != mw * mh * nc: die(f"最初のコマが読めない: {mp}")
@@ -246,10 +254,10 @@ def main():
 
     rd_bg = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(bg_from)] + ([] if full_len else ["-t", f"{dur:.3f}"]) + ["-i", bg, "-vf", f"scale={W}:{H}",
                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
-    ALPHA = mp.endswith(".webm"); ch = 4 if ALPHA else 3
+    ALPHA = is_alpha(mp); ch = 4 if ALPHA else 3
     vf = (f"crop={box[2]}:{box[2]}:{box[0]}:{box[1]}," if WIPE else "") + f"scale={sw}:{sh}:flags=lanczos"
     if WIPE: w_under, w_over, w_mask = wipe_layers(sw); WP = 26
-    rd_m = subprocess.Popen(["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if ALPHA else []) + ["-i", mp, "-vf", vf,
+    rd_m = subprocess.Popen(["ffmpeg", "-v", "error"] + alpha_decoder(mp) + ["-i", mp, "-vf", vf,
                             "-f", "rawvideo", "-pix_fmt", "rgba" if ALPHA else "rgb24", "-r", str(FPS), "-"], stdout=subprocess.PIPE)
     tmp = outp + ".part.mp4"
     wr = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
