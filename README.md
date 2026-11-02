@@ -57,9 +57,23 @@ Claude Code で解説動画を作るスキル集。画面の操作を説明す�
 
 ## GPU の無い PC で声を作る
 
-既定の声（Irodori-TTS）は GPU が無いと時間がかかる（8 行・36 秒の声で、CPU 4 スレッドの実測 337 秒）。VOICEVOX ENGINE を選ぶと速くなる（同じ条件で 91 秒。聞き取りの時間を含む）。
+既定の声（Irodori-TTS）は GPU が無くても動く。`setup.sh` が GPU の有無を見て CPU 版を入れる（約 1.3GB）。ただし時間がかかる。VOICEVOX ENGINE を選ぶと速くなる。8 行・36 秒の声を CPU 4 スレッドで作った実測（聞き取りの時間を含む）:
 
-1. [VOICEVOX ENGINE](https://github.com/VOICEVOX/voicevox_engine/releases) の CPU 版を入れて起動する（約 1.9GB。`127.0.0.1:50021` で待つ）
+| | Irodori-TTS | VOICEVOX ENGINE |
+|---|---|---|
+| WSL | 267 秒 | 78 秒 |
+| Windows（Git Bash） | 379 秒 | 131 秒 |
+
+1. [VOICEVOX ENGINE](https://github.com/VOICEVOX/voicevox_engine/releases) の CPU 版の `.vvpp`（約 1.9GB、展開すると約 2.2GB）を落として展開し、起動する。`127.0.0.1:50021` で待つ。`.vvpp` の中身は zip なので 7-Zip は要らない
+
+   ```bash
+   # Windows（Git Bash）。Git Bash の tar は zip を開けないので、Windows の tar.exe を使う
+   mkdir app && /c/Windows/System32/tar.exe -xf voicevox_engine-windows-cpu-0.26.0.vvpp -C app
+   app/run.exe --host 127.0.0.1 --port 50021
+   # Linux・WSL
+   unzip -q voicevox_engine-linux-cpu-x64-0.26.0.vvpp -d app
+   app/run --host 127.0.0.1 --port 50021
+   ```
 2. `config.json` の `voice` に `"engine": "voicevox"` と `"speaker": 話者の番号` を書く。番号を書かずに `vm voice <作業フォルダ> synth` を流すと、使える話者の一覧が出る
 3. 話者ごとの[利用規約](https://voicevox.hiroshiba.jp/)に従い、動画に「VOICEVOX:話者の名前」と書く
 
