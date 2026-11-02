@@ -4,6 +4,8 @@
 
 ## 未リリース
 
+- **GPU の無い PC に CPU 版の Irodori-TTS を入れる**: `setup.sh` が `nvidia-smi` で判断する。今までは CUDA 版に固定で、数 GB 大きかった
+- **`vm explain` は下見を組み立ての前に**: 台本の問題が早く分かる
 - **`vm explain` の並列の数を自動で決める**: CPU のスレッド数と空きメモリから（上限 4）。`--jobs N` で指定できる
 - **声のエンジンに VOICEVOX を選べる**: `voice.engine: "voicevox"` と `voice.speaker`。GPU が要らない。既定は Irodori-TTS のまま
 - **ワイプの型も軽く**: `vm explain --style wipe` は元の絵 0.64 倍・高さ 1070・30fps で書き出す。47 秒の動画で 129 秒 → 62 秒（`--jobs 4`）。元の細かさは `--fine`

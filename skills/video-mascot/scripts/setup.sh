@@ -7,6 +7,7 @@
 set -uo pipefail
 VS_HOME="${VIDEO_SCENE_HOME:-$HOME/.local/share/video-scene}"; PY="$VS_HOME/venv/bin/python"; [ -x "$PY" ] || [ ! -x "$VS_HOME/venv/Scripts/python.exe" ] || PY="$VS_HOME/venv/Scripts/python.exe"   # Windows の venv は Scripts/python.exe
 IRO="${IRODORI_DIR:-$HOME/.local/share/voice-engines/Irodori-TTS}"
+irodori_extra() { if nvidia-smi -L >/dev/null 2>&1; then echo cu128; else echo cpu; fi; }   # CUDA 版は数 GB 大きく、GPU が無ければ使えない
 CHECK=0; [ "${1-}" = "--check" ] && CHECK=1; ok=1; say() { printf '%s\n' "$*"; }
 if [ -x "$PY" ] && "$PY" -c "import cv2, numpy, faster_whisper" 2>/dev/null; then say "ok   video-scene の Python"
 else say "NG   video-scene の Python が無い（~/.claude/skills/video-scene/scripts/setup.sh を先に）"; ok=0; fi
@@ -25,7 +26,8 @@ else
   say "..   Irodori-TTS を入れる（git clone と uv sync。数GB。モデルは初回の声の生成で落ちる）"
   mkdir -p "$(dirname "$IRO")"
   [ -d "$IRO" ] || git clone --depth 1 https://github.com/Aratako/Irodori-TTS.git "$IRO" || { say "NG   clone に失敗"; exit 1; }
-  (cd "$IRO" && uv sync --extra cu128) && say "ok   Irodori-TTS" || { say "NG   uv sync に失敗（GPU が無ければ --extra cpu）"; ok=0; }
+  extra="$(irodori_extra)"; say "..   Irodori-TTS の版: $extra（NVIDIA の GPU があれば cu128、無ければ cpu）"
+  (cd "$IRO" && uv sync --extra "$extra") && say "ok   Irodori-TTS" || { say "NG   uv sync に失敗（--extra $extra）"; ok=0; }
 fi
 # /img（img スキル）は codex（node）で動く。WSL で Windows 側の codex・node（/mnt/c/...）を拾うと、絵を出さずに落ちる（bash -lc で PATH の順が変わる時など）
 # 結果は1行にまとめる（「ok img スキル」と NG が並んで紛らわしかった）

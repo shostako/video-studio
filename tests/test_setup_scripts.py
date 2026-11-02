@@ -44,3 +44,18 @@ def test_vpy_does_not_call_itself():
 def test_shell_syntax(script):
     r = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True, timeout=10)
     assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize("smi, want", [("exit 0", "cu128"), ("exit 9", "cpu"), (None, "cpu")])
+def test_irodori_extra_follows_the_gpu(tmp_path, smi, want):
+    lines = (ROOT / "skills/video-mascot/scripts/setup.sh").read_text(encoding="utf-8").splitlines()
+    fn = next(l for l in lines if l.startswith("irodori_extra()"))
+    bindir = tmp_path / "bin"; bindir.mkdir()
+    if smi: (bindir / "nvidia-smi").write_text(f"#!/bin/sh\n{smi}\n"); (bindir / "nvidia-smi").chmod(0o755)
+    r = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", fn + "\nirodori_extra"], env={"PATH": str(bindir)}, capture_output=True, text=True, timeout=10)
+    assert r.stdout.strip() == want
+
+
+def test_explain_runs_the_precheck_before_compose():
+    src = (ROOT / "skills/video-mascot/scripts/explain.py").read_text(encoding="utf-8")
+    assert src.index('step("マスコットの下見"') < src.index('compose_step(f"画面の組み立て（余白あり')
