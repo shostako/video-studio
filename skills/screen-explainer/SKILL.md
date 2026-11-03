@@ -9,7 +9,7 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 
 | 入れるもの | 出てくるもの |
 |---|---|
-| 説明するブック（の写し）か Web アプリ、台本、口を閉じた顔の絵 1 枚と口の部品 3 枚 | 1920×1080 の mp4（字幕の帯つき。`compose.py` だけなら 30fps、`vm explain` で蘭のパックの全身の型を作ると 60fps）。30MB を超えるならスマホ用に圧縮した版も |
+| 説明するブック（の写し）か Web アプリ、台本、口を閉じた顔の絵 1 枚と口の部品 3 枚 | `vm explain` は 1280×720・30fps の mp4、`--hq` と `compose.py` だけのときは 1920×1080（字幕の帯つき。`compose.py` だけなら 30fps、`vm explain` で蘭のパックの全身の型を作ると 60fps） |
 
 道具は `scripts/` にある（以下 `S=~/.claude/skills/screen-explainer/scripts`）。
 
@@ -52,7 +52,7 @@ description: Excel のブックや Web アプリ（ローカルのダッシュ�
 6. **見本のコマで確かめる**。`compose.py ... --preview 3.0,12.5,...` で、場面の切り替えの前後・強調の出る所・ワイプが角を移る所を PNG にして Read で見る。枠のずれ、ワイプと枠の重なり、字幕のはみ出しを直す。
 7. **書き出す**。`compose.py --shots <撮影> --voice <作業フォルダ> --scenes scenes.py --out <名前>.mp4 [--chapters 章.json]`（カーソルだけの型。マスコット付きの型は `--layout margin` で書き出し、video-mascot の `vm layout` で余白にマスコットを置く。画面の角に重ねる古いワイプは `--wipe <口の絵のフォルダ>`）（Excel は `--clip-bottom 948`、右のスクロールバーを避けるなら `--clip-right 1895`）。一部だけなら `--from` / `--to`。
    - ワイプの角は、画面のどこに操作の欄があるかで決める。右に操作パネルが縦に続くアプリ（cad-viewer など）は `--wipe-home BL`。既定の BR のままだと、ずっとパネルに被る（ユーザーの指摘）。
-8. **送る**。30MB を超えたら `ffmpeg -i in.mp4 -c:v libx264 -crf 29 -preset slow -c:a aac -b:a 96k out_スマホ用.mp4`。ユーザーに耳と目で確かめてもらい、指摘の行だけ声か場面を直して 7 から。
+8. **送る**。`vm explain` の完成は既定で 720p・30fps・CRF 29・モノラル 64kbps の 1 本（ユーザーが実物を比べて決めた）。スマホ用を別に作らない。全体表示の細かい文字まで読ませたいときだけ `--hq`（1080p）。`compose.py` と `vm layout` を直に使ったときは、最後に `ffmpeg -i in.mp4 -vf scale=1280:720:flags=lanczos -c:v libx264 -preset medium -crf 29 -pix_fmt yuv420p -c:a aac -ac 1 -b:a 64k -movflags +faststart out.mp4`。ユーザーに耳と目で確かめてもらい、指摘の行だけ声か場面を直して 7 から。
 
 ## 確かめること
 

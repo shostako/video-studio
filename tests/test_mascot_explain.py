@@ -60,7 +60,7 @@ def frame(path, t, env):
 @pytest.mark.parametrize("style", ["cursor", "wipe", "full"])
 def test_explain_makes_each_style(tmp_path, env, style):
     work, shots, sc, ch = inputs(tmp_path); out = tmp_path / f"{style}.mp4"
-    r = explain(env, work, shots, sc, out, style, "--chapters", ch)
+    r = explain(env, work, shots, sc, out, style, "--chapters", ch, "--hq")      # 座標は 1080p で見る
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert out.exists() and out.stat().st_size > 0 and not list(tmp_path.glob(f"{style}_work_*"))
     f = frame(out, 2.5, env)
@@ -70,6 +70,37 @@ def test_explain_makes_each_style(tmp_path, env, style):
         assert (np.abs(f[300, 100] - (247, 246, 244)) <= 6).all()          # 左に余白（見出しの下・マスコットの上）
         if style == "wipe": assert f[1080 - 48 - 2, 248][0] > 150 and f[1080 - 48 - 2, 248][2] < 120   # 余白の左下にワイプの橙の縁
     if style == "full": assert "身振りが出たかの測定" in r.stdout
+
+
+def stream(path, env):
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path)], capture_output=True, text=True, env=env).stderr
+    return r
+
+
+def test_explain_finishes_at_720p_by_default(tmp_path, env):
+    """既定は 720p・30fps・モノラルの 1 本。途中の物も残さない。"""
+    work, shots, sc, ch = inputs(tmp_path); out = tmp_path / "d.mp4"
+    r = explain(env, work, shots, sc, out, "cursor")
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert "仕上げ" in r.stdout
+    p = stream(out, env)
+    assert "1280x720" in p and "30 fps" in p and "mono" in p
+    assert not list(tmp_path.glob("d_work_*")) and sorted(x.name for x in tmp_path.glob("d*.mp4")) == ["d.mp4"]
+
+
+def test_explain_hq_skips_the_finish(tmp_path, env):
+    work, shots, sc, ch = inputs(tmp_path); out = tmp_path / "h.mp4"
+    r = explain(env, work, shots, sc, out, "cursor", "--hq")
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert "仕上げ" not in r.stdout and "1920x1080" in stream(out, env)
+
+
+def test_explain_keep_leaves_the_1080p_master(tmp_path, env):
+    work, shots, sc, ch = inputs(tmp_path); out = tmp_path / "k.mp4"
+    r = explain(env, work, shots, sc, out, "cursor", "--keep")
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    kept = list(tmp_path.glob("k_work_*/full_1080p.mp4"))
+    assert len(kept) == 1 and "1920x1080" in stream(kept[0], env) and "1280x720" in stream(out, env)
 
 
 def test_explain_rejects_bad_style_and_missing_voice(tmp_path, env):

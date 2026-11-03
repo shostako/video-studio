@@ -1,6 +1,6 @@
 """画面操作の解説動画を、型を選んで 1 本に組む入口（撮影・台本・声は先に用意する）。
   vm explain <作業フォルダ> --shots <撮影フォルダ> --scenes <scenes.py> --style cursor|wipe|full --out 出力.mp4
-             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N|auto] [--fine]
+             [--scale 0.73] [--chapters 章.json] [--clip-bottom 948] [--clip-right 1895] [--keep] [--jobs N|auto] [--fine] [--hq]
 
   型（2026-11-01 にユーザーと決めた 3 つ）:
     cursor  カーソルだけ。画面を全面に出し、章が替わった所に左上へ見出しを数秒出す（マスコットなし）
@@ -10,6 +10,8 @@
     作業フォルダ（vm pack <パック> --new で作るのが楽。Wan・RIFE の無い PC でも作り置きのある身振りは書き出せる）
   流れ: （wipe・full）vm render の下見（--strict。足りない作り置き・口の問題で止まる）→ screen-explainer の compose.py で主動画
         → vm render → vm layout → （full）vm check。途中の物は毎回新しく作る <出力の名前>_work_<ランダム>/ に置き、--keep が無ければ最後に消す
+  完成は既定で 720p・CRF 29・モノラル 64kbps に仕上げる（コマの速さは変えない。既定は 30fps、--fine は config の fps。2026-11-03 にユーザーが実物を比べて決めた）。身振りの測定は仕上げの前の 1080p で行う。
+  --hq は仕上げを飛ばし、1080p・音声 192kbps（カーソルの型は 160kbps）のまま出す。
   使える段は既存のコマンドを順に呼ぶだけ。1 段ずつ確かめたいときは、それぞれのコマンドを直に使う。"""
 import json, os, re, shutil, subprocess, sys, time
 
@@ -54,6 +56,19 @@ FULL_HEIGHT, FULL_WORK_SCALE, FULL_FPS = 720, 0.64, 30
 WIPE_HEIGHT = 1070   # ワイプは直径 400 に顔の周り（高さ 1280 で 480）を使う。480 × 1070 / 1280 ≒ 400 で、引き伸ばさない下限
 
 
+# 完成の既定。ユーザーが実物を比べて決めた（15 分の Excel 解説で 85MB → 23.5MB）
+FINISH_ARGS = ["-vf", "scale=1280:720:flags=lanczos", "-c:v", "libx264", "-preset", "medium", "-crf", "29", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-ac", "1", "-b:a", "64k", "-movflags", "+faststart"]
+
+
+def finish(out, tmp, keep=False):
+    """完成の動画を配る形に圧縮し直す。書き終えてから置き換える（途中で止まっても 1080p の完成を壊さない）。"""
+    part = os.path.join(tmp, "finish.mp4")
+    step("仕上げ（720p）", ["ffmpeg", "-v", "error", "-y", "-i", out, *FINISH_ARGS, part])
+    if keep: os.replace(out, os.path.join(tmp, "full_1080p.mp4"))
+    os.replace(part, out)
+
+
 def full_args(config_path, fine=False):
     """全身の型の書き出しの設定。--fine は元の細かさ（config の fps、元の絵の大きさ、config の out_height か 1280）。
     config に out_height を書いてあれば、それに従う。"""
@@ -69,6 +84,7 @@ def main():
     ap.add_argument("--style", required=True, choices=["cursor", "wipe", "full"]); ap.add_argument("--out", required=True)
     ap.add_argument("--scale", default="0.73"); ap.add_argument("--chapters"); ap.add_argument("--clip-bottom"); ap.add_argument("--clip-right")
     ap.add_argument("--keep", action="store_true"); ap.add_argument("--jobs", default="auto"); ap.add_argument("--fine", action="store_true")
+    ap.add_argument("--hq", action="store_true")
     A = ap.parse_args()
     import render_jobs
     A.jobs = str(render_jobs.resolve_jobs(A.jobs)); print(f"並列の数: {A.jobs}", flush=True)
@@ -102,6 +118,7 @@ def main():
             bad = [r for r in res if r.get("verdict") == "still"]; soft = [r for r in res if r.get("verdict") in ("weak", "unknown")]
             if soft: print(f"   注意: 弱い・測れない切り替え {len(soft)} 件（短い動画や話していない所が少ないと測れない。{mj} を見て、気になる所は目で確かめる）", flush=True)
             if bad: die(f"身振りが出ていない切り替えが {len(bad)} 件ある: {[(r['at'], r['from'], r['to']) for r in bad]}（{mj}）", 3)
+    if not A.hq: finish(out, tmp, A.keep)
     if not A.keep: shutil.rmtree(tmp, ignore_errors=True)
     else: print(f"途中の物: {tmp}", flush=True)
     print(f"できた: {out}（{style}）", flush=True)
