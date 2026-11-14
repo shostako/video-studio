@@ -47,8 +47,9 @@ def _moras_from_labels(labels):
         if "xx" in (a2, f2, f5): continue
         k = (bg, int(f5), int(a2))
         if k != key:
-            out.append({"ph": "", "hl": tokyo_hl(int(f2), int(a2)), "ap": (bg, int(f5))}); key = k
-        out[-1]["ph"] += ph.lower() if ph not in ("N", "cl") else ph
+            out.append({"ph": "", "phs": [], "hl": tokyo_hl(int(f2), int(a2)), "ap": (bg, int(f5))}); key = k
+        p_ = ph.lower() if ph not in ("N", "cl") else ph      # 無声化（I・U）は有声と同じに
+        out[-1]["ph"] += p_; out[-1]["phs"].append(p_)
     return out
 
 
@@ -59,7 +60,7 @@ def _norm(s):
 def analyze(text):
     """文を語とモーラに分ける。返り値 {"nodes": [...], "moras": [...]}。pyopenjtalk が無ければ None。
     node: {string, start, end（text の中の文字の範囲。見つからなければ None）, pos, cform, pron, mora: [モーラの番号...]}
-    mora: {ph, hl, ap, node}"""
+    mora: {ph（音。長音は R）, phs（音素の並び。OpenJTalk の音素、無声化は小文字に、長音は前の母音）, hl, ap, node}"""
     if not available(): return None
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         nj = _P.run_frontend(text)
