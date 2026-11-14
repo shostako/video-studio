@@ -125,3 +125,14 @@ def test_misread_term_is_not_accent_checked(monkeypatch):
     t = np.arange(0, 0.8, 0.005); st = np.where(t < 0.30, 5.0, -5.0)
     monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [{"word": "ねこ", "ref_span": (0, 2), "kind": "misread"}])
     assert AC.check_line("猫が", None, heard, None, [T("猫", "ねこ", "LH", 0)], f0=(t, st)) == []
+
+
+
+def test_phrase_final_long_vowel_gets_timing():
+    """行末の長音（棒 b o / o）は norm でまとまって時刻が付かない。モーラの長さで延ばして高さを測れるようにする。"""
+    ra = {"moras": [{"phs": ["b", "o"]}, {"phs": ["o"]}]}
+    c = AC.mora_onsets(ra, [["b", 0.10, 0.11], ["o", 0.12, 0.50]])
+    assert c[0] == pytest.approx(0.10) and c[1] is not None and c[1] > c[0]
+    t = np.arange(0, 0.6, 0.005); st = np.where(t < c[1], 5.0, -5.0)       # 頭高に読んだ（低高のはず）
+    p = [AC.mora_pitch(t, st, c, i) for i in range(2)]
+    assert None not in p and "頭が高い" in AC.verdict("LH", p)

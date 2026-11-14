@@ -28,7 +28,8 @@ SKIP_POS = ("助詞", "助動詞", "記号", "フィラー")
 
 
 def mora_onsets(ra, heard):
-    """基準のモーラごとの頭の時刻（秒）。声の音素と同じ音素の並んだ所の始まりの最小。取れないモーラは前後から等分で補う（端は None）。"""
+    """基準のモーラごとの頭の時刻（秒）。声の音素と同じ音素の並んだ所の始まりの最小。取れないモーラは前後から等分で補い、
+    端は行のモーラの長さの中央値（分からなければ 0.12 秒）で延ばす。"""
     rt = R.norm([(p, mi) for mi, m in enumerate(ra["moras"]) for p in m["phs"]])
     hh = R.norm([(p, j) for j, (p, _, _) in enumerate(heard)])
     got = {}
@@ -41,6 +42,13 @@ def mora_onsets(ra, heard):
         if c[i] is None:
             lo = max((k for k in known if k < i), default=None); hi = min((k for k in known if k > i), default=None)
             if lo is not None and hi is not None: c[i] = c[lo] + (c[hi] - c[lo]) * (i - lo) / (hi - lo)
+    # 端の取れないモーラ（行末の長音は norm で前の母音にまとまり、時刻が付かない）は、行のモーラの長さの中央値で延ばす
+    if known:
+        steps = [c[b] - c[a] for a, b in zip(known, known[1:]) if c[b] > c[a]]
+        med = float(np.median([s / (b - a) for s, (a, b) in zip(steps, [(a, b) for a, b in zip(known, known[1:]) if c[b] > c[a]])])) if steps else 0.12
+        first, last = known[0], known[-1]
+        for i in range(last + 1, n): c[i] = c[last] + med * (i - last)
+        for i in range(first): c[i] = max(0.0, c[first] - med * (first - i))
     return c
 
 
