@@ -84,13 +84,45 @@ def _ctx(t, a, b, w=6):
     return ("…" if a > w else "") + t[max(0, a - w):a] + "【" + t[a:b] + "】" + t[b:b + w] + ("…" if b + w < len(t) else "")
 
 
-def _term_spans(t, say_h, terms):
-    """辞書の語が字幕に出る範囲のうち、辞書の読みが say にある物。"""
+def _align(t, s):
+    """字幕と say の文字の対応（difflib の opcodes）。同じ文字が続く所では「同じ」の区間を say の右へ寄せる。
+    「手元と」と「てもとと」なら、字幕の「と」を「てもと」の「と」ではなく後ろの「と」に合わせる（読みは後ろの助詞の手前まで続く）。"""
+    ops = [list(o) for o in difflib.SequenceMatcher(None, t, s, autojunk=False).get_opcodes()]
+    moved = True
+    while moved:
+        moved = False
+        for k in range(1, len(ops) - 1):
+            p_, e, n_ = ops[k - 1], ops[k], ops[k + 1]
+            if e[0] != "equal" or p_[0] == "equal" or n_[0] == "equal" or n_[4] <= n_[3]: continue
+            j1, j2 = e[3], e[4]
+            if s[j1:j2] != s[j1 + 1:j2 + 1]: continue
+            p_[4] += 1; e[3] += 1; e[4] += 1; n_[3] += 1; moved = True
+        for o in ops:
+            if o[0] != "equal": o[0] = "replace" if o[2] > o[1] and o[4] > o[3] else ("delete" if o[2] > o[1] else "insert")
+        ops = [o for o in ops if o[2] > o[1] or o[4] > o[3]]
+    return [tuple(o) for o in ops]
+
+
+def _t2s(ops, x, end):
+    """字幕の境目 x に当たる say の位置。同じ文字の続く所はそのまま、置き換えの途中なら置き換え全体に広げる（頭は始め、終わりは終わり）。"""
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal" and i1 <= x <= i2: return j1 + (x - i1)
+        if i1 < x < i2 or (x == i1 and not end) or (x == i2 and end): return j2 if end else j1
+    return None
+
+
+def _term_spans(t, s, ops, terms):
+    """辞書の語が字幕に出る所のうち、その出現に当たる say の区間が辞書の読みと同じ物。出現ごとに確かめる
+    （同じ行に 2 回出て片方だけ読みが違うとき、違う方を見逃さない。読みを含むだけの「てもとん」も通さない）。"""
     spans = []
     for tm in terms:
-        if not tm.word or to_hira(tm.reading) not in say_h: continue
+        if not tm.word: continue
+        want = to_hira(tm.reading)
         for m in re.finditer(re.escape(tm.word), t):
-            spans.append((m.start(), m.end()))
+            sa, sb = _t2s(ops, m.start(), False), _t2s(ops, m.end(), True)
+            if sa is None or sb is None: continue
+            got = "".join(c for c in to_hira(s[sa:sb]) if c not in PUNCT)
+            if got == want: spans.append((m.start(), m.end()))
     return spans
 
 
@@ -100,11 +132,10 @@ def lint_line(text, say, terms=(), use_reader=True):
     if not say or say == text: return []
     t, sp = _strip_spaces(text)
     s, _ = _strip_spaces(say)
-    say_h = to_hira(s)
-    spans = _term_spans(t, say_h, terms)
+    ops = _align(t, s)
+    spans = _term_spans(t, s, ops, terms)
     out = []
-    sm = difflib.SequenceMatcher(None, t, s, autojunk=False)
-    for op, i1, i2, j1, j2 in sm.get_opcodes():
+    for op, i1, i2, j1, j2 in ops:
         if op == "equal": continue
         ts, ss = t[i1:i2], s[j1:j2]
         added = [c for c in ss if c in PUNCT]

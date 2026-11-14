@@ -53,6 +53,15 @@ def test_term_reading_is_exempt():
     assert kinds(L.lint_line("これは型締力の目安だ。", "これはかたしめりょくの目安だ。", t, use_reader=False)) == [("open", "型締力", "かたしめりょく")]
 
 
+def test_term_is_checked_per_occurrence():
+    """同じ語が 2 回出て片方だけ読みが違えば、違う方は出す。辞書の読みを含むだけの開き方も出す。"""
+    t = [Term("手元", "てもと")]
+    fs = L.lint_line("手元と手元。", "てもととてまと。", t, use_reader=False)
+    assert kinds(fs) == [("open", "手元", "てまと")] and fs[0].pos == 3
+    assert kinds(L.lint_line("手元に置く。", "てもとんに置く。", t, use_reader=False)) == [("open", "手元", "てもとん")]
+    assert L.lint_line("手元と手元。", "てもととてもと。", t, use_reader=False) == []
+
+
 def test_kanji_run_is_shown_whole():
     fs = L.lint_line("次の手入れまで。", "次のていれまで。", use_reader=False)
     assert fs and all(f.kind == "open" for f in fs)
