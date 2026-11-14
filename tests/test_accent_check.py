@@ -139,3 +139,21 @@ def test_phrase_final_long_vowel_gets_timing():
     t = np.arange(0, 0.6, 0.005); st = np.where(t < c[1], 5.0, -5.0)       # 頭高に読んだ（低高のはず）
     p = [AC.mora_pitch(t, st, c, i) for i in range(2)]
     assert None not in p and "頭が高い" in AC.verdict("LH", p)
+
+
+
+@ojt_needed
+def test_adjacent_terms_keep_their_spans():
+    """辞書の語が並んでも（東京大学）、それぞれの範囲を取る。置き換えた場合も、say に初めから読みで書いた場合も。"""
+    from collections import namedtuple
+    T = namedtuple("T", "word reading accent type")
+    terms = [T("東京", "とうきょう", "LHHH", 0), T("大学", "だいがく", "LHHH", 0)]
+    got = sorted(w for _, _, w in AC.term_spans("東京大学へ", "とうきょうだいがくへ", terms))
+    assert got == ["大学", "東京"]
+    ref = "とうきょうだいがくへ"
+    spans = {w: ref[a:b] for a, b, w in AC.term_spans("東京大学へ", ref, terms)}
+    assert spans == {"東京": "とうきょう", "大学": "だいがく"}
+    import ojt
+    ref2, done = AC.R.apply_terms(ojt.analyze("東京大学へ"), "東京大学へ", terms, spans=True)
+    if ref2:                                  # 見本が 東京・大学 に分けたとき、置き換えの記録はそれぞれの範囲を持つ
+        assert sorted(w for _, _, w in done) == sorted(n["string"] for n in ojt.analyze("東京大学へ")["nodes"] if n["string"] in ("東京", "大学"))

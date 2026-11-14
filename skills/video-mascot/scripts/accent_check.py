@@ -108,8 +108,24 @@ def term_spans(text, ref, terms):
             x, y = SL._t2s(ops, m.start(), False), SL._t2s(ops, m.end(), True)
             if x is None or y is None: continue
             seg = ref[x:y]; core = seg.strip("".join(SL.PUNCT)); x += len(seg) - len(seg.lstrip("".join(SL.PUNCT)))
-            if SL.to_hira(core) == want: out.append((x, x + len(core), tm.word))
+            h = SL.to_hira(core)
+            # 辞書の語が並ぶと（東京大学 → とうきょうだいがく）、対応が 1 つのかたまりになる。頭か終わりが読みなら、そこだけ取る
+            # （字幕の語の頭が写した先の頭、終わりが終わりに当たる側だけ）
+            if h == want: out.append((x, x + len(core), tm.word))
+            elif h.startswith(want) and _starts_here(ops, m.start()):
+                out.append((x, x + len(want), tm.word))
+            elif h.endswith(want) and _ends_here(ops, m.end()):
+                out.append((x + len(core) - len(want), x + len(core), tm.word))
     return out
+
+
+def _starts_here(ops, i):
+    """字幕の位置 i が、文字の対応の置き換えのかたまりの頭か（かたまりの途中なら、写した先の頭はその語の頭ではない）。"""
+    return any(i == i1 for tag, i1, i2, j1, j2 in ops)
+
+
+def _ends_here(ops, i):
+    return any(i == i2 for tag, i1, i2, j1, j2 in ops)
 
 
 def check_line(text, say, heard, wav, terms=(), f0=None):
@@ -117,9 +133,10 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     import ojt, accent as A
     ref = R.reference_text(text, say, terms)
     ra = ojt.analyze(ref)
-    ref2 = R.apply_terms(ra, ref, terms)
+    ref2, done = R.apply_terms(ra, ref, terms, spans=True)
     if ref2: ref, ra = ref2, ojt.analyze(ref2)
-    tspans = term_spans(text, ref, terms)
+    # 辞書の語の範囲: apply_terms で置き換えた所はその記録を使い、say に初めから読みで書いてあった所は文字の対応で探す
+    tspans = list(done) + [s_ for s_ in term_spans(text, ref, terms) if not any(s_[0] < b and s_[1] > a for a, b, _ in done)]
     skip = [r["ref_span"] for r in R.check_line(text, say, [p for p, _, _ in heard], terms) if r.get("ref_span")]   # 読みが違う所（文字の範囲）
     c = mora_onsets(ra, heard)
     if f0 is None:
