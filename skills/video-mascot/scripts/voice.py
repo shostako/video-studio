@@ -5,7 +5,7 @@
   vm voice <作業フォルダ> master                  各行を開始時刻に置いて voice/master.wav と voice/timing.json を作る
   vm voice <作業フォルダ> lint [行番号 ...] [--all]  say の書き方を字幕と比べる（声は作らない）。漢字を仮名に開いた所・字幕に無い読点を出す（say_lint.py）
   vm voice <作業フォルダ> reading [行番号 ...]     作った声を音素で書き起こし、字幕の読みと比べる（reading_check.py）。voice/phones.json に音素と時刻を残す
-  vm voice <作業フォルダ> accent [行番号 ...] [--clips 出力.mp3] [--top N]  声の高さを字幕の読みの高低と比べる（accent_check.py）。--clips で警告の語を切り出した聞き取り用の音声（上位 N 件、既定 20）
+  vm voice <作業フォルダ> accent [行番号 ...] [--all] [--clips 出力.mp3] [--top N]  声の高さを字幕の読みの高低と比べる（accent_check.py）。既定は say で仮名に開いた語だけ（--all で全部の語）。--clips で警告の語を切り出した聞き取り用の音声（上位 N 件、既定 20）
 config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...],
               terms(lint で使う作業フォルダの用語辞書。video-scene の data/terms.yaml と同じ形、省略可)}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
@@ -194,7 +194,8 @@ def main():
         if not ojt.available(): die("pyopenjtalk-plus が無い（字幕の読みの見本に使う）。video-scene の setup.sh を VS_ACCENT_CHECK=1 で流して入れる")
         try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
-        rest = list(a[2:]); clips = top = None
+        rest = list(a[2:]); clips = top = None; show_all = "--all" in rest
+        rest = [x for x in rest if x != "--all"]
         if "--clips" in rest: k = rest.index("--clips"); clips = rest[k + 1]; del rest[k:k + 2]
         if "--top" in rest: k = rest.index("--top"); top = int(rest[k + 1]); del rest[k:k + 2]
         only = [int(x) for x in rest] or list(range(1, len(lines) + 1))
@@ -214,7 +215,7 @@ def main():
         phones = {n: old[str(n)]["phones"] for n in only}
         if cmd == "reading": reading_check.report(lines, phones, terms); return
         import accent_check
-        found = accent_check.report(lines, phones, lambda n: P.p("voice", f"l{n}.wav"), terms)
+        found = accent_check.report(lines, phones, lambda n: P.p("voice", f"l{n}.wav"), terms, show_all=show_all)
         if clips and found:
             accent_check.make_clips(found[:top or 20], lambda n: P.p("voice", f"l{n}.wav"), clips, lambda n: lines[n - 1]["text"])
             print(f"聞き取り: {clips}（一覧 {os.path.splitext(clips)[0]}.md、{min(len(found), top or 20)} か所）", flush=True)

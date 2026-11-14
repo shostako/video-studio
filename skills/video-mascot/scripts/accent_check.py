@@ -136,25 +136,28 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     return out
 
 
-def report(lines, phones, wav_of, terms=()):
-    """行番号 → 声の音素、行番号 → 声の wav を受け取って出す。警告の並び（say で仮名に開いた語が先）を返す。
-    仮名に開いた語を先に出すのは、ユーザーが聞いた語（2026-11-14〜15）で当たりが多かったから（警告 9 件のうち 6 件が本当の誤り）。
-    開いていない語の当たりの割合は、まだ聞いて確かめていない。"""
+def report(lines, phones, wav_of, terms=(), show_all=False):
+    """行番号 → 声の音素、行番号 → 声の wav を受け取って出す。出した警告の並びを返す。
+    既定では say で仮名に開いた語だけを出し、ほかの語は数だけ（show_all で出す）。理由: ユーザーが聞いた語（2026-11-14〜15）で、
+    仮名に開いた語の警告は 9 件のうち 6 件が本当の誤り、開いていない語の警告は 15 件のうち 1 件だった。"""
     found = []
     for n, ph in phones.items():
         l = lines[n - 1]
         for r in check_line(l.get("text", ""), l.get("say"), ph, wav_of(n), terms): found.append(dict(r, line=n))
     found.sort(key=lambda r: (not r["opened"], r["line"]))
+    hidden = 0 if show_all else sum(not r["opened"] for r in found)
+    if not show_all: found = [r for r in found if r["opened"]]
     for r in found:
         hi = " ".join("·" if x is None else f"{x:+.1f}" for x in r["pitches"])
         t = "" if r["t"] is None else f"{r['t']:.2f} 秒、"
         tag = "（仮名に開いた語）" if r["opened"] else ""
         print(f"! 行{r['line']}: {r['word']} の高さが違う{tag}（{t}{'・'.join(r['why'])}）。期待 {r['want']}、測った高さ [{hi}]", flush=True)
     no = sum(r["opened"] for r in found)
-    print(f"高さの検査（{len(phones)} 行）: 「!」{len(found)} 件（仮名に開いた語 {no}、ほかの語 {len(found) - no}）", flush=True)
+    print(f"高さの検査（{len(phones)} 行）: 「!」{len(found)} 件（仮名に開いた語 {no}、ほかの語 {len(found) - no}）"
+          + (f"。仮名に開いていない語の疑い {hidden} 件は出していない（当たりが少ない。--all で出す）" if hidden else ""), flush=True)
     if found:
         print("  「!」は聴いて確かめる（--clips で語の前後を切り出した聞き取り用の音声を作れる）。仮名に開いた語は当たりが多い（聞いた 9 件のうち 6 件）。"
-              "ほかの語は、つながった話し方で句の頭が低く入らないだけの所も拾うので、当たりは少ないかもしれない。"
+              "開いていない語は、句の頭が低く入らないだけの所も拾い、当たりが少ない（聞いた 15 件のうち 1 件）。"
               "違っていれば、その行を作り直すか、漢字・仮名の書き方を変える。語の正しい高さは用語辞書の accent に書くと、それを基準にする", flush=True)
     return found
 
