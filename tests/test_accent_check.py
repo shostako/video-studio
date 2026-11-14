@@ -157,3 +157,15 @@ def test_adjacent_terms_keep_their_spans():
     ref2, done = AC.R.apply_terms(ojt.analyze("東京大学へ"), "東京大学へ", terms, spans=True)
     if ref2:                                  # 見本が 東京・大学 に分けたとき、置き換えの記録はそれぞれの範囲を持つ
         assert sorted(w for _, _, w in done) == sorted(n["string"] for n in ojt.analyze("東京大学へ")["nodes"] if n["string"] in ("東京", "大学"))
+
+
+
+@ojt_needed
+def test_opened_is_tracked_by_position(monkeypatch):
+    """同じ語が 2 回出て片方だけ開いたとき、開いていない方は開いた語にしない。"""
+    heard = [["n", 0.10, 0.12], ["e", 0.13, 0.15], ["k", 0.25, 0.27], ["o", 0.28, 0.30], ["t", 0.40, 0.42], ["o", 0.43, 0.45],
+             ["n", 0.55, 0.57], ["e", 0.58, 0.60], ["k", 0.70, 0.72], ["o", 0.73, 0.75], ["g", 0.85, 0.87], ["a", 0.88, 0.90]]
+    t = np.arange(0, 1.1, 0.005); st = np.where((t < 0.25) | ((t >= 0.55) & (t < 0.70)), -5.0, 5.0)    # 両方の 猫 を 低高 に読んだ
+    monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
+    rs = [r for r in AC.check_line("猫と猫が", "ねこと猫が", heard, None, (), f0=(t, st)) if r["word"].startswith("猫")]
+    assert len(rs) == 2 and [r["opened"] for r in sorted(rs, key=lambda r: r["t"])] == [True, False]

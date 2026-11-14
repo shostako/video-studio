@@ -145,7 +145,12 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     tacc = _term_accent(terms)
     import say_lint as SL
     # 仮名に開いたかどうかは、辞書の除外を使わずに見る（辞書の読みで開いた語も、開いた語として先に出す）
-    opened = [f.src for f in SL.lint_line(text, say, (), use_reader=False) if f.kind == "open"]
+    # 位置で持ち回る（同じ語が 2 回出て片方だけ開いたとき、開いていない方まで開いた語にしない）
+    t_ = SL._strip_spaces(text)[0]; o_ops = SL._align(t_, ref); opened = []
+    for f in SL.lint_line(text, say, (), use_reader=False):
+        if f.kind != "open": continue
+        x, y = SL._t2s(o_ops, f.pos, False), SL._t2s(o_ops, f.end, True)
+        if x is not None and y is not None: opened.append((x, y))
     # 見る単位: 辞書の語（仮名に置き換えた範囲にかかる見本の語をまとめた物）と、それ以外の語 1 つずつ
     units, used = [], set()
     for a_, b_, w in tspans:
@@ -178,7 +183,7 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
             after = next((m["string"] for m in ra["nodes"][k + 1:] if m["mora"]), "") if nx else ""
             out.append({"word": word + ("+" + after if after else ""),
                         "want": want, "pitches": [None if x is None else round(x, 1) for x in p], "why": why, "t": c[ms[0]], "end": end,
-                        "opened": any(o in word or word in o for o in opened)})
+                        "opened": a_ is not None and any(x < b_ and y > a_ for x, y in opened)})
     return out
 
 
