@@ -32,6 +32,8 @@ def test_big_fall_inside_high_plateau():
 
 def test_unvoiced_moras_are_skipped():
     assert AC.verdict("LHH", [None, None, 3.0]) == []
+    assert AC.verdict("LHLL", [0, 4, -3, -4]) == []
+    assert AC.verdict("LHLL", [0, None, -3, -4]) == []   # 高いはずの 2 モーラ目が測れないとき、下がり目の後の低い所と比べない
     assert "頭が高い" in AC.verdict("LHHH", [5.0, None, -4.0, -5.0])
 
 

@@ -68,7 +68,7 @@ def verdict(want, p, head=HEAD, drop=DROP, big=BIG):
     why = []
     if len(v) >= 2 and v[0][0] == 0:
         (_, x0), (i1, x1) = v[0], v[1]
-        if want[0] == "L" and "H" in want[1:i1 + 1] and x1 - x0 < -head: why.append("頭が高い")
+        if want[0] == "L" and want[i1] == "H" and x1 - x0 < -head: why.append("頭が高い")    # 比べる相手が高いはずのモーラのときだけ
         if want[0] == "H" and want[i1] == "L" and x0 - x1 < head: why.append("頭が低い")
     for k in range(len(want) - 1):
         if want[k] == "H" and want[k + 1] == "L":
