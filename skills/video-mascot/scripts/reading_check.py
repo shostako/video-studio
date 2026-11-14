@@ -106,11 +106,13 @@ def check_line(text, say, heard, terms=()):
     pairs = align(rn, hn)
     bad, ins = _bad_tokens(pairs, rn, hn)
     if not bad: return []
-    sa = ojt.analyze(SL._strip_spaces(say)[0]) if say else ra
-    sn = [p for p, _ in norm(tokens(sa))]
-    spairs = align(sn, hn)
-    sbad, _ = _bad_tokens(spairs, sn, hn)
-    h_ok_say = {j for i, j in spairs if i is not None and j is not None and i not in sbad}   # say の読みと合っている声の音素
+    s_ = SL._strip_spaces(say)[0] if say else None
+    sa = ojt.analyze(s_) if say and s_ != ref else None
+    ops = SL._align(ref, s_) if sa else None
+    if sa:
+        st = norm(tokens(sa)); sn = [p for p, _ in st]
+        spairs = align(sn, hn); sbad, sins = _bad_tokens(spairs, sn, hn)
+        s_h = {i: j for i, j in spairs if i is not None}
     h_of = {i: j for i, j in pairs if i is not None}
     # 食い違いの語を、続く語ごとにまとめる
     nodes = sorted({rt[i][1] for i in bad})
@@ -126,7 +128,17 @@ def check_line(text, say, heard, terms=()):
         word = "".join(ra["nodes"][k]["string"] for k in g)
         want = " ".join(rn[i] for i in idx)
         got = " ".join(hn[j] for j in h_span)
-        kind = "say" if (say and h_span and all(j in h_ok_say for j in h_span) and SL._strip_spaces(say)[0] != ref) else "misread"
+        kind = "misread"
+        if sa and h_span:
+            # 「?」にするのは、語に当たる say の区間の音素と、声の音素が丸ごと同じときだけ（say の一部を落とした声は「!」）
+            a_ = min(ra["nodes"][k]["start"] for k in g if ra["nodes"][k]["start"] is not None)
+            b_ = max(ra["nodes"][k]["end"] for k in g if ra["nodes"][k]["end"] is not None)
+            x, y = SL._t2s(ops, a_, False), SL._t2s(ops, b_, True)
+            if x is not None and y is not None and y > x:
+                _, _, sk = ojt.region(sa, x, y)
+                T = [i for i, (_, k) in enumerate(st) if k in sk]
+                # say の区間の音素が 1 つ残らず声と同じ（落ちも違いも挿入も無い）で、食い違いの声がその区間に収まる
+                if T and not any(i in sbad for i in T) and set(h_span) <= {s_h[i] for i in T}: kind = "say"
         span = (hh[h_span[0]][1], hh[h_span[-1]][1]) if h_span else None
         out.append({"kind": kind, "word": word, "want": want, "got": got, "h_span": span})
     return out

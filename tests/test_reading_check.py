@@ -75,6 +75,15 @@ def test_inserted_phones_are_reported():
 
 
 @ojt_needed
+def test_truncated_say_reading_is_hard():
+    """say が ねこ で声が ね だけなら、say どおりではない（「?」でなく「!」）。"""
+    rs = R.check_line("猫がいる。", "ねこがいる。", P("n e g a i r u"))
+    assert [r["kind"] for r in rs] == ["misread"]
+    rs = R.check_line("猫がいる。", "ねこがいる。", P("n e k o g a i r u"))
+    assert rs == [] or all(r["kind"] == "say" for r in rs)
+
+
+@ojt_needed
 def test_reference_reverts_openings():
     assert R.reference_text("行の色は赤になる。", "行のいろは、赤になる。") == "行の色は、赤になる。"
     assert R.reference_text("Claude が作る。", "クロードが作る。") == "クロードが作る。"
