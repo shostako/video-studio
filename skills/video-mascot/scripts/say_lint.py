@@ -53,7 +53,8 @@ class Finding:
     def describe(self):
         if self.kind == "open":
             e = self.extra; ch = e.get("change", "?")
-            how = "" if ch == "?" else (f"。読みが変わる（漢字のまま {e['t_word']} {e['t_sound']}、say {e['s_word']} {e['s_sound']}）" if ch == "読み" else
+            why = {"読点": "。間に読点があるので見本で比べていない", "対応": "。見本の語と対応が取れず比べていない"}
+            how = why.get(e.get("why"), "") if ch == "?" else (f"。読みが変わる（漢字のまま {e['t_word']} {e['t_sound']}、say {e['s_word']} {e['s_sound']}）" if ch == "読み" else
                                          f"。高さが変わる（漢字のまま {e['t_word']} {e['t_pitch']}、say {e['s_word']} {e['s_pitch']}）" if ch == "高さ" else "。読みも高さも同じ")
             return f"漢字を仮名に開いた: {self.src}→{self.say}（{self.ctx}）{how}"
         if self.kind == "comma":
@@ -188,7 +189,15 @@ def _compare_reader(t, s, ops, found):
     import ojt
     if not ojt.available(): return
     at, as_ = ojt.analyze(t), ojt.analyze(s)
-    opens = [f for f in found if f.kind == "open"]
+    opens = []
+    for f in found:
+        if f.kind != "open": continue
+        inner = s[f.say_pos[0]:f.say_pos[1]].strip("".join(PUNCT))
+        if any(c in PUNCT for c in inner):
+            # 置き換えの途中に読点がある（入力方法 → にゅうりょく、ほうほう）。読点が漢字のどこに入るか分からないので、
+            # 戻した文を作ると読点の有無まで変わる。比べずに「!」のまま出す
+            f.extra = {"change": "?", "why": "読点"}
+        else: opens.append(f)
     if opens:
         s2, lo, hi, spans = _revert_opens(s, opens)
         a2n = ojt.analyze(s2)
@@ -206,7 +215,8 @@ def _compare_reader(t, s, ops, found):
                 a, b = na, nb
             mo, mk = ojt.region_moras(as_, ks), ojt.region_moras(a2n, k2)
             e = {"t_word": s2[x:y], "s_word": s[a:b], "t_sound": ojt.sound(mk), "s_sound": ojt.sound(mo), "t_pitch": ojt.pitch(mk), "s_pitch": ojt.pitch(mo)}
-            e["change"] = "読み" if e["t_sound"] != e["s_sound"] else ("高さ" if e["t_pitch"] != e["s_pitch"] else None)
+            if not mo or not mk: e["change"] = "?"; e["why"] = "対応"   # 語が見つからない。比べていないのに「同じ」にしない
+            else: e["change"] = "読み" if e["t_sound"] != e["s_sound"] else ("高さ" if e["t_pitch"] != e["s_pitch"] else None)
             f.extra = e
     for f in found:
         if f.kind == "comma":

@@ -100,6 +100,26 @@ def test_split_word_is_compared_whole():
 
 
 @ojt_needed
+def test_halfwidth_kana_keeps_positions():
+    """NFKC で長さが変わる半角カナの後ろでも、開いた語を見本で確かめる（位置がずれて「同じ」にしない）。"""
+    import ojt
+    an = ojt.analyze("ﾌﾟﾛｸﾞﾗﾑの色")
+    iro = [n for n in an["nodes"] if n["string"] == "色"]
+    assert iro and (iro[0]["start"], iro[0]["end"]) == (8, 9)
+    fs = [f for f in L.lint_line("ﾌﾟﾛｸﾞﾗﾑの色は赤。", "ﾌﾟﾛｸﾞﾗﾑのいろは赤。") if f.kind == "open"]
+    assert len(fs) == 1 and fs[0].extra["change"] == "読み"
+
+
+@ojt_needed
+def test_comma_inside_replacement_is_not_compared():
+    """置き換えの途中の読点は、戻した文で落とすと読点の効き目を開いたせいにしてしまう。比べずに「!」で出す。"""
+    fs = [f for f in L.lint_line("入力方法を説明。", "にゅうりょく、ほうほうをせつめい。") if f.kind == "open"]
+    inner = [f for f in fs if f.src == "入力方法"]
+    assert inner and inner[0].extra["change"] == "?" and inner[0].hard
+    assert "読点" in inner[0].describe()
+
+
+@ojt_needed
 def test_comma_inside_modifier_is_hard():
     fs = L.lint_line("ブラウザで開く表だ。", "ブラウザで開く、表だ。")
     assert [(f.kind, f.hard) for f in fs] == [("comma", True)]

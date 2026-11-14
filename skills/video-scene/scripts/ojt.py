@@ -66,7 +66,6 @@ def analyze(text):
         labels = _P.make_label(nj)
     moras = _moras_from_labels(labels)
     nt = _norm(text)
-    # NFKC で長さが変わる文字はほぼ無い（全角英数・半角カナ）。変わるときは位置の対応をあきらめず、近くを探す
     nodes, pos, mi = [], 0, 0
     for n in nj:
         s = _norm(n["string"])
@@ -80,8 +79,21 @@ def analyze(text):
         for i in idx: moras[i]["node"] = len(nodes)
         nodes.append(node)
     _fill_gaps(nodes, len(nt))
+    _to_original(nodes, text)
     _long_vowels(moras)
     return {"nodes": nodes, "moras": moras}
+
+
+def _to_original(nodes, text):
+    """語の範囲（NFKC にした文の中の位置）を、元の text の中の位置に直す。
+    半角カナ（ﾌﾟ → プ）のように NFKC で長さが変わる文字があると、そのままでは後ろの位置がずれる。
+    L[i] = text の先頭 i 文字を NFKC にした長さ。正規化後の位置 k の文字は L[i] <= k < L[i+1] の元の i から来ている。"""
+    L = [len(_norm(text[:i])) for i in range(len(text) + 1)]
+    if L[-1] == len(text) and all(L[i] == i for i in range(len(L))): return
+    def start(k): return next((i for i in range(len(text)) if L[i] <= k < L[i + 1]), len(text))
+    def end(k): return next((i for i in range(len(text) + 1) if L[i] >= k), len(text))
+    for x in nodes:
+        if x["start"] is not None: x["start"], x["end"] = start(x["start"]), end(x["end"])
 
 
 def _fill_gaps(nodes, n):
