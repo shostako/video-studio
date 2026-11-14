@@ -30,17 +30,20 @@ def reference_text(text, say, terms=()):
     return SL._revert_opens(s, opens)[0] if opens else s
 
 
-def apply_terms(an, ref, terms):
+def apply_terms(an, ref, terms, spans=False):
     """用語辞書の語は、辞書の読みを基準にする。見本の語（node）がまるごと辞書の語と同じ所だけを仮名に置き換えた文を返す
-    （「行」を登録しても「行く」の 行 は置き換えない）。置き換えが無ければ None。"""
-    if not terms: return None
+    （「行」を登録しても「行く」の 行 は置き換えない）。置き換えが無ければ None。
+    spans=True なら (文, [(置き換えた文の中の始め, 終わり, 辞書の語), ...]) を返す（高さの検査が、仮名にした所を辞書の語として扱うため）。"""
+    if not terms: return (None, []) if spans else None
     want = {t.word: t.reading for t in terms}
-    reps = [(n["start"], n["end"], want[n["string"]]) for n in an["nodes"] if n["string"] in want and n["start"] is not None]
-    if not reps: return None
-    out, pos = [], 0
-    for a, b, r in reps:
-        out.append(ref[pos:a] + r); pos = b
-    return "".join(out) + ref[pos:]
+    reps = [(n["start"], n["end"], n["string"]) for n in an["nodes"] if n["string"] in want and n["start"] is not None]
+    if not reps: return (None, []) if spans else None
+    out, pos, k, where = [], 0, 0, []
+    for a, b, w in reps:
+        out.append(ref[pos:a]); k += a - pos
+        r = want[w]; out.append(r); where.append((k, k + len(r), w)); k += len(r); pos = b
+    text = "".join(out) + ref[pos:]
+    return (text, where) if spans else text
 
 
 def tokens(an):

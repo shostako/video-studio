@@ -202,12 +202,14 @@ def main():
         miss = [p_ for p_ in paths if not os.path.exists(p_)]
         if miss: die(f"声が無い: {miss[0]}（先に synth）")
         pj = P.p("voice", "phones.json"); old = json.load(open(pj, encoding="utf-8")) if os.path.exists(pj) else {}
-        # reading は毎回聞き直す。accent は、声が変わっていなければ（大きさが同じ）reading の書き起こしを使う
-        need = [n for n in only if cmd == "reading" or old.get(str(n), {}).get("size") != os.path.getsize(P.p("voice", f"l{n}.wav"))]
+        # reading は毎回聞き直す。accent は、声の中身が同じ（md5 が同じ）なら reading の書き起こしを使う
+        import hashlib
+        md5 = {n: hashlib.md5(open(P.p("voice", f"l{n}.wav"), "rb").read()).hexdigest() for n in only}
+        need = [n for n in only if cmd == "reading" or old.get(str(n), {}).get("md5") != md5[n]]
         if need:
             try: res = phonemes.hear([P.p("voice", f"l{n}.wav") for n in need])
             except RuntimeError as x: die(str(x))
-            for n, r in zip(need, res): old[str(n)] = {"phones": r["phones"], "size": os.path.getsize(P.p("voice", f"l{n}.wav"))}
+            for n, r in zip(need, res): old[str(n)] = {"phones": r["phones"], "md5": md5[n]}
             json.dump(old, open(pj, "w", encoding="utf-8"), ensure_ascii=False)
         phones = {n: old[str(n)]["phones"] for n in only}
         if cmd == "reading": reading_check.report(lines, phones, terms); return

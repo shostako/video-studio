@@ -12,8 +12,8 @@
      - i-j で下がる: 高いまま続くはずの所で big 半音より下がる
   読みが字幕と違う語（reading の「!」「?」の語）は、モーラの対応がずれるので見ない。
 
-閾値の既定（head 0.5・drop 1.0・big 6.0 半音）は、2026-11-14〜15 にユーザーが聞いた 63 語（誤り 7）で決めた。そのデータでは
-誤り 7 件のうち 6 件を拾い、誤った警告は 2 件。決めたデータで測った成績なので、ほかの台本では甘めに出ている。
+閾値の既定（head 0.5・drop 1.0・big 6.0 半音）は、2026-11-14〜15 にユーザーが聞いた 63 語（誤り 8）で決めた。そのデータでは
+誤り 8 件のうち 6 件を拾い、誤った警告は 3 件。決めたデータで測った成績なので、ほかの台本では甘めに出ている。
 """
 import os, sys
 
@@ -92,7 +92,7 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     import ojt, accent as A
     ref = R.reference_text(text, say, terms)
     ra = ojt.analyze(ref)
-    ref2 = R.apply_terms(ra, ref, terms)
+    ref2, tspans = R.apply_terms(ra, ref, terms, spans=True)
     if ref2: ref, ra = ref2, ojt.analyze(ref2)
     skip = {r["word"] for r in R.check_line(text, say, [p for p, _, _ in heard], terms)}
     c = mora_onsets(ra, heard)
@@ -102,33 +102,43 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     tacc = _term_accent(terms)
     import say_lint as SL
     opened = [f.src for f in SL.lint_line(text, say, terms, use_reader=False) if f.kind == "open"]
-    out = []
+    # 見る単位: 辞書の語（仮名に置き換えた範囲にかかる見本の語をまとめた物）と、それ以外の語 1 つずつ
+    units, used = [], set()
+    for a_, b_, w in tspans:
+        ks = [k for k, n in enumerate(ra["nodes"]) if n["start"] is not None and n["start"] < b_ and n["end"] > a_]
+        if ks: units.append((w, ks)); used.update(ks)
     for k, n in enumerate(ra["nodes"]):
-        if n["pos"] in SKIP_POS or not n["mora"]: continue
-        if any(n["string"] in w or w in n["string"] for w in skip): continue
-        ms = list(n["mora"])
-        nx = ojt.next_in_phrase(ra, [k])
+        if k not in used: units.append((n["string"], [k]))
+    units.sort(key=lambda u: u[1][0])
+    out = []
+    for word, ks in units:
+        n = ra["nodes"][ks[0]]; k = ks[-1]
+        if word not in tacc and (n["pos"] in SKIP_POS or not n["mora"]): continue
+        if any(word in w or w in word for w in skip): continue
+        ms = [i for kk in ks for i in ra["nodes"][kk]["mora"]]
+        if not ms: continue
+        nx = ojt.next_in_phrase(ra, ks)
         want = "".join(ra["moras"][i]["hl"] for i in ms)
-        if n["string"] in tacc:
-            acc, after = tacc[n["string"]]
+        if word in tacc:
+            acc, after = tacc[word]
             if len(acc) == len(ms): want = acc
             if nx: nx = [dict(nx[0], hl=after)]
-        if nx: ms.append(ra["moras"].index(ojt.next_in_phrase(ra, [k])[0])); want += nx[0]["hl"]
+        if nx: ms.append(ra["moras"].index(ojt.next_in_phrase(ra, ks)[0])); want += nx[0]["hl"]
         if len(ms) < 2: continue
         p = [mora_pitch(t, st, c, i) for i in ms]
         why = verdict(want, p)
         if why:
             end = c[ms[-1] + 1] if ms[-1] + 1 < len(c) and c[ms[-1] + 1] is not None else (c[ms[-1]] + 0.2 if c[ms[-1]] is not None else None)
             after = next((m["string"] for m in ra["nodes"][k + 1:] if m["mora"]), "") if nx else ""
-            out.append({"word": n["string"] + ("+" + after if after else ""),
+            out.append({"word": word + ("+" + after if after else ""),
                         "want": want, "pitches": [None if x is None else round(x, 1) for x in p], "why": why, "t": c[ms[0]], "end": end,
-                        "opened": any(o in n["string"] or n["string"] in o for o in opened)})
+                        "opened": any(o in word or word in o for o in opened)})
     return out
 
 
 def report(lines, phones, wav_of, terms=()):
     """行番号 → 声の音素、行番号 → 声の wav を受け取って出す。警告の並び（say で仮名に開いた語が先）を返す。
-    仮名に開いた語を先に出すのは、ユーザーが聞いた語（2026-11-14〜15）で当たりが多かったから（警告 8 件のうち 6 件が本当の誤り）。
+    仮名に開いた語を先に出すのは、ユーザーが聞いた語（2026-11-14〜15）で当たりが多かったから（警告 9 件のうち 6 件が本当の誤り）。
     開いていない語の当たりの割合は、まだ聞いて確かめていない。"""
     found = []
     for n, ph in phones.items():
@@ -143,7 +153,7 @@ def report(lines, phones, wav_of, terms=()):
     no = sum(r["opened"] for r in found)
     print(f"高さの検査（{len(phones)} 行）: 「!」{len(found)} 件（仮名に開いた語 {no}、ほかの語 {len(found) - no}）", flush=True)
     if found:
-        print("  「!」は聴いて確かめる（--clips で語の前後を切り出した聞き取り用の音声を作れる）。仮名に開いた語は当たりが多い（聞いた 8 件のうち 6 件）。"
+        print("  「!」は聴いて確かめる（--clips で語の前後を切り出した聞き取り用の音声を作れる）。仮名に開いた語は当たりが多い（聞いた 9 件のうち 6 件）。"
               "ほかの語は、つながった話し方で句の頭が低く入らないだけの所も拾うので、当たりは少ないかもしれない。"
               "違っていれば、その行を作り直すか、漢字・仮名の書き方を変える。語の正しい高さは用語辞書の accent に書くと、それを基準にする", flush=True)
     return found

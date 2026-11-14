@@ -50,3 +50,38 @@ def test_mora_onsets_fill_gaps():
     c = AC.mora_onsets(ra, heard)
     assert c[0] == pytest.approx(0.10) and c[2] == pytest.approx(0.50)
     assert c[1] == pytest.approx(0.30)       # t a が合わない（x と聞こえた）→ 前後のモーラの頭から等分で補う
+
+
+@ojt_needed
+def test_term_accent_survives_reading_substitution(monkeypatch):
+    """辞書の語を読みの仮名に置き換えても、辞書の accent を基準にする。見本では 猫 は頭高。辞書に平板（LH）と書けば、
+    頭高に読んだ声に警告が出る。"""
+    from collections import namedtuple
+    T = namedtuple("T", "word reading accent type")
+    heard = [["n", 0.10, 0.12], ["e", 0.13, 0.15], ["k", 0.30, 0.32], ["o", 0.33, 0.35], ["g", 0.50, 0.52], ["a", 0.53, 0.55]]
+    t = np.arange(0, 0.8, 0.005)
+    st = np.where(t < 0.30, 5.0, -5.0)            # ね が高く、こ・が が低い（頭高）
+    monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
+    assert not [r for r in AC.check_line("猫が", None, heard, None, (), f0=(t, st)) if r["word"].startswith("猫")]
+    flat = AC.check_line("猫が", None, heard, None, [T("猫", "ねこ", "LH", 0)], f0=(t, st))
+    assert [r["word"] for r in flat] == ["猫+が"] and "頭が高い" in flat[0]["why"]
+
+
+@ojt_needed
+def test_phone_cache_uses_content_hash(tmp_path, monkeypatch):
+    """大きさが同じでも中身の違う声は、書き起こしを使い回さない。中身が同じなら使い回す。"""
+    import json, subprocess
+    sys.path.insert(0, os.path.join(HERE, "..", "skills", "video-mascot", "scripts"))
+    import voice, phonemes
+    os.makedirs(tmp_path / "voice")
+    w = str(tmp_path / "voice" / "l1.wav")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=200:d=0.5", "-ar", "16000", w], check=True)
+    json.dump({"name": "t", "poses": {"home": {}}, "voice": {"lines": [{"text": "猫が"}]}}, open(tmp_path / "config.json", "w", encoding="utf-8"), ensure_ascii=False)
+    calls = []
+    monkeypatch.setattr(phonemes, "hear", lambda paths: calls.append(list(paths)) or [{"path": p, "phones": [["n", 0.1, 0.12]]} for p in paths])
+    run = lambda: (monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "accent"]), voice.main())
+    run(); run()
+    assert len(calls) == 1                         # 2 回目は控えを使う
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=0.5", "-ar", "16000", w], check=True)   # 同じ長さ・違う中身
+    run()
+    assert len(calls) == 2
