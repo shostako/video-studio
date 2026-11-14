@@ -6,3 +6,4 @@ praat-parselmouth
 pyyaml
 pykakasi
 imageio-ffmpeg
+pyopenjtalk-plus

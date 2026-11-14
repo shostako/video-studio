@@ -3,7 +3,9 @@
   vm voice <作業フォルダ> candidates              config.voice.candidates の声の説明文ごとに、試し2行を読ませる → voice/cand/ に wav と聞き比べの1本
   vm voice <作業フォルダ> synth [行番号 ...]       全行（か指定の行）を読ませて voice/l<N>.wav を作る。聞き取りで台本との一致も出す。全行のときは master も作り、語の時刻（書き出しが使う）も残す
   vm voice <作業フォルダ> master                  各行を開始時刻に置いて voice/master.wav と voice/timing.json を作る
-config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...]}
+  vm voice <作業フォルダ> lint [行番号 ...] [--all]  say の書き方を字幕と比べる（声は作らない）。漢字を仮名に開いた所・字幕に無い読点を出す（say_lint.py）
+config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...],
+              terms(lint で使う作業フォルダの用語辞書。video-scene の data/terms.yaml と同じ形、省略可)}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
 import difflib, json, os, re, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -175,9 +177,16 @@ def report_match(P, lines, only, V, gap):
 
 def main():
     a = [x for x in sys.argv[1:]]
-    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master")
+    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master|lint")
     P = Proj(a[0]); cmd = a[1]; V = P.cfg["voice"]; vd = P.p("voice"); os.makedirs(vd, exist_ok=True)
     lines = V["lines"]; gap = float(V.get("gap", 0.5))
+    if cmd == "lint":
+        import say_lint
+        args = [x for x in a[2:] if x != "--all"]
+        only = {int(x) for x in args} or None
+        try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
+        except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
+        say_lint.report(say_lint.lint_lines(lines, only, terms), show_all="--all" in a[2:]); return
     if cmd == "check":
         print("Irodori:", "ある" if os.path.isdir(IRO) else "無い", IRO); sys.exit(0 if os.path.isdir(IRO) else 1)
     if cmd == "candidates":
