@@ -67,6 +67,14 @@ def test_terms_set_the_reference_reading():
 
 
 @ojt_needed
+def test_inserted_phones_are_reported():
+    """語の前後に音が足されても通さない（猫 を こねこ、ねこねこ）。"""
+    for heard in ("k o n e k o g a i r u", "n e k o n e k o g a i r u"):
+        rs = R.check_line("猫がいる。", None, P(heard))
+        assert rs and rs[0]["word"].startswith("猫") and rs[0]["got"] != rs[0]["want"], heard
+
+
+@ojt_needed
 def test_reference_reverts_openings():
     assert R.reference_text("行の色は赤になる。", "行のいろは、赤になる。") == "行の色は、赤になる。"
     assert R.reference_text("Claude が作る。", "クロードが作る。") == "クロードが作る。"

@@ -189,7 +189,8 @@ def main():
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         say_lint.report(say_lint.lint_lines(lines, only, terms), show_all="--all" in a[2:]); return
     if cmd == "reading":
-        import reading_check, phonemes, say_lint
+        import reading_check, phonemes, say_lint, ojt
+        if not ojt.available(): die("pyopenjtalk-plus が無い（字幕の読みの見本に使う）。video-scene の setup.sh を VS_ACCENT_CHECK=1 で流して入れる")
         try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         only = [int(x) for x in a[2:]] or list(range(1, len(lines) + 1))

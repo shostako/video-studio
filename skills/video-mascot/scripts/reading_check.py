@@ -81,15 +81,16 @@ def align(a, b):
 
 
 def _bad_tokens(pairs, a, b):
-    """食い違いに関わる a の位置の集合。挿入は次の a の位置（無ければ前）に付ける。"""
-    bad, pend = set(), False
-    last = None
+    """食い違いに関わる a の位置の集合と、挿入された b の位置をどの a に付けたか（{a の位置: [b の位置, ...]}）。
+    挿入は次の a の位置（無ければ前）に付ける。"""
+    bad, ins, pend, last = set(), {}, [], None
     for i, j in pairs:
-        if i is None: pend = True; continue
+        if i is None: pend.append(j); continue
         if j is None or a[i] != b[j] or pend: bad.add(i)
-        pend = False; last = i
-    if pend and last is not None: bad.add(last)
-    return bad
+        if pend: ins.setdefault(i, []).extend(pend)
+        pend = []; last = i
+    if pend and last is not None: bad.add(last); ins.setdefault(last, []).extend(pend)
+    return bad, ins
 
 
 def check_line(text, say, heard, terms=()):
@@ -103,12 +104,12 @@ def check_line(text, say, heard, terms=()):
     rt = norm(tokens(ra)); hh = norm([(p, j) for j, p in enumerate(heard)])
     rn, hn = [p for p, _ in rt], [p for p, _ in hh]
     pairs = align(rn, hn)
-    bad = _bad_tokens(pairs, rn, hn)
+    bad, ins = _bad_tokens(pairs, rn, hn)
     if not bad: return []
     sa = ojt.analyze(SL._strip_spaces(say)[0]) if say else ra
     sn = [p for p, _ in norm(tokens(sa))]
     spairs = align(sn, hn)
-    sbad = _bad_tokens(spairs, sn, hn)
+    sbad, _ = _bad_tokens(spairs, sn, hn)
     h_ok_say = {j for i, j in spairs if i is not None and j is not None and i not in sbad}   # say の読みと合っている声の音素
     h_of = {i: j for i, j in pairs if i is not None}
     # 食い違いの語を、続く語ごとにまとめる
@@ -120,12 +121,11 @@ def check_line(text, say, heard, terms=()):
     out = []
     for g in groups:
         idx = [i for i, (_, k) in enumerate(rt) if k in g]
-        hs = [h_of[i] for i in idx if h_of.get(i) is not None]
+        hs = [h_of[i] for i in idx if h_of.get(i) is not None] + [j for i in idx for j in ins.get(i, [])]   # 語の前後に入った音も含める
         h_span = list(range(min(hs), max(hs) + 1)) if hs else []
         word = "".join(ra["nodes"][k]["string"] for k in g)
         want = " ".join(rn[i] for i in idx)
         got = " ".join(hn[j] for j in h_span)
-        if want == got: continue          # 語の境目に音が 1 つ入っただけ
         kind = "say" if (say and h_span and all(j in h_ok_say for j in h_span) and SL._strip_spaces(say)[0] != ref) else "misread"
         span = (hh[h_span[0]][1], hh[h_span[-1]][1]) if h_span else None
         out.append({"kind": kind, "word": word, "want": want, "got": got, "h_span": span})
