@@ -114,6 +114,7 @@ def test_term_already_in_say_keeps_dictionary_accent(monkeypatch):
     monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
     flat = AC.check_line("猫が", "ねこが", heard, None, [T("猫", "ねこ", "LH", 0)], f0=(t, st))
     assert [r["word"] for r in flat] == ["猫+が"] and "頭が高い" in flat[0]["why"]
+    assert flat[0]["opened"]                          # 辞書の読みで開いた語も、開いた語（既定で出す側）
 
 
 @ojt_needed

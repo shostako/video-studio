@@ -127,7 +127,8 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     t, st = f0
     tacc = _term_accent(terms)
     import say_lint as SL
-    opened = [f.src for f in SL.lint_line(text, say, terms, use_reader=False) if f.kind == "open"]
+    # 仮名に開いたかどうかは、辞書の除外を使わずに見る（辞書の読みで開いた語も、開いた語として先に出す）
+    opened = [f.src for f in SL.lint_line(text, say, (), use_reader=False) if f.kind == "open"]
     # 見る単位: 辞書の語（仮名に置き換えた範囲にかかる見本の語をまとめた物）と、それ以外の語 1 つずつ
     units, used = [], set()
     for a_, b_, w in tspans:
