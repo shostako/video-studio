@@ -70,19 +70,23 @@ def test_term_accent_survives_reading_substitution(monkeypatch):
 @ojt_needed
 def test_phone_cache_uses_content_hash(tmp_path, monkeypatch):
     """大きさが同じでも中身の違う声は、書き起こしを使い回さない。中身が同じなら使い回す。"""
-    import json, subprocess
+    import json
     sys.path.insert(0, os.path.join(HERE, "..", "skills", "video-mascot", "scripts"))
     import voice, phonemes
     os.makedirs(tmp_path / "voice")
     w = str(tmp_path / "voice" / "l1.wav")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=200:d=0.5", "-ar", "16000", w], check=True)
+    def sine(f):        # CI に ffmpeg が無いので wave で書く（どちらも 0.5 秒・同じ大きさ）
+        import wave
+        x = (np.sin(2 * np.pi * f * np.arange(8000) / 16000) * 8000).astype("<i2")
+        with wave.open(w, "wb") as o: o.setnchannels(1); o.setsampwidth(2); o.setframerate(16000); o.writeframes(x.tobytes())
+    sine(200)
     json.dump({"name": "t", "poses": {"home": {}}, "voice": {"lines": [{"text": "猫が"}]}}, open(tmp_path / "config.json", "w", encoding="utf-8"), ensure_ascii=False)
     calls = []
     monkeypatch.setattr(phonemes, "hear", lambda paths: calls.append(list(paths)) or [{"path": p, "phones": [["n", 0.1, 0.12]]} for p in paths])
     run = lambda: (monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "accent"]), voice.main())
     run(); run()
     assert len(calls) == 1                         # 2 回目は控えを使う
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=0.5", "-ar", "16000", w], check=True)   # 同じ長さ・違う中身
+    sine(300)                                      # 同じ長さ・違う中身
     run()
     assert len(calls) == 2
 
@@ -97,3 +101,27 @@ def test_report_shows_only_opened_words_by_default(monkeypatch, capsys):
     assert [r["word"] for r in found] == ["棒+が"] and "並ぶ" not in out and "疑い 1 件は出していない" in out
     found = AC.report([{"text": "x"}], {1: []}, lambda n: None, show_all=True)
     assert [r["word"] for r in found] == ["棒+が", "並ぶ"]
+
+
+
+@ojt_needed
+def test_term_already_in_say_keeps_dictionary_accent(monkeypatch):
+    """say に辞書の読み（ねこ）を初めから書いた語も、辞書の accent を使う。"""
+    from collections import namedtuple
+    T = namedtuple("T", "word reading accent type")
+    heard = [["n", 0.10, 0.12], ["e", 0.13, 0.15], ["k", 0.30, 0.32], ["o", 0.33, 0.35], ["g", 0.50, 0.52], ["a", 0.53, 0.55]]
+    t = np.arange(0, 0.8, 0.005); st = np.where(t < 0.30, 5.0, -5.0)
+    monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
+    flat = AC.check_line("猫が", "ねこが", heard, None, [T("猫", "ねこ", "LH", 0)], f0=(t, st))
+    assert [r["word"] for r in flat] == ["猫+が"] and "頭が高い" in flat[0]["why"]
+
+
+@ojt_needed
+def test_misread_term_is_not_accent_checked(monkeypatch):
+    """読みを誤った辞書の語（読みの検査の結果は仮名の ねこ）は、高さを見ない（文字の範囲で突き合わせる）。"""
+    from collections import namedtuple
+    T = namedtuple("T", "word reading accent type")
+    heard = [["n", 0.10, 0.12], ["e", 0.13, 0.15], ["k", 0.30, 0.32], ["o", 0.33, 0.35], ["g", 0.50, 0.52], ["a", 0.53, 0.55]]
+    t = np.arange(0, 0.8, 0.005); st = np.where(t < 0.30, 5.0, -5.0)
+    monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [{"word": "ねこ", "ref_span": (0, 2), "kind": "misread"}])
+    assert AC.check_line("猫が", None, heard, None, [T("猫", "ねこ", "LH", 0)], f0=(t, st)) == []

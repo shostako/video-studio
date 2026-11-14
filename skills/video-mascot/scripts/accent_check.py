@@ -15,7 +15,7 @@
 閾値の既定（head 0.5・drop 1.0・big 6.0 半音）は、2026-11-14〜15 にユーザーが聞いた 63 語（誤り 8）で決めた。そのデータでは
 誤り 8 件のうち 6 件を拾い、誤った警告は 3 件。決めたデータで測った成績なので、ほかの台本では甘めに出ている。
 """
-import os, sys
+import os, re, sys
 
 import numpy as np
 
@@ -87,14 +87,32 @@ def _term_accent(terms):
     return out
 
 
+def term_spans(text, ref, terms):
+    """基準の文の中で、用語辞書の語に当たる文字の範囲 [(始め, 終わり, 辞書の語), ...]。字幕の中の辞書の語を、
+    字幕と基準の文の文字の対応で基準の文へ写し、そこが辞書の読み（仮名）になっている所だけを取る。
+    基準の文では辞書の語は仮名になっている（apply_terms で置き換えたか、say に初めから読みで書いてあった）。"""
+    import say_lint as SL
+    if not terms: return []
+    t = SL._strip_spaces(text)[0]; ops = SL._align(t, ref); out = []
+    for tm in terms:
+        want = SL.to_hira(tm.reading)
+        for m in re.finditer(re.escape(tm.word), t):
+            x, y = SL._t2s(ops, m.start(), False), SL._t2s(ops, m.end(), True)
+            if x is None or y is None: continue
+            seg = ref[x:y]; core = seg.strip("".join(SL.PUNCT)); x += len(seg) - len(seg.lstrip("".join(SL.PUNCT)))
+            if SL.to_hira(core) == want: out.append((x, x + len(core), tm.word))
+    return out
+
+
 def check_line(text, say, heard, wav, terms=(), f0=None):
     """1 行の検査。heard は [[音素, 始め, 終わり], ...]。返り値は [{word, want, pitches, why, t}]（違う所だけ）。"""
     import ojt, accent as A
     ref = R.reference_text(text, say, terms)
     ra = ojt.analyze(ref)
-    ref2, tspans = R.apply_terms(ra, ref, terms, spans=True)
+    ref2 = R.apply_terms(ra, ref, terms)
     if ref2: ref, ra = ref2, ojt.analyze(ref2)
-    skip = {r["word"] for r in R.check_line(text, say, [p for p, _, _ in heard], terms)}
+    tspans = term_spans(text, ref, terms)
+    skip = [r["ref_span"] for r in R.check_line(text, say, [p for p, _, _ in heard], terms) if r.get("ref_span")]   # 読みが違う所（文字の範囲）
     c = mora_onsets(ra, heard)
     if f0 is None:
         t, hz = A.f0_track(wav); f0 = (t, A.to_semitones(hz))
@@ -114,7 +132,9 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     for word, ks in units:
         n = ra["nodes"][ks[0]]; k = ks[-1]
         if word not in tacc and (n["pos"] in SKIP_POS or not n["mora"]): continue
-        if any(word in w or w in word for w in skip): continue
+        a_ = min(ra["nodes"][kk]["start"] for kk in ks if ra["nodes"][kk]["start"] is not None) if any(ra["nodes"][kk]["start"] is not None for kk in ks) else None
+        b_ = max(ra["nodes"][kk]["end"] for kk in ks if ra["nodes"][kk]["end"] is not None) if a_ is not None else None
+        if a_ is not None and any(x < b_ and y > a_ for x, y in skip): continue
         ms = [i for kk in ks for i in ra["nodes"][kk]["mora"]]
         if not ms: continue
         nx = ojt.next_in_phrase(ra, ks)

@@ -99,7 +99,8 @@ def _bad_tokens(pairs, a, b):
 
 def check_line(text, say, heard, terms=()):
     """1 行の検査。heard は音素の並び（phonemes.hear の phones の 1 つ目の要素）。返り値は食い違いの並び。
-    各要素: {kind, word, want（基準の音素）, got（声の音素）, h_span（声の音素の位置の範囲。heard の添字）}"""
+    各要素: {kind, word, want（基準の音素）, got（声の音素）, h_span（声の音素の位置の範囲。heard の添字）,
+            ref_span（基準の文の中の文字の範囲。基準の文は reference_text のあと apply_terms した物）}"""
     import ojt
     ref = reference_text(text, say, terms)
     ra = ojt.analyze(ref)
@@ -149,7 +150,9 @@ def check_line(text, say, heard, terms=()):
             ed = sum(1 for i, j in align(want.split(), got.split()) if i is None or j is None or want.split()[i] != got.split()[j])
             if ed < 2: kind = "minor"
         span = (hh[h_span[0]][1], hh[h_span[-1]][1]) if h_span else None
-        out.append({"kind": kind, "word": word, "want": want, "got": got, "h_span": span})
+        cs = [ra["nodes"][k] for k in g if ra["nodes"][k]["start"] is not None]
+        ref_span = (min(n["start"] for n in cs), max(n["end"] for n in cs)) if cs else None
+        out.append({"kind": kind, "word": word, "want": want, "got": got, "h_span": span, "ref_span": ref_span})
     return out
 
 
