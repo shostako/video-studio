@@ -120,6 +120,16 @@ def test_comma_inside_replacement_is_not_compared():
 
 
 @ojt_needed
+def test_tail_accent_is_seen_on_the_particle():
+    """尾高（花が LH+L）と平板（はなが LH+H）は語の中では同じ。後ろの助詞まで比べて見分ける。"""
+    fs = [f for f in L.lint_line("花が咲く。", "はなが咲く。") if f.kind == "open"]
+    assert len(fs) == 1 and fs[0].extra["change"] == "高さ"
+    assert fs[0].extra["t_pitch"] == "LHL" and fs[0].extra["s_pitch"] == "LHH"
+    fs = [f for f in L.lint_line("男が来る。", "おとこが来る。") if f.kind == "open"]
+    assert len(fs) == 1 and fs[0].extra["change"] is None
+
+
+@ojt_needed
 def test_comma_inside_modifier_is_hard():
     fs = L.lint_line("ブラウザで開く表だ。", "ブラウザで開く、表だ。")
     assert [(f.kind, f.hard) for f in fs] == [("comma", True)]

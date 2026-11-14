@@ -214,7 +214,10 @@ def _compare_reader(t, s, ops, found):
                 if (na, nb) == (a, b): break
                 a, b = na, nb
             mo, mk = ojt.region_moras(as_, ks), ojt.region_moras(a2n, k2)
-            e = {"t_word": s2[x:y], "s_word": s[a:b], "t_sound": ojt.sound(mk), "s_sound": ojt.sound(mo), "t_pitch": ojt.pitch(mk), "s_pitch": ojt.pitch(mo)}
+            # 高さは同じ句の次のモーラ（後ろの助詞の頭）まで比べる。尾高と平板の違いはそこに出る
+            no, nk = ojt.next_in_phrase(as_, ks), ojt.next_in_phrase(a2n, k2)
+            e = {"t_word": s2[x:y] + ("+" + "".join(m["ph"] for m in nk) if nk else ""), "s_word": s[a:b] + ("+" + "".join(m["ph"] for m in no) if no else ""),
+                 "t_sound": ojt.sound(mk), "s_sound": ojt.sound(mo), "t_pitch": ojt.pitch(mk + nk), "s_pitch": ojt.pitch(mo + no)}
             if not mo or not mk: e["change"] = "?"; e["why"] = "対応"   # 語が見つからない。比べていないのに「同じ」にしない
             else: e["change"] = "読み" if e["t_sound"] != e["s_sound"] else ("高さ" if e["t_pitch"] != e["s_pitch"] else None)
             f.extra = e

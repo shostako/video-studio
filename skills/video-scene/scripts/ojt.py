@@ -129,5 +129,14 @@ def region_moras(an, ks):
     return [an["moras"][i] for k in ks for i in an["nodes"][k]["mora"]]
 
 
+def next_in_phrase(an, ks):
+    """語の並び ks の最後のモーラの次のモーラが同じ句にあれば、その 1 つを並びで返す（無ければ []）。
+    尾高（花が LHL）と平板（はなが LHH）は語の中では同じ列で、違いは後ろの助詞の高さに出る。"""
+    ms = region_moras(an, ks)
+    if not ms: return []
+    i = an["moras"].index(ms[-1]) + 1
+    return [an["moras"][i]] if i < len(an["moras"]) and an["moras"][i]["ap"] == ms[-1]["ap"] else []
+
+
 def sound(ms): return " ".join(m["ph"] for m in ms)
 def pitch(ms): return "".join(m["hl"] for m in ms)
