@@ -85,3 +85,15 @@ def test_phone_cache_uses_content_hash(tmp_path, monkeypatch):
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=0.5", "-ar", "16000", w], check=True)   # 同じ長さ・違う中身
     run()
     assert len(calls) == 2
+
+
+def test_report_shows_only_opened_words_by_default(monkeypatch, capsys):
+    """既定は仮名に開いた語だけ。開いていない語は数だけで、show_all で出す。"""
+    items = [{"word": "棒+が", "want": "LHH", "pitches": [5.0, -3.0, None], "why": ["頭が高い"], "t": 1.0, "end": 1.3, "opened": True},
+             {"word": "並ぶ", "want": "LHH", "pitches": [-2.9, -5.4, 1.0], "why": ["頭が高い"], "t": 2.0, "end": 2.3, "opened": False}]
+    monkeypatch.setattr(AC, "check_line", lambda *a, **k: items)
+    found = AC.report([{"text": "x"}], {1: []}, lambda n: None)
+    out = capsys.readouterr().out
+    assert [r["word"] for r in found] == ["棒+が"] and "並ぶ" not in out and "疑い 1 件は出していない" in out
+    found = AC.report([{"text": "x"}], {1: []}, lambda n: None, show_all=True)
+    assert [r["word"] for r in found] == ["棒+が", "並ぶ"]
