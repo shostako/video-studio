@@ -73,6 +73,12 @@ if [ -n "$(vpy)" ] && "$(vpy)" -c "import yaml" 2>/dev/null; then say "ok   pyya
 elif [ $CHECK -eq 1 ]; then say "--   pyyaml が無い（vs terms が使えない。setup.sh を引数なしで流すと入る）"
 elif [ -n "$(vpy)" ]; then say "..   pyyaml を入れる"; "$(vpy)" -m pip install -q pyyaml && say "ok   pyyaml" || say "--   pyyaml を入れられない（vs terms が使えない）"; fi
 
+# pyopenjtalk-plus（vm voice lint の読み手の見本。約 330MB なので VS_ACCENT_CHECK=1 のときだけ入れる。無くても lint は文字の比較で動く）
+if [ -n "$(vpy)" ] && "$(vpy)" -c "import pyopenjtalk" >/dev/null 2>&1; then say "ok   pyopenjtalk-plus"
+elif [ "${VS_ACCENT_CHECK:-0}" != 1 ]; then :
+elif [ $CHECK -eq 1 ]; then say "--   pyopenjtalk-plus が無い（vm voice lint が文字の比較だけになる。VS_ACCENT_CHECK=1 で setup.sh を引数なしで流すと入る）"
+elif [ -n "$(vpy)" ]; then say "..   pyopenjtalk-plus を入れる"; "$(vpy)" -m pip install -q pyopenjtalk-plus && say "ok   pyopenjtalk-plus" || say "--   pyopenjtalk-plus を入れられない（vm voice lint が文字の比較だけになる）"; fi
+
 # Playwright と Chromium（screen-explainer の web_capture.py が Web アプリの画面を撮るのに使う。venv を共用する）
 # ブラウザが起動するかまで確かめる。入れたばかりの Ubuntu はブラウザの部品（ライブラリ）が足りず、sudo で入れる必要がある
 PW_LAUNCH='from playwright.sync_api import sync_playwright
