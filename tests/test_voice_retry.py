@@ -52,7 +52,7 @@ def test_retry_replaces_only_lines_with_fewer_warnings(tmp_path, monkeypatch, ca
     w = lambda n: str(tmp_path / "voice" / f"l{n}.wav")
     orig = {n: VR.md5(w(n)) for n in (1, 2, 3)}
     # 警告: 行1 は元 2 件で seed 2026 が 0 件、行2 は警告なし、行3 は元 1 件で候補も 1 件（元を残す）
-    def fake_warn(line, phones, wav, terms=(), also=()):
+    def fake_warn(line, phones, wav, terms=(), also=(), watch=()):
         base = re.sub(r"_[0-9a-f]{8}\.wav$", ".wav", os.path.basename(wav))     # 候補の名前の入力の鍵を外す
         k = {"l1.wav": 2, "l3.wav": 1, "l1_s2026.wav": 0, "l1_s2025.wav": 1}.get(base, 1 if base.startswith(("l1_", "l3_")) else 0)
         return [{"kind": "accent", "word": "x", "t": 0.1, "end": 0.2, "why": "w"}] * k
@@ -89,7 +89,7 @@ def test_retry_uses_voice_ref_and_line_seed(tmp_path, monkeypatch):
     voice, jobs, _ = _setup(tmp_path, monkeypatch, lines)
     cfg = json.load(open(tmp_path / "config.json", encoding="utf-8")); cfg["voice"]["ref"] = "voice/ref.wav"
     json.dump(cfg, open(tmp_path / "config.json", "w", encoding="utf-8"), ensure_ascii=False)
-    monkeypatch.setattr(VR, "warnings", lambda line, phones, wav, terms=(), also=(): [{"kind": "reading", "word": "x", "t": None, "end": None, "why": "w"}])
+    monkeypatch.setattr(VR, "warnings", lambda line, phones, wav, terms=(), also=(), watch=(): [{"kind": "reading", "word": "x", "t": None, "end": None, "why": "w"}])
     monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "retry", "--n", "2"]); voice.main()
     assert [j["seed"] for j in jobs] == [8, 9]
     assert {j["ref"] for j in jobs} == {str(tmp_path / "voice" / "ref.wav")}
@@ -123,6 +123,14 @@ def test_kanji_say_matches_by_position_not_substring():
     assert w[0]["opens"] and VR.kanji_say(t, s, w) == "手順とてを示す。"
 
 
+def test_kanji_say_spans_cover_the_whole_reverted_opening():
+    import say_lint as SL
+    t, s = "入力方法を説明。", "にゅうりょくほうほうを説明。"      # 開いた所 1 つが 入力 と 方法 の 2 語にまたがる
+    ops = [tuple(f.say_pos) for f in SL.lint_line(t, s, (), use_reader=False) if f.kind == "open"]
+    new, sp = VR.kanji_say(t, s, [{"kind": "accent", "word": "入力", "opens": ops}], spans=True)
+    assert new == "入力方法を説明。" and sp == [(0, 4)]          # 方法 も範囲に入る（候補の点で数える）
+
+
 def test_kanji_say_keeps_commas_inside_an_opening():
     import say_lint as SL
     t, s = "入力方法を説明。", "にゅうりょく、ほうほうを説明。"
@@ -137,8 +145,8 @@ def test_retry_tries_kanji_say_first(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(say_lint, "load_all_terms", lambda *a, **k: [])
     seen = []
     ops = _opens("余白を決める。", "よはくを決める。", "余白")
-    def fake_warn(line, phones, wav, terms=(), also=()):
-        seen.append((os.path.basename(wav), line.get("say"), set(also)))
+    def fake_warn(line, phones, wav, terms=(), also=(), watch=()):
+        seen.append((os.path.basename(wav), line.get("say"), set(also), list(watch)))
         if os.path.basename(wav) == "l2.wav": return [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w", "opens": ops}]
         if "余白" in (line.get("say") or "") and "_s2026_" in wav: return []
         return [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w"}] if "l2_" in wav else []
@@ -146,7 +154,8 @@ def test_retry_tries_kanji_say_first(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "retry", "2", "--n", "2"]); voice.main()
     out = capsys.readouterr().out
     assert [j["text"] for j in jobs] == ["余白を決める。"] * 2 + ["よはくを決める。"] * 2      # 漢字に戻した say を先に
-    assert any(a == {"余白+を"} and s == "余白を決める。" for _, s, a in seen)                # 戻した語の警告も数える
+    assert any(a == {"余白+を"} and s == "余白を決める。" and w == [(0, 2)] for _, s, a, w in seen)   # 戻した語の警告も数える（戻した範囲ごと）
+    assert all(w == [] for _, s, a, w in seen if s != "余白を決める。")
     assert "行2: 漢字に戻した say・seed 2026 の声にした" in out and "say「余白を決める。」" in out
 
 
@@ -155,6 +164,6 @@ def test_retry_no_kanji_keeps_say(tmp_path, monkeypatch):
     voice, jobs, _ = _setup(tmp_path, monkeypatch, lines)
     import say_lint
     monkeypatch.setattr(say_lint, "load_all_terms", lambda *a, **k: [])
-    monkeypatch.setattr(VR, "warnings", lambda line, phones, wav, terms=(), also=(): [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w"}])
+    monkeypatch.setattr(VR, "warnings", lambda line, phones, wav, terms=(), also=(), watch=(): [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w"}])
     monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "retry", "2", "--n", "2", "--no-kanji"]); voice.main()
     assert [j["text"] for j in jobs] == ["よはくを決める。"] * 2

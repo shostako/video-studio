@@ -26,29 +26,31 @@ def job_key(job):
     return hashlib.md5(json.dumps(d, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:8]
 
 
-def kanji_say(text, say, warns, terms=()):
+def kanji_say(text, say, warns, terms=(), spans=False):
     """say で仮名に開いた所のうち、高さの警告の出た語（warns、warnings の accent の項目。開いた所の位置 opens を持つ）に掛かる所だけを
     字幕の漢字に戻した say。戻す所が無ければ None。位置で決める（同じ字を含む別の語は戻さない）。用語辞書の読みどおりに開いた所は戻さない。
-    say の空白は残す。理由: 仮名に開いた語は高さが外れやすく、漢字に戻すと直る（2026-11-15、ユーザーが聞いた 21 本で、漢字 14 本のうち
+    say の空白は残す。spans なら (say, 戻した所の字幕での範囲 [(始め, 終わり), ...]) を返す（候補の点で、戻した所に掛かる語を全部数えるため）。理由: 仮名に開いた語は高さが外れやすく、漢字に戻すと直る（2026-11-15、ユーザーが聞いた 21 本で、漢字 14 本のうち
     OK 13・△ 1、仮名 7 本のうち OK 1）。"""
     import say_lint as SL
-    if not say: return None
+    if not say: return (None, []) if spans else None
     want = {tuple(sp) for w in warns if w.get("kind") == "accent" for sp in w.get("opens", ())}
     s, sp = SL._strip_spaces(say)
     def inner_punct(f):    # 開いた所の中に読点などがある（戻すと間まで消える）。_compare_reader と同じく戻さない
         ss = s[f.say_pos[0]:f.say_pos[1]].strip("".join(SL.PUNCT))
         return any(c in SL.PUNCT for c in ss)
     opens = [f for f in SL.lint_line(text, say, terms, use_reader=False) if f.kind == "open" and tuple(f.say_pos) in want and not inner_punct(f)]
-    if not opens: return None
+    if not opens: return (None, []) if spans else None
     new, lo, _, _ = SL._revert_opens(s, opens)
     cut = sorted({lo[i] for i in range(len(s)) if sp[i]})    # 空白のあった所に戻す
     out = "".join(" " * (i in cut) + c for i, c in enumerate(new))
-    return out if out != say else None
+    if out == say: return (None, []) if spans else None
+    return (out, [(f.pos, f.end) for f in opens]) if spans else out
 
 
-def warnings(line, phones, wav, terms=(), also=()):
+def warnings(line, phones, wav, terms=(), also=(), watch=()):
     """1 行の声の警告。phones は [[音素, 始め, 終わり], ...]。返り値は [{kind: reading|accent, word, t, end, why}]。
-    also は、仮名に開いていなくても数える高さの語の名前（漢字に戻した候補で、戻した語の警告を数えるため）。"""
+    also は、仮名に開いていなくても数える高さの語の名前、watch は字幕の範囲（そこに掛かる語は開いていなくても数える）。
+    どちらも漢字に戻した候補で、戻した語の警告を数えるため（戻した所が何語にもまたがるときも全部数える）。"""
     import reading_check as R, accent_check as A
     text, say = line.get("text", ""), line.get("say")
     out = []
@@ -57,8 +59,8 @@ def warnings(line, phones, wav, terms=(), also=()):
         hs = r["h_span"]
         out.append({"kind": "reading", "word": r["word"], "t": phones[hs[0]][1] if hs else None, "end": phones[hs[1]][2] if hs else None,
                     "why": f"読み [{r['want']}] が声では [{r['got']}]"})
-    for r in A.check_line(text, say, phones, wav, terms):
-        if r["opened"] or r["word"] in also:
+    for r in A.check_line(text, say, phones, wav, terms, watch=watch):
+        if r["opened"] or r["word"] in also or r.get("watched"):
             out.append({"kind": "accent", "word": r["word"], "t": r["t"], "end": r.get("end"), "why": "・".join(r["why"]), "opens": r.get("opens", [])})
     return out
 

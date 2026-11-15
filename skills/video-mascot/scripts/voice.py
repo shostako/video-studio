@@ -223,7 +223,7 @@ def retry(P, V, lines, args):
     print(f"警告のある行: {len(targets)} 行（{len(only)} 行のうち）" + (f" → {', '.join(map(str, targets))}" if targets else ""), flush=True)
     rd = P.p("voice", "retry"); os.makedirs(rd, exist_ok=True)
     gref = V.get("ref"); gref = P.p(gref) if gref and not os.path.isabs(gref) else gref
-    cand = {}; jobs = []; also = {}
+    cand = {}; jobs = []; also = {}; watch = {}
     for n in targets:
         ref = gref    # synth <N> と同じ手本（voice.ref、無ければ作り直さない行のうち最初の行の声）
         if ref is None:
@@ -231,7 +231,7 @@ def retry(P, V, lines, args):
             ref = wav(k) if k is not None else None
         l = lines[n - 1]; say0 = l.get("say", l["text"])
         acc = [w for w in now[n] if w["kind"] == "accent"]; also[n] = {w["word"] for w in acc}
-        ks = VR.kanji_say(l.get("text", ""), l.get("say"), acc, terms) if acc and not plain else None
+        ks, watch[n] = VR.kanji_say(l.get("text", ""), l.get("say"), acc, terms, spans=True) if acc and not plain else (None, [])
         cand[n] = []
         for say in ([ks] if ks else []) + [say0]:    # 漢字に戻した say を先に試す（同じ数なら漢字の方を選ぶ）
             for s in VR.seeds(line_seed(V, l), n_cand):
@@ -252,7 +252,8 @@ def retry(P, V, lines, args):
         json.dump(cp, open(cj, "w", encoding="utf-8"), ensure_ascii=False)
     changed = []
     for n in targets:
-        sc = [(c, VR.warnings(lines[n - 1] if c[1] is None else dict(lines[n - 1], say=c[1]), cp[os.path.basename(o)]["phones"], o, terms, also[n]))
+        sc = [(c, VR.warnings(lines[n - 1] if c[1] is None else dict(lines[n - 1], say=c[1]), cp[os.path.basename(o)]["phones"], o, terms, also[n],
+                              watch=() if c[1] is None else watch[n]))
               for c, o in cand[n]]
         same = VR.stuck(now[n], [w for _, w in sc])    # 元にもどの候補にも出た警告
         pick = VR.choose(len(now[n]), [(s, len(w)) for s, w in sc])
