@@ -18,6 +18,14 @@ def seeds(base, n):
     return [base + k for k in range(1, n + 1)]
 
 
+def job_key(job):
+    """候補の作り置きの鍵。合成に渡す物（文・説明文・seed・速さ）と手本の声の中身。どれかが変われば別の候補として作り直す。"""
+    import json
+    ref = job.get("ref")
+    d = {k: job.get(k) for k in ("text", "caption", "seed", "duration_scale")} | {"ref": md5(ref) if ref and os.path.exists(ref) else ref}
+    return hashlib.md5(json.dumps(d, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:8]
+
+
 def warnings(line, phones, wav, terms=()):
     """1 行の声の警告。phones は [[音素, 始め, 終わり], ...]。返り値は [{kind: reading|accent, word, t, end, why}]。"""
     import reading_check as R, accent_check as A

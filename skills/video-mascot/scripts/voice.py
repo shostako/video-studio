@@ -228,9 +228,12 @@ def retry(P, V, lines, args):
             k = partial_voice_ref([n], len(lines), lambda m: os.path.exists(wav(m)))
             ref = wav(k) if k is not None else None
         l = lines[n - 1]
-        cand[n] = [(s, os.path.join(rd, f"l{n}_s{s}.wav")) for s in VR.seeds(line_seed(V, l), n_cand)]
-        jobs += [{"text": l.get("say", l["text"]), "caption": V["caption"], "seed": s, "ref": ref, "duration_scale": V.get("duration_scale", 1.0), "out": o}
-                 for s, o in cand[n] if not os.path.exists(o)]    # 作り置きの候補は作り直さない
+        cand[n] = []
+        for s in VR.seeds(line_seed(V, l), n_cand):
+            j = {"text": l.get("say", l["text"]), "caption": V["caption"], "seed": s, "ref": ref, "duration_scale": V.get("duration_scale", 1.0)}
+            o = os.path.join(rd, f"l{n}_s{s}_{VR.job_key(j)}.wav")    # 名前に入力の鍵。say・手本などを変えれば別の候補になる
+            cand[n].append((s, o))
+            if not os.path.exists(o): jobs.append(dict(j, out=o))    # 同じ入力の作り置きは作り直さない
     if jobs:
         print(f"候補を作る: {len(jobs)} 本", flush=True); run_irodori(jobs, rd)
     # 候補の音素も控える（中身が同じなら聞き直さない）
@@ -252,7 +255,7 @@ def retry(P, V, lines, args):
             print(f"行{n}: 元の声を残す（元 {len(now[n])} 件、{tally}）", flush=True)
             for w in now[n]: w["stuck"] = VR.key(w) in same
             continue
-        o = dict(cand[n])[pick]; keep = os.path.join(rd, f"l{n}_{VR.md5(wav(n))[:8]}.wav")
+        o = dict(cand[n])[pick]; keep = os.path.join(rd, f"l{n}_was_{VR.md5(wav(n))[:8]}.wav")
         if not os.path.exists(keep): shutil.copy2(wav(n), keep)    # 差し替える前の声を残す（名前は中身の md5）
         print(f"行{n}: seed {pick} の声にした（元 {len(now[n])} 件 → {len(dict(sc)[pick])} 件。{tally}。元の声は {os.path.relpath(keep, P.root)}）", flush=True)
         shutil.copy2(o, wav(n)); now[n] = dict(sc)[pick]; changed.append((n, pick))

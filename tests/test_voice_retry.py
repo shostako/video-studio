@@ -1,5 +1,5 @@
 """vm voice retry（voice_retry.py と voice.retry）の試験。Irodori と音素の聞き取りは偽物に替える。"""
-import json, os, sys, wave
+import glob, json, os, re, sys, wave
 
 import numpy as np
 
@@ -53,26 +53,35 @@ def test_retry_replaces_only_lines_with_fewer_warnings(tmp_path, monkeypatch, ca
     orig = {n: VR.md5(w(n)) for n in (1, 2, 3)}
     # 警告: 行1 は元 2 件で seed 2026 が 0 件、行2 は警告なし、行3 は元 1 件で候補も 1 件（元を残す）
     def fake_warn(line, phones, wav, terms=()):
-        base = os.path.basename(wav)
+        base = re.sub(r"_[0-9a-f]{8}\.wav$", ".wav", os.path.basename(wav))     # 候補の名前の入力の鍵を外す
         k = {"l1.wav": 2, "l3.wav": 1, "l1_s2026.wav": 0, "l1_s2025.wav": 1}.get(base, 1 if base.startswith(("l1_", "l3_")) else 0)
         return [{"kind": "accent", "word": "x", "t": 0.1, "end": 0.2, "why": "w"}] * k
     monkeypatch.setattr(VR, "warnings", fake_warn)
     monkeypatch.setattr(sys, "argv", ["voice.py", str(tmp_path), "retry", "--n", "3"]); voice.main()
     out = capsys.readouterr().out
-    assert sorted({j["out"] for j in jobs}) == sorted(str(tmp_path / "voice" / "retry" / f"l{n}_s{s}.wav") for n in (1, 3) for s in (2025, 2026, 2027))
+    cn = lambda n, s: glob.glob(str(tmp_path / "voice" / "retry" / f"l{n}_s{s}_*.wav"))
+    assert sorted(j["out"] for j in jobs) == sorted(c for n in (1, 3) for s in (2025, 2026, 2027) for c in cn(n, s))
+    assert len(jobs) == 6
     assert {j["ref"] for j in jobs if "l1_" in j["out"]} == {w(2)}        # synth 1 と同じ手本（作り直さない行のうち最初）
     assert {j["ref"] for j in jobs if "l3_" in j["out"]} == {w(1)}
-    assert VR.md5(w(1)) == VR.md5(str(tmp_path / "voice" / "retry" / "l1_s2026.wav"))
+    assert VR.md5(w(1)) == VR.md5(cn(1, 2026)[0])
     assert VR.md5(w(2)) == orig[2] and VR.md5(w(3)) == orig[3]
-    assert VR.md5(str(tmp_path / "voice" / "retry" / f"l1_{orig[1][:8]}.wav")) == orig[1]   # 元の声を残す
+    assert VR.md5(str(tmp_path / "voice" / "retry" / f"l1_was_{orig[1][:8]}.wav")) == orig[1]   # 元の声を残す
     ph = json.load(open(tmp_path / "voice" / "phones.json", encoding="utf-8"))
     assert ph["1"]["md5"] == VR.md5(w(1))                                 # 差し替えた声の書き起こしを控える
     assert "行1: seed 2026" in out and "行3: 元の声を残す" in out and "行1 seed 2026" in out
     assert "x（高さ。0.10 秒、w。どの候補にも出た）" in out and "1 件は元の声にもどの候補にも出た" in out   # 行3 の警告は 3 本とも出た
-    # 2 回目: 候補は作り置き、書き起こしは控えを使う（Irodori も聞き取りも動かない）
+    # 2 回目: 行1 の候補は作り置きを使う。行3 は手本（行1 の声）の中身が変わったので作り直す
     jobs.clear(); heard.clear()
     voice.main()
-    assert jobs == [] and heard == []
+    assert {os.path.basename(j["out"])[:2] for j in jobs} == {"l3"} and len(jobs) == 3
+    jobs.clear(); voice.main()
+    assert jobs == []                                                     # 入力が同じなら何も作らない
+    # say を直したら、同じ seed でも候補を作り直す（古い文の候補を使い回さない）
+    cfg = json.load(open(tmp_path / "config.json", encoding="utf-8")); cfg["voice"]["lines"][2]["say"] = "さん"
+    json.dump(cfg, open(tmp_path / "config.json", "w", encoding="utf-8"), ensure_ascii=False)
+    voice.main()
+    assert sorted(j["seed"] for j in jobs if "l3_" in j["out"]) == [2025, 2026, 2027] and {j["text"] for j in jobs if "l3_" in j["out"]} == {"さん"}
 
 
 def test_retry_uses_voice_ref_and_line_seed(tmp_path, monkeypatch):
