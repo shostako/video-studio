@@ -47,10 +47,10 @@ def kanji_say(text, say, warns, terms=(), spans=False):
     return (out, [(f.pos, f.end) for f in opens]) if spans else out
 
 
-def warnings(line, phones, wav, terms=(), also=(), watch=()):
+def warnings(line, phones, wav, terms=(), watch=()):
     """1 行の声の警告。phones は [[音素, 始め, 終わり], ...]。返り値は [{kind: reading|accent, word, t, end, why}]。
-    also は、仮名に開いていなくても数える高さの語の名前、watch は字幕の範囲（そこに掛かる語は開いていなくても数える）。
-    どちらも漢字に戻した候補で、戻した語の警告を数えるため（戻した所が何語にもまたがるときも全部数える）。"""
+    watch は字幕の範囲（そこに掛かる語は開いていなくても数える）。漢字に戻した候補で、戻した所に掛かる語の警告を数えるため
+    （位置で決めるので、同じ語が 2 回出て片方だけ戻したとき、戻していない方は数えない。戻した所が何語にもまたがるときは全部数える）。"""
     import reading_check as R, accent_check as A
     text, say = line.get("text", ""), line.get("say")
     out = []
@@ -60,7 +60,7 @@ def warnings(line, phones, wav, terms=(), also=(), watch=()):
         out.append({"kind": "reading", "word": r["word"], "t": phones[hs[0]][1] if hs else None, "end": phones[hs[1]][2] if hs else None,
                     "why": f"読み [{r['want']}] が声では [{r['got']}]"})
     for r in A.check_line(text, say, phones, wav, terms, watch=watch):
-        if r["opened"] or r["word"] in also or r.get("watched"):
+        if r["opened"] or r.get("watched"):
             out.append({"kind": "accent", "word": r["word"], "t": r["t"], "end": r.get("end"), "why": "・".join(r["why"]), "opens": r.get("opens", [])})
     return out
 

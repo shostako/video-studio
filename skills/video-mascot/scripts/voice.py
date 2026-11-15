@@ -223,14 +223,14 @@ def retry(P, V, lines, args):
     print(f"警告のある行: {len(targets)} 行（{len(only)} 行のうち）" + (f" → {', '.join(map(str, targets))}" if targets else ""), flush=True)
     rd = P.p("voice", "retry"); os.makedirs(rd, exist_ok=True)
     gref = V.get("ref"); gref = P.p(gref) if gref and not os.path.isabs(gref) else gref
-    cand = {}; jobs = []; also = {}; watch = {}
+    cand = {}; jobs = []; watch = {}
     for n in targets:
         ref = gref    # synth <N> と同じ手本（voice.ref、無ければ作り直さない行のうち最初の行の声）
         if ref is None:
             k = partial_voice_ref([n], len(lines), lambda m: os.path.exists(wav(m)))
             ref = wav(k) if k is not None else None
         l = lines[n - 1]; say0 = l.get("say", l["text"])
-        acc = [w for w in now[n] if w["kind"] == "accent"]; also[n] = {w["word"] for w in acc}
+        acc = [w for w in now[n] if w["kind"] == "accent"]
         ks, watch[n] = VR.kanji_say(l.get("text", ""), l.get("say"), acc, terms, spans=True) if acc and not plain else (None, [])
         cand[n] = []
         for say in ([ks] if ks else []) + [say0]:    # 漢字に戻した say を先に試す（同じ数なら漢字の方を選ぶ）
@@ -252,7 +252,8 @@ def retry(P, V, lines, args):
         json.dump(cp, open(cj, "w", encoding="utf-8"), ensure_ascii=False)
     changed = []
     for n in targets:
-        sc = [(c, VR.warnings(lines[n - 1] if c[1] is None else dict(lines[n - 1], say=c[1]), cp[os.path.basename(o)]["phones"], o, terms, also[n],
+        # seed だけ替えた候補は元と同じ数え方。漢字に戻した候補は、戻した所（位置）に掛かる語も数える
+        sc = [(c, VR.warnings(lines[n - 1] if c[1] is None else dict(lines[n - 1], say=c[1]), cp[os.path.basename(o)]["phones"], o, terms,
                               watch=() if c[1] is None else watch[n]))
               for c, o in cand[n]]
         same = VR.stuck(now[n], [w for _, w in sc])    # 元にもどの候補にも出た警告
