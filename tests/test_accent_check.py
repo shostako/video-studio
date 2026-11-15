@@ -169,3 +169,14 @@ def test_opened_is_tracked_by_position(monkeypatch):
     monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
     rs = [r for r in AC.check_line("猫と猫が", "ねこと猫が", heard, None, (), f0=(t, st)) if r["word"].startswith("猫")]
     assert len(rs) == 2 and [r["opened"] for r in sorted(rs, key=lambda r: r["t"])] == [True, False]
+
+
+@ojt_needed
+def test_watch_marks_words_in_the_range(monkeypatch):
+    """watch（字幕の範囲）に掛かる語に watched が付く。漢字に戻した候補で、戻した所にまたがる語を全部数えるため。"""
+    heard = [["n", 0.10, 0.12], ["e", 0.13, 0.15], ["k", 0.25, 0.27], ["o", 0.28, 0.30], ["t", 0.40, 0.42], ["o", 0.43, 0.45],
+             ["n", 0.55, 0.57], ["e", 0.58, 0.60], ["k", 0.70, 0.72], ["o", 0.73, 0.75], ["g", 0.85, 0.87], ["a", 0.88, 0.90]]
+    t = np.arange(0, 1.1, 0.005); st = np.where((t < 0.25) | ((t >= 0.55) & (t < 0.70)), -5.0, 5.0)
+    monkeypatch.setattr(AC.R, "check_line", lambda *a, **k: [])
+    rs = sorted((r for r in AC.check_line("猫と猫が", "猫と猫が", heard, None, (), f0=(t, st), watch=[(2, 3)]) if r["word"].startswith("猫")), key=lambda r: r["t"])
+    assert len(rs) == 2 and [r["watched"] for r in rs] == [False, True] and not any(r["opened"] for r in rs)
