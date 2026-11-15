@@ -309,6 +309,9 @@ def review(P, V, lines, gap, args):
     if "--suspects" in args: lv = "suspects"
     info = build_master(P, V, lines, gap)
     rd = P.p("voice", "review"); os.makedirs(rd, exist_ok=True)
+    import glob
+    for f in ["全部.mp3", "疑い所.mp3", "疑い所.md", "聞き取り.md"] + [os.path.basename(x) for x in glob.glob(os.path.join(rd, "行*.mp3"))]:
+        if os.path.exists(os.path.join(rd, f)): os.remove(os.path.join(rd, f))    # 前に作った物を残さない（今の声と違う音を渡さない）
     md = [f"# 声の聞き取り（{'全部' if lv == 'all' else '疑い所だけ'}）", "",
           "OK なら書き出しに進む（Claude が vm voice <作業フォルダ> approve を流す）。直す所は行番号と、どう聞こえたかを返す。", ""]
     made = []
@@ -324,12 +327,20 @@ def review(P, V, lines, gap, args):
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         ns = list(range(1, len(lines) + 1)); phones = line_phones(P, ns)
         left = [dict(w, line=n) for n in ns for w in VR.warnings(lines[n - 1], phones[n], P.p("voice", f"l{n}.wav"), terms)]
-        if left:
+        timed = [w for w in left if w["t"] is not None]; untimed = [w for w in left if w["t"] is None]
+        if timed:
             out = os.path.join(rd, "疑い所.mp3")
-            accent_check.make_clips(left, lambda n: P.p("voice", f"l{n}.wav"), out, lambda n: lines[n - 1]["text"]); made.append(out)
-            md += [f"## 疑い所（疑い所.mp3、{len(left)} か所。番号の数だけ「ピッ」のあと、その語の前後を 2 回）", ""]
-            md += open(os.path.splitext(out)[0] + ".md", encoding="utf-8").read().split("\n")[5:]
-        else: md += ["検査の疑い所は無い。", ""]
+            accent_check.make_clips(timed, lambda n: P.p("voice", f"l{n}.wav"), out, lambda n: lines[n - 1]["text"]); made.append(out)
+            md += [f"## 疑い所（疑い所.mp3、{len(timed)} か所。番号の数だけ「ピッ」のあと、その語の前後を 2 回）", ""]
+            md += [l for l in open(os.path.splitext(out)[0] + ".md", encoding="utf-8").read().split("\n")[5:] if l.strip()] + [""]
+        if untimed:    # 声から語が抜けた所など、時刻の取れない疑いは行ごと聞く
+            md += [f"## 時刻の取れない疑い（{len(untimed)} か所。語が抜けたかもしれない。行の声を丸ごと聞く）", ""]
+            for n in sorted({w["line"] for w in untimed}):
+                out = os.path.join(rd, f"行{n}.mp3"); ff("-i", P.p("voice", f"l{n}.wav"), "-c:a", "libmp3lame", "-q:a", "3", out); made.append(out)
+                ws = "・".join(w["word"].replace("+", "") for w in untimed if w["line"] == n)
+                md.append(f"- 行{n}（行{n}.mp3）【{ws}】　全文: {lines[n - 1]['text']}")
+            md.append("")
+        if not left: md += ["検査の疑い所は無い。", ""]
     open(os.path.join(rd, "聞き取り.md"), "w", encoding="utf-8").write("\n".join(md).rstrip() + "\n")
     for m in made: print(f"聞き取り: {m}", flush=True)
     print(f"一覧: {os.path.join(rd, '聞き取り.md')}。ユーザーの OK が出たら vm voice <作業フォルダ> approve", flush=True)

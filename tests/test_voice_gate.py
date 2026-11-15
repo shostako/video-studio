@@ -77,3 +77,21 @@ def test_compose_and_explain_stop_before_work(tmp_path):
                        capture_output=True, text=True)
     if "フォント" in r.stderr: pytest.skip("日本語の太字フォントが無い")
     assert r.returncode == 7 and "確認待ち" in r.stderr
+
+
+def test_review_drops_stale_files_and_keeps_untimed_warnings(tmp_path, monkeypatch):
+    import voice, ojt, phonemes, voice_retry as VR, accent_check
+    root, _ = _work(tmp_path, "suspects")
+    for n in (1, 2): open(tmp_path / "voice" / f"l{n}.wav", "wb").write(b"RIFF%d" % n)
+    rd = tmp_path / "voice" / "review"; os.makedirs(rd)
+    for f in ("全部.mp3", "疑い所.mp3", "疑い所.md"): (rd / f).write_text("old")         # 前の声の物
+    monkeypatch.setattr(voice, "build_master", lambda P, V, lines, gap: [{"n": 1, "start": 0.0, "dur": 1.0}, {"n": 2, "start": 1.5, "dur": 1.0}])
+    monkeypatch.setattr(voice, "ff", lambda *a: open(a[-1], "wb").write(b"mp3"))
+    monkeypatch.setattr(ojt, "available", lambda: True)
+    monkeypatch.setattr(phonemes, "hear", lambda ps: [{"path": p, "phones": [["a", 0.1, 0.2]]} for p in ps])
+    monkeypatch.setattr(VR, "warnings", lambda line, *a, **k: [{"kind": "reading", "word": "二", "t": None, "end": None, "why": "w"}] if line["text"] == "二" else [])
+    monkeypatch.setattr(accent_check, "make_clips", lambda *a, **k: (_ for _ in ()).throw(AssertionError("時刻の無い疑いだけなら切り出さない")))
+    monkeypatch.setattr(sys, "argv", ["voice.py", root, "review"]); voice.main()
+    assert sorted(os.listdir(rd)) == ["聞き取り.md", "行2.mp3"]                          # 前の 全部・疑い所 は消えた
+    md = (rd / "聞き取り.md").read_text(encoding="utf-8")
+    assert "時刻の取れない疑い（1 か所" in md and "行2（行2.mp3）【二】" in md and "疑い所は無い" not in md
