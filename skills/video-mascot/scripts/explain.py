@@ -76,6 +76,7 @@ def main():
     for p in (work, shots, scenes, COMPOSE):
         if not os.path.exists(p): die(f"無い: {p}")
     if not os.path.exists(os.path.join(work, "voice", "master.wav")): die(f"声が無い: {work}/voice/master.wav（vm voice {work} synth → master）")
+    import voice_gate; voice_gate.check(work)          # 声の確認の止まり所（voice.review、opt-in）。書き出しの前に止める
     out = os.path.abspath(out); os.makedirs(os.path.dirname(out), exist_ok=True)
     import tempfile                                # 途中の置き場は毎回新しく作る（既にあるフォルダを使って消さない）
     tmp = tempfile.mkdtemp(prefix=os.path.splitext(os.path.basename(out))[0] + "_work_", dir=os.path.dirname(out))

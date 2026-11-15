@@ -61,6 +61,8 @@ if MARGIN:
 LIGHT, INK, ACC, SUBC = (247, 246, 244), (28, 33, 44), (232, 120, 30), (110, 114, 122)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "video-mascot", "scripts"))
 import chapters as CH  # noqa: E402
+import voice_gate  # noqa: E402
+if not A.preview: voice_gate.check(A.voice)   # 声の確認の止まり所（voice.review、opt-in）。コマの下見は止めない
 
 R = json.load(open(os.path.join(A.shots, "rects.json"), encoding="utf-8"))
 timing = json.load(open(os.path.join(A.voice, "voice", "timing.json")))

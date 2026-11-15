@@ -46,6 +46,8 @@ from parts import map_rois
 a = [x for x in sys.argv[1:]]
 if not a or a[0].startswith("-"): die("使い方: vm render <作業フォルダ> [--mode alpha|white] [--from 秒 --to 秒] [--out ファイル]")
 P = Proj(a[0]); C = P.cfg
+if "--check-only" not in sys.argv:               # 声の確認の止まり所（voice.review、opt-in）。下見は止めない
+    import voice_gate; voice_gate.check(P.root, C)
 if "--no-events" in sys.argv: C["events"] = []    # 身振り（姿勢の切り替え）を止める。ワイプ用（手が丸に入らない・Wan が要らない）。頭・視線・まばたき・口は残す
 if "--no-head" in sys.argv: C.pop("head", None)  # 頭の向きの列（config.head）を止める（RIFE の作り置きが無い PC でワイプを作るとき）
 def opt(name, default=None, cast=str): return cast(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
