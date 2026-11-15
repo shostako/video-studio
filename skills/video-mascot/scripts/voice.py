@@ -6,7 +6,9 @@
   vm voice <作業フォルダ> lint [行番号 ...] [--all]  say の書き方を字幕と比べる（声は作らない）。漢字を仮名に開いた所・字幕に無い読点を出す（say_lint.py）
   vm voice <作業フォルダ> reading [行番号 ...]     作った声を音素で書き起こし、字幕の読みと比べる（reading_check.py）。voice/phones.json に音素と時刻を残す
   vm voice <作業フォルダ> accent [行番号 ...] [--all] [--clips 出力.mp3] [--top N]  声の高さを字幕の読みの高低と比べる（accent_check.py）。既定は say で仮名に開いた語だけ（--all で全部の語）。--clips で警告の語を切り出した聞き取り用の音声（上位 N 件、既定 20）
-config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可)}], gap(行の間、既定0.5), candidates:[説明文...],
+  vm voice <作業フォルダ> retry [行番号 ...] [--n 本数] [--clips 出力.mp3]  読みの「!」か、仮名に開いた語の高さの「!」がある行だけ、seed を替えた候補を本数（既定 4）作り、
+                                                警告がいちばん少ない声を l<N>.wav にする（同じ数なら元を残す。候補と元の声は voice/retry/。master は作り直さない。voice_retry.py）
+config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可), seed(その行だけの seed、省略可。retry で選んだ声を残すとき)}], gap(行の間、既定0.5), candidates:[説明文...],
               terms(lint で使う作業フォルダの用語辞書。video-scene の data/terms.yaml と同じ形、省略可)}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
 import difflib, json, os, re, subprocess, sys, tempfile
@@ -177,9 +179,112 @@ def report_match(P, lines, only, V, gap):
         if r < LOW_MATCH: print(f"  行{n} は読みが崩れているかもしれない。聴いて確かめ、崩れていれば、その言葉をかなで書いた文を voice.lines の say に入れる", flush=True)
 
 
+def line_seed(V, line):
+    """行の seed。行に seed があればそれ（vm voice retry で選んだ声を synth でも作れるように）、無ければ voice.seed。"""
+    return int(line.get("seed", V.get("seed", 1234)))
+
+
+def line_phones(P, ns, again=False):
+    """行番号 → 声の音素と時刻。voice/phones.json に {行番号: {phones, md5}} で控える。中身が同じ（md5 が同じ）声は控えを使う。
+    again なら控えがあっても聞き直す。"""
+    import phonemes, voice_retry as VR
+    paths = {n: P.p("voice", f"l{n}.wav") for n in ns}
+    miss = [p_ for p_ in paths.values() if not os.path.exists(p_)]
+    if miss: die(f"声が無い: {miss[0]}（先に synth）")
+    pj = P.p("voice", "phones.json"); old = json.load(open(pj, encoding="utf-8")) if os.path.exists(pj) else {}
+    md5 = {n: VR.md5(paths[n]) for n in ns}
+    need = [n for n in ns if again or old.get(str(n), {}).get("md5") != md5[n]]
+    if need:
+        try: res = phonemes.hear([paths[n] for n in need])
+        except RuntimeError as x: die(str(x))
+        for n, r in zip(need, res): old[str(n)] = {"phones": r["phones"], "md5": md5[n]}
+        json.dump(old, open(pj, "w", encoding="utf-8"), ensure_ascii=False)
+    return {n: old[str(n)]["phones"] for n in ns}
+
+
+def retry(P, V, lines, args):
+    """vm voice retry: 読み・高さの警告が出た行だけ、seed を替えた候補を作り、警告のいちばん少ない声を l<N>.wav にする（voice_retry.py）。"""
+    import shutil, say_lint, ojt, phonemes, accent_check, voice_retry as VR
+    if V.get("engine") == "voicevox": die("retry は Irodori の声だけ（VOICEVOX は同じ文から同じ声しか作らない）")
+    if not ojt.available(): die("pyopenjtalk-plus が無い（字幕の読みの見本に使う）。video-scene の setup.sh を VS_ACCENT_CHECK=1 で流して入れる")
+    try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
+    except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
+    rest = list(args); n_cand, clips = 4, None
+    if "--n" in rest: k = rest.index("--n"); n_cand = int(rest[k + 1]); del rest[k:k + 2]
+    if "--clips" in rest: k = rest.index("--clips"); clips = rest[k + 1]; del rest[k:k + 2]
+    if n_cand < 1: die("--n は 1 以上")
+    only = [int(x) for x in rest] or list(range(1, len(lines) + 1))
+    wav = lambda n: P.p("voice", f"l{n}.wav")
+    phones = line_phones(P, only)
+    now = {n: VR.warnings(lines[n - 1], phones[n], wav(n), terms) for n in only}
+    targets = [n for n in only if now[n]]
+    print(f"警告のある行: {len(targets)} 行（{len(only)} 行のうち）" + (f" → {', '.join(map(str, targets))}" if targets else ""), flush=True)
+    rd = P.p("voice", "retry"); os.makedirs(rd, exist_ok=True)
+    gref = V.get("ref"); gref = P.p(gref) if gref and not os.path.isabs(gref) else gref
+    cand = {}; jobs = []
+    for n in targets:
+        ref = gref    # synth <N> と同じ手本（voice.ref、無ければ作り直さない行のうち最初の行の声）
+        if ref is None:
+            k = partial_voice_ref([n], len(lines), lambda m: os.path.exists(wav(m)))
+            ref = wav(k) if k is not None else None
+        l = lines[n - 1]
+        cand[n] = []
+        for s in VR.seeds(line_seed(V, l), n_cand):
+            j = {"text": l.get("say", l["text"]), "caption": V["caption"], "seed": s, "ref": ref, "duration_scale": V.get("duration_scale", 1.0)}
+            o = os.path.join(rd, f"l{n}_s{s}_{VR.job_key(j)}.wav")    # 名前に入力の鍵。say・手本などを変えれば別の候補になる
+            cand[n].append((s, o))
+            if not os.path.exists(o): jobs.append(dict(j, out=o))    # 同じ入力の作り置きは作り直さない
+    if jobs:
+        print(f"候補を作る: {len(jobs)} 本", flush=True); run_irodori(jobs, rd)
+    # 候補の音素も控える（中身が同じなら聞き直さない）
+    cj = os.path.join(rd, "phones.json"); cp = json.load(open(cj, encoding="utf-8")) if os.path.exists(cj) else {}
+    allc = [o for n in targets for _, o in cand[n]]; cm = {o: VR.md5(o) for o in allc}
+    need = [o for o in allc if cp.get(os.path.basename(o), {}).get("md5") != cm[o]]
+    if need:
+        try: res = phonemes.hear(need)
+        except RuntimeError as x: die(str(x))
+        for o, r in zip(need, res): cp[os.path.basename(o)] = {"phones": r["phones"], "md5": cm[o]}
+        json.dump(cp, open(cj, "w", encoding="utf-8"), ensure_ascii=False)
+    changed = []
+    for n in targets:
+        sc = [(s, VR.warnings(lines[n - 1], cp[os.path.basename(o)]["phones"], o, terms)) for s, o in cand[n]]
+        same = VR.stuck(now[n], [w for _, w in sc])    # 元にもどの候補にも出た警告
+        pick = VR.choose(len(now[n]), [(s, len(w)) for s, w in sc])
+        tally = "、".join(f"seed {s}: {len(w)}" for s, w in sc)
+        if pick is None:
+            print(f"行{n}: 元の声を残す（元 {len(now[n])} 件、{tally}）", flush=True)
+            for w in now[n]: w["stuck"] = VR.key(w) in same
+            continue
+        o = dict(cand[n])[pick]; keep = os.path.join(rd, f"l{n}_was_{VR.md5(wav(n))[:8]}.wav")
+        if not os.path.exists(keep): shutil.copy2(wav(n), keep)    # 差し替える前の声を残す（名前は中身の md5）
+        print(f"行{n}: seed {pick} の声にした（元 {len(now[n])} 件 → {len(dict(sc)[pick])} 件。{tally}。元の声は {os.path.relpath(keep, P.root)}）", flush=True)
+        shutil.copy2(o, wav(n)); now[n] = dict(sc)[pick]; changed.append((n, pick))
+        for w in now[n]: w["stuck"] = VR.key(w) in same
+        pj = P.p("voice", "phones.json"); old = json.load(open(pj, encoding="utf-8")) if os.path.exists(pj) else {}
+        old[str(n)] = {"phones": cp[os.path.basename(o)]["phones"], "md5": cm[o]}    # 差し替えた声の書き起こし（次の reading・accent で使い回す）
+        json.dump(old, open(pj, "w", encoding="utf-8"), ensure_ascii=False)
+    left = [dict(w, line=n) for n in targets for w in now[n]]
+    for w in left:
+        t = "" if w["t"] is None else f"{w['t']:.2f} 秒、"
+        tag = "。どの候補にも出た" if w.get("stuck") else ""
+        print(f"! 行{w['line']}: {w['word']}（{'読み' if w['kind'] == 'reading' else '高さ'}。{t}{w['why']}{tag}）", flush=True)
+    k = sum(bool(w.get("stuck")) for w in left)
+    print(f"作り直し: {len(changed)} 行を差し替え、残った警告 {len(left)} 件（{len(targets)} 行、候補は各 {n_cand} 本、{os.path.relpath(rd, P.root)}/）", flush=True)
+    if k:
+        print(f"  {k} 件は元の声にもどの候補にも出た。seed を替えても直らないので、say の書き方か用語辞書で直すか、見本の読み違い"
+              "（描く→えがく など）か書き起こしの誤りを疑う", flush=True)
+    if changed:
+        print("  master は作り直していない。聴いて決めたら vm voice <作業フォルダ> master。"
+              "synth でその行を作り直すと元の seed に戻るので、残すなら config の voice.lines のその行に seed を書く: "
+              + "、".join(f"行{n} seed {s}" for n, s in changed), flush=True)
+    if clips and left:
+        accent_check.make_clips(left, wav, clips, lambda n: lines[n - 1]["text"])
+        print(f"聞き取り: {clips}（一覧 {os.path.splitext(clips)[0]}.md、{sum(w['t'] is not None for w in left)} か所）", flush=True)
+
+
 def main():
     a = [x for x in sys.argv[1:]]
-    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master|lint|reading|accent")
+    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master|lint|reading|accent|retry")
     P = Proj(a[0]); cmd = a[1]; V = P.cfg["voice"]; vd = P.p("voice"); os.makedirs(vd, exist_ok=True)
     lines = V["lines"]; gap = float(V.get("gap", 0.5))
     if cmd == "lint":
@@ -189,8 +294,9 @@ def main():
         try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         say_lint.report(say_lint.lint_lines(lines, only, terms), show_all="--all" in a[2:]); return
+    if cmd == "retry": return retry(P, V, lines, a[2:])
     if cmd in ("reading", "accent"):
-        import reading_check, phonemes, say_lint, ojt
+        import reading_check, say_lint, ojt
         if not ojt.available(): die("pyopenjtalk-plus が無い（字幕の読みの見本に使う）。video-scene の setup.sh を VS_ACCENT_CHECK=1 で流して入れる")
         try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
@@ -199,20 +305,7 @@ def main():
         if "--clips" in rest: k = rest.index("--clips"); clips = rest[k + 1]; del rest[k:k + 2]
         if "--top" in rest: k = rest.index("--top"); top = int(rest[k + 1]); del rest[k:k + 2]
         only = [int(x) for x in rest] or list(range(1, len(lines) + 1))
-        paths = [P.p("voice", f"l{n}.wav") for n in only]
-        miss = [p_ for p_ in paths if not os.path.exists(p_)]
-        if miss: die(f"声が無い: {miss[0]}（先に synth）")
-        pj = P.p("voice", "phones.json"); old = json.load(open(pj, encoding="utf-8")) if os.path.exists(pj) else {}
-        # reading は毎回聞き直す。accent は、声の中身が同じ（md5 が同じ）なら reading の書き起こしを使う
-        import hashlib
-        md5 = {n: hashlib.md5(open(P.p("voice", f"l{n}.wav"), "rb").read()).hexdigest() for n in only}
-        need = [n for n in only if cmd == "reading" or old.get(str(n), {}).get("md5") != md5[n]]
-        if need:
-            try: res = phonemes.hear([P.p("voice", f"l{n}.wav") for n in need])
-            except RuntimeError as x: die(str(x))
-            for n, r in zip(need, res): old[str(n)] = {"phones": r["phones"], "md5": md5[n]}
-            json.dump(old, open(pj, "w", encoding="utf-8"), ensure_ascii=False)
-        phones = {n: old[str(n)]["phones"] for n in only}
+        phones = line_phones(P, only, again=(cmd == "reading"))    # reading は毎回聞き直す。accent は中身が同じ声なら控えを使う
         if cmd == "reading": reading_check.report(lines, phones, terms); return
         import accent_check
         found = accent_check.report(lines, phones, lambda n: P.p("voice", f"l{n}.wav"), terms, show_all=show_all)
@@ -254,7 +347,7 @@ def main():
         if ref is None:    # 一部の行だけ作り直すときは、残す行の声を手本にする（手本なしで作ると別の声になる）
             k = partial_voice_ref(only, len(lines), lambda n: os.path.exists(P.p("voice", f"l{n}.wav")))
             if k is not None: ref = P.p("voice", f"l{k}.wav"); print(f"手本: 行{k} の声", flush=True)
-        jobs = [{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "caption": V["caption"], "seed": V.get("seed", 1234), "ref": ref,
+        jobs = [{"text": lines[n - 1].get("say", lines[n - 1]["text"]), "caption": V["caption"], "seed": line_seed(V, lines[n - 1]), "ref": ref,
                  "duration_scale": V.get("duration_scale", 1.0), "out": P.p("voice", f"l{n}.wav")} for n in only]
         if ref is None:    # 手本が無ければ、最初に作った行を手本にして残りをそろえる
             run_irodori(jobs[:1], vd); r0 = jobs[0]["out"]
