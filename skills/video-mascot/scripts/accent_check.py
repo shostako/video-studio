@@ -150,7 +150,7 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
     for f in SL.lint_line(text, say, (), use_reader=False):
         if f.kind != "open": continue
         x, y = SL._t2s(o_ops, f.pos, False), SL._t2s(o_ops, f.end, True)
-        if x is not None and y is not None: opened.append((x, y))
+        if x is not None and y is not None: opened.append((x, y, tuple(f.say_pos)))
     # 見る単位: 辞書の語（仮名に置き換えた範囲にかかる見本の語をまとめた物）と、それ以外の語 1 つずつ
     units, used = [], set()
     for a_, b_, w in tspans:
@@ -180,10 +180,13 @@ def check_line(text, say, heard, wav, terms=(), f0=None):
         why = verdict(want, p)
         if why:
             end = c[ms[-1] + 1] if ms[-1] + 1 < len(c) and c[ms[-1] + 1] is not None else (c[ms[-1]] + 0.2 if c[ms[-1]] is not None else None)
-            after = next((m["string"] for m in ra["nodes"][k + 1:] if m["mora"]), "") if nx else ""
+            nn = next((m for m in ra["nodes"][k + 1:] if m["mora"]), None) if nx else None
+            after = nn["string"] if nn else ""
+            b2 = nn["end"] if nn and nn["end"] is not None and b_ is not None else b_    # 高さを比べた範囲（後ろの 1 モーラの語まで）
             out.append({"word": word + ("+" + after if after else ""),
                         "want": want, "pitches": [None if x is None else round(x, 1) for x in p], "why": why, "t": c[ms[0]], "end": end,
-                        "opened": a_ is not None and any(x < b_ and y > a_ for x, y in opened)})
+                        "opened": a_ is not None and any(x < b_ and y > a_ for x, y, _ in opened),
+                        "opens": [sp for x, y, sp in opened if a_ is not None and x < b2 and y > a_]})   # 比べた範囲に掛かる開いた所（say の空白を除いた位置）
     return out
 
 

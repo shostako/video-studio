@@ -103,11 +103,24 @@ def test_synth_uses_line_seed(tmp_path, monkeypatch):
     assert [j["seed"] for j in jobs] == [7, 2024]
 
 
+def _opens(text, say, src):
+    """say で src を開いた所の位置（accent の警告の opens と同じ形）。"""
+    import say_lint as SL
+    return [tuple(f.say_pos) for f in SL.lint_line(text, say, (), use_reader=False) if f.kind == "open" and f.src == src]
+
+
 def test_kanji_say_reverts_only_warned_words_and_keeps_spaces():
-    t = "色、文字、余白を、Claude に決めさせる。"
-    assert VR.kanji_say(t, "いろ、もじ、よはくを、Claude に決めさせる。", ["余白+を"]) == "いろ、もじ、余白を、Claude に決めさせる。"
-    assert VR.kanji_say(t, "いろ、もじ、よはくを、Claude に決めさせる。", ["犬"]) is None
-    assert VR.kanji_say(t, None, ["余白+を"]) is None
+    t, s = "色、文字、余白を、Claude に決めさせる。", "いろ、もじ、よはくを、Claude に決めさせる。"
+    w = [{"kind": "accent", "word": "余白+を", "opens": _opens(t, s, "余白")}]
+    assert VR.kanji_say(t, s, w) == "いろ、もじ、余白を、Claude に決めさせる。"
+    assert VR.kanji_say(t, s, [{"kind": "accent", "word": "犬", "opens": []}]) is None
+    assert VR.kanji_say(t, None, w) is None
+
+
+def test_kanji_say_matches_by_position_not_substring():
+    t, s = "手順と手を示す。", "てじゅんとてを示す。"            # 手 は 手順 の一部だが、警告の出ていない別の語
+    w = [{"kind": "accent", "word": "手順+と", "opens": _opens(t, s, "手順")}]
+    assert w[0]["opens"] and VR.kanji_say(t, s, w) == "手順とてを示す。"
 
 
 def test_retry_tries_kanji_say_first(tmp_path, monkeypatch, capsys):
@@ -116,9 +129,10 @@ def test_retry_tries_kanji_say_first(tmp_path, monkeypatch, capsys):
     import say_lint
     monkeypatch.setattr(say_lint, "load_all_terms", lambda *a, **k: [])
     seen = []
+    ops = _opens("余白を決める。", "よはくを決める。", "余白")
     def fake_warn(line, phones, wav, terms=(), also=()):
         seen.append((os.path.basename(wav), line.get("say"), set(also)))
-        if os.path.basename(wav) == "l2.wav": return [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w"}]
+        if os.path.basename(wav) == "l2.wav": return [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w", "opens": ops}]
         if "余白" in (line.get("say") or "") and "_s2026_" in wav: return []
         return [{"kind": "accent", "word": "余白+を", "t": 0.1, "end": 0.2, "why": "w"}] if "l2_" in wav else []
     monkeypatch.setattr(VR, "warnings", fake_warn)

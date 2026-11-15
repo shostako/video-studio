@@ -230,8 +230,8 @@ def retry(P, V, lines, args):
             k = partial_voice_ref([n], len(lines), lambda m: os.path.exists(wav(m)))
             ref = wav(k) if k is not None else None
         l = lines[n - 1]; say0 = l.get("say", l["text"])
-        hit = sorted({w["word"] for w in now[n] if w["kind"] == "accent"}); also[n] = set(hit)
-        ks = VR.kanji_say(l.get("text", ""), l.get("say"), hit, terms) if hit and not plain else None
+        acc = [w for w in now[n] if w["kind"] == "accent"]; also[n] = {w["word"] for w in acc}
+        ks = VR.kanji_say(l.get("text", ""), l.get("say"), acc, terms) if acc and not plain else None
         cand[n] = []
         for say in ([ks] if ks else []) + [say0]:    # 漢字に戻した say を先に試す（同じ数なら漢字の方を選ぶ）
             for s in VR.seeds(line_seed(V, l), n_cand):
