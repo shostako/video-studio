@@ -95,3 +95,12 @@ def test_review_drops_stale_files_and_keeps_untimed_warnings(tmp_path, monkeypat
     assert sorted(os.listdir(rd)) == ["聞き取り.md", "行2.mp3"]                          # 前の 全部・疑い所 は消えた
     md = (rd / "聞き取り.md").read_text(encoding="utf-8")
     assert "時刻の取れない疑い（1 か所" in md and "行2（行2.mp3）【二】" in md and "疑い所は無い" not in md
+
+
+def test_review_imports_work_without_test_paths(tmp_path):
+    """vm から呼んだときと同じく、voice.py の置き場だけが sys.path にある状態で review が ojt を読める（conftest の足すパスに頼らない）。"""
+    import subprocess
+    root, _ = _work(tmp_path, "suspects")
+    S = os.path.join(HERE, "..", "skills", "video-mascot", "scripts", "voice.py")
+    r = subprocess.run([sys.executable, "-I", S, root, "review"], capture_output=True, text=True, cwd=str(tmp_path))
+    assert "No module named" not in r.stderr, r.stderr[-400:]

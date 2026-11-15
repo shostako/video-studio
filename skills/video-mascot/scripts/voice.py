@@ -302,7 +302,7 @@ def retry(P, V, lines, args):
 def review(P, V, lines, gap, args):
     """vm voice review: 書き出しの前にユーザーが聞く物を voice/review/ に作る。--all で全部（つないだ声）、既定は voice.review か疑い所だけ。
     疑い所は retry と同じ警告（読みの「!」と、仮名に開いた語の高さの「!」）を切り出す。master を作り直してから作る。"""
-    import voice_gate, ojt
+    import say_lint, voice_gate, ojt    # say_lint が video-scene の scripts（ojt の置き場）を sys.path に足す
     try: lv = voice_gate.level(P.cfg) or "suspects"
     except ValueError as x: die(str(x))
     if "--all" in args: lv = "all"
@@ -322,7 +322,7 @@ def review(P, V, lines, gap, args):
         md += ["疑い所は出せなかった（pyopenjtalk-plus が無い。video-scene の setup.sh を VS_ACCENT_CHECK=1 で）", ""]
         print("疑い所は出せない（pyopenjtalk-plus が無い）", flush=True)
     else:
-        import say_lint, accent_check, voice_retry as VR
+        import accent_check, voice_retry as VR
         try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         ns = list(range(1, len(lines) + 1)); phones = line_phones(P, ns)
