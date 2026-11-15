@@ -6,11 +6,19 @@
   vm voice <作業フォルダ> lint [行番号 ...] [--all]  say の書き方を字幕と比べる（声は作らない）。漢字を仮名に開いた所・字幕に無い読点を出す（say_lint.py）
   vm voice <作業フォルダ> reading [行番号 ...]     作った声を音素で書き起こし、字幕の読みと比べる（reading_check.py）。voice/phones.json に音素と時刻を残す
   vm voice <作業フォルダ> accent [行番号 ...] [--all] [--clips 出力.mp3] [--top N]  声の高さを字幕の読みの高低と比べる（accent_check.py）。既定は say で仮名に開いた語だけ（--all で全部の語）。--clips で警告の語を切り出した聞き取り用の音声（上位 N 件、既定 20）
+<<<<<<< HEAD
   vm voice <作業フォルダ> retry [行番号 ...] [--n 本数] [--no-kanji] [--clips 出力.mp3]  読みの「!」か、仮名に開いた語の高さの「!」がある行だけ、seed を替えた候補を本数（既定 4）作り、
                                                 警告がいちばん少ない声を l<N>.wav にする（同じ数なら元を残す。候補と元の声は voice/retry/。master は作り直さない。voice_retry.py）。
                                                 高さの警告の語を say で仮名に開いていれば、そこを漢字に戻した say の候補も同じ本数作る（--no-kanji で作らない）
+=======
+  vm voice <作業フォルダ> retry [行番号 ...] [--n 本数] [--clips 出力.mp3]  読みの「!」か、仮名に開いた語の高さの「!」がある行だけ、seed を替えた候補を本数（既定 4）作り、
+                                                警告がいちばん少ない声を l<N>.wav にする（同じ数なら元を残す。候補と元の声は voice/retry/。master は作り直さない。voice_retry.py）
+  vm voice <作業フォルダ> review [--all|--suspects]  書き出しの前にユーザーが聞く物を voice/review/ に作る（疑い所の切り出し、--all でつないだ声も）
+  vm voice <作業フォルダ> approve                 ユーザーが聞いて OK を出した声（master.wav の中身）を控える。voice.review のとき、これが無いと書き出しが止まる
+>>>>>>> b0f9b05 (feat(video-mascot): 声の確認の止まり所 voice.review と vm voice review・approve)
 config.voice: {caption, seed, ref(手本の wav、あれば全行をこの声で), lines:[{text, say(合成に渡す文。漢字を読み違えるならひらがなを混ぜる), start(秒、省略可), seed(その行だけの seed、省略可。retry で選んだ声を残すとき)}], gap(行の間、既定0.5), candidates:[説明文...],
-              terms(lint で使う作業フォルダの用語辞書。video-scene の data/terms.yaml と同じ形、省略可)}
+              terms(lint で使う作業フォルダの用語辞書。video-scene の data/terms.yaml と同じ形、省略可),
+              review("suspects" か "all"。書いたときだけ、approve が無いと書き出しを止める。省略で止めない)}
 声の設計は説明文（caption）で行い、気に入った1本を ref にして全行を同じ声にそろえる。"""
 import difflib, json, os, re, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -291,9 +299,45 @@ def retry(P, V, lines, args):
         print(f"聞き取り: {clips}（一覧 {os.path.splitext(clips)[0]}.md、{sum(w['t'] is not None for w in left)} か所）", flush=True)
 
 
+def review(P, V, lines, gap, args):
+    """vm voice review: 書き出しの前にユーザーが聞く物を voice/review/ に作る。--all で全部（つないだ声）、既定は voice.review か疑い所だけ。
+    疑い所は retry と同じ警告（読みの「!」と、仮名に開いた語の高さの「!」）を切り出す。master を作り直してから作る。"""
+    import voice_gate, ojt
+    try: lv = voice_gate.level(P.cfg) or "suspects"
+    except ValueError as x: die(str(x))
+    if "--all" in args: lv = "all"
+    if "--suspects" in args: lv = "suspects"
+    info = build_master(P, V, lines, gap)
+    rd = P.p("voice", "review"); os.makedirs(rd, exist_ok=True)
+    md = [f"# 声の聞き取り（{'全部' if lv == 'all' else '疑い所だけ'}）", "",
+          "OK なら書き出しに進む（Claude が vm voice <作業フォルダ> approve を流す）。直す所は行番号と、どう聞こえたかを返す。", ""]
+    made = []
+    if lv == "all":
+        out = os.path.join(rd, "全部.mp3"); ff("-i", P.p("voice", "master.wav"), "-c:a", "libmp3lame", "-q:a", "3", out); made.append(out)
+        md += ["## 全部（全部.mp3）", ""] + [f"- 行{x['n']}（{x['start']:.1f} 秒）: {lines[x['n'] - 1]['text']}" for x in info] + [""]
+    if not ojt.available():
+        md += ["疑い所は出せなかった（pyopenjtalk-plus が無い。video-scene の setup.sh を VS_ACCENT_CHECK=1 で）", ""]
+        print("疑い所は出せない（pyopenjtalk-plus が無い）", flush=True)
+    else:
+        import say_lint, accent_check, voice_retry as VR
+        try: terms = say_lint.load_all_terms(V.get("terms"), P.root)
+        except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
+        ns = list(range(1, len(lines) + 1)); phones = line_phones(P, ns)
+        left = [dict(w, line=n) for n in ns for w in VR.warnings(lines[n - 1], phones[n], P.p("voice", f"l{n}.wav"), terms)]
+        if left:
+            out = os.path.join(rd, "疑い所.mp3")
+            accent_check.make_clips(left, lambda n: P.p("voice", f"l{n}.wav"), out, lambda n: lines[n - 1]["text"]); made.append(out)
+            md += [f"## 疑い所（疑い所.mp3、{len(left)} か所。番号の数だけ「ピッ」のあと、その語の前後を 2 回）", ""]
+            md += open(os.path.splitext(out)[0] + ".md", encoding="utf-8").read().split("\n")[5:]
+        else: md += ["検査の疑い所は無い。", ""]
+    open(os.path.join(rd, "聞き取り.md"), "w", encoding="utf-8").write("\n".join(md).rstrip() + "\n")
+    for m in made: print(f"聞き取り: {m}", flush=True)
+    print(f"一覧: {os.path.join(rd, '聞き取り.md')}。ユーザーの OK が出たら vm voice <作業フォルダ> approve", flush=True)
+
+
 def main():
     a = [x for x in sys.argv[1:]]
-    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master|lint|reading|accent|retry")
+    if len(a) < 2: die("使い方: vm voice <作業フォルダ> check|candidates|synth|master|lint|reading|accent|retry|review|approve")
     P = Proj(a[0]); cmd = a[1]; V = P.cfg["voice"]; vd = P.p("voice"); os.makedirs(vd, exist_ok=True)
     lines = V["lines"]; gap = float(V.get("gap", 0.5))
     if cmd == "lint":
@@ -304,6 +348,12 @@ def main():
         except (ValueError, OSError) as x: die(f"用語辞書が読めない: {x}")
         say_lint.report(say_lint.lint_lines(lines, only, terms), show_all="--all" in a[2:]); return
     if cmd == "retry": return retry(P, V, lines, a[2:])
+    if cmd == "review": return review(P, V, lines, gap, a[2:])
+    if cmd == "approve":
+        import voice_gate
+        try: out = voice_gate.approve(P.root)
+        except FileNotFoundError as x: die(str(x))
+        print(f"声を承認した（{os.path.relpath(out, P.root)}）。書き出しに進める。声を作り直したら、もう一度 review と approve", flush=True); return
     if cmd in ("reading", "accent"):
         import reading_check, say_lint, ojt
         if not ojt.available(): die("pyopenjtalk-plus が無い（字幕の読みの見本に使う）。video-scene の setup.sh を VS_ACCENT_CHECK=1 で流して入れる")
