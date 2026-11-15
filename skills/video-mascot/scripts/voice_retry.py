@@ -26,8 +26,26 @@ def job_key(job):
     return hashlib.md5(json.dumps(d, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:8]
 
 
-def warnings(line, phones, wav, terms=()):
-    """1 行の声の警告。phones は [[音素, 始め, 終わり], ...]。返り値は [{kind: reading|accent, word, t, end, why}]。"""
+def kanji_say(text, say, words, terms=()):
+    """say で仮名に開いた所のうち、警告の出た語（words、accent の語の名前。「余白+を」の形）に掛かる所だけを字幕の漢字に戻した say。
+    戻す所が無ければ None。用語辞書の読みどおりに開いた所は戻さない。say の空白は残す。
+    理由: 仮名に開いた語は高さが外れやすく、漢字に戻すと直る（2026-11-15、ユーザーが聞いた 21 本で、漢字 14 本のうち OK 13・△ 1、仮名 7 本のうち OK 1）。"""
+    import say_lint as SL
+    if not say: return None
+    bases = [w.replace("+", "") for w in words]
+    opens = [f for f in SL.lint_line(text, say, terms, use_reader=False)
+             if f.kind == "open" and f.src and any(f.src in b or b in f.src for b in bases)]
+    if not opens: return None
+    s, sp = SL._strip_spaces(say)
+    new, lo, _, _ = SL._revert_opens(s, opens)
+    cut = sorted({lo[i] for i in range(len(s)) if sp[i]})    # 空白のあった所に戻す
+    out = "".join(" " * (i in cut) + c for i, c in enumerate(new))
+    return out if out != say else None
+
+
+def warnings(line, phones, wav, terms=(), also=()):
+    """1 行の声の警告。phones は [[音素, 始め, 終わり], ...]。返り値は [{kind: reading|accent, word, t, end, why}]。
+    also は、仮名に開いていなくても数える高さの語の名前（漢字に戻した候補で、戻した語の警告を数えるため）。"""
     import reading_check as R, accent_check as A
     text, say = line.get("text", ""), line.get("say")
     out = []
@@ -37,7 +55,7 @@ def warnings(line, phones, wav, terms=()):
         out.append({"kind": "reading", "word": r["word"], "t": phones[hs[0]][1] if hs else None, "end": phones[hs[1]][2] if hs else None,
                     "why": f"読み [{r['want']}] が声では [{r['got']}]"})
     for r in A.check_line(text, say, phones, wav, terms):
-        if r["opened"]: out.append({"kind": "accent", "word": r["word"], "t": r["t"], "end": r.get("end"), "why": "・".join(r["why"])})
+        if r["opened"] or r["word"] in also: out.append({"kind": "accent", "word": r["word"], "t": r["t"], "end": r.get("end"), "why": "・".join(r["why"])})
     return out
 
 
@@ -55,8 +73,8 @@ def stuck(orig, cands):
 
 
 def choose(orig, cands):
-    """orig は元の声の警告の数、cands は [(seed, 警告の数), ...]（seed の順）。元より少ない候補のうち、いちばん少なく、
-    同じ数なら先の seed を返す。元より少ない候補が無ければ None（元の声を残す）。"""
+    """orig は元の声の警告の数、cands は [(候補, 警告の数), ...]（試す順）。元より少ない候補のうち、いちばん少なく、
+    同じ数なら先の候補を返す。元より少ない候補が無ければ None（元の声を残す）。"""
     best = None
     for s, k in cands:
         if k < orig and (best is None or k < best[1]): best = (s, k)
