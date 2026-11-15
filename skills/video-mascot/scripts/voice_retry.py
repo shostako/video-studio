@@ -34,9 +34,12 @@ def kanji_say(text, say, warns, terms=()):
     import say_lint as SL
     if not say: return None
     want = {tuple(sp) for w in warns if w.get("kind") == "accent" for sp in w.get("opens", ())}
-    opens = [f for f in SL.lint_line(text, say, terms, use_reader=False) if f.kind == "open" and tuple(f.say_pos) in want]
-    if not opens: return None
     s, sp = SL._strip_spaces(say)
+    def inner_punct(f):    # 開いた所の中に読点などがある（戻すと間まで消える）。_compare_reader と同じく戻さない
+        ss = s[f.say_pos[0]:f.say_pos[1]].strip("".join(SL.PUNCT))
+        return any(c in SL.PUNCT for c in ss)
+    opens = [f for f in SL.lint_line(text, say, terms, use_reader=False) if f.kind == "open" and tuple(f.say_pos) in want and not inner_punct(f)]
+    if not opens: return None
     new, lo, _, _ = SL._revert_opens(s, opens)
     cut = sorted({lo[i] for i in range(len(s)) if sp[i]})    # 空白のあった所に戻す
     out = "".join(" " * (i in cut) + c for i, c in enumerate(new))

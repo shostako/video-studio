@@ -123,6 +123,13 @@ def test_kanji_say_matches_by_position_not_substring():
     assert w[0]["opens"] and VR.kanji_say(t, s, w) == "手順とてを示す。"
 
 
+def test_kanji_say_keeps_commas_inside_an_opening():
+    import say_lint as SL
+    t, s = "入力方法を説明。", "にゅうりょく、ほうほうを説明。"
+    ops = [tuple(f.say_pos) for f in SL.lint_line(t, s, (), use_reader=False) if f.kind == "open"]
+    assert ops and VR.kanji_say(t, s, [{"kind": "accent", "word": "入力+方法", "opens": ops}]) is None   # 戻すと読点（間）が消える
+
+
 def test_retry_tries_kanji_say_first(tmp_path, monkeypatch, capsys):
     lines = [{"text": "一"}, {"text": "余白を決める。", "say": "よはくを決める。"}]
     voice, jobs, _ = _setup(tmp_path, monkeypatch, lines)
