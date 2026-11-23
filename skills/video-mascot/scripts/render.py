@@ -142,9 +142,9 @@ LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
 def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
 def legs(img, sc, off=None):
     """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。
-    off: 胴のずれ（dx, dy）。脚をそのぶんずらして胴に付ける。足元の点もずれるので、書き出しで足元を揃えると胴が元の姿勢の胴の位置に来る"""
+    off: 胴のずれ（dx, dy）。脚を元の姿勢の位置からそのぶんずらして胴に付ける。足元の点もずれるので、書き出しで足元を揃えると胴が元の姿勢の胴の位置に来る"""
     dx_ = off[0] if off is not None else (0 if LEGS["fix_x"] else None)
-    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=dx_, s=WS, dy_add=off[1] if off is not None else 0.0)
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=dx_, s=WS, dy=off[1] if off is not None else None)
     if info is None: return img, None
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
@@ -159,7 +159,7 @@ if LEGS:
         from lib import TORSO_DEFAULTS; _t = dict(TORSO_DEFAULTS)
     if _t:
         _mr = C.get("face", {}).get("mouth_roi")
-        _roi = _t["roi"] if _t["roi"] is not None else (torso_roi(_mr) if _mr else None)
+        _roi = [v * WS for v in _t["roi"]] if _t["roi"] is not None else (torso_roi(_mr) if _mr else None)   # 手で書いた範囲は元の絵の座標（mouth_roi は scale_config_pixels で縮めてある）
         if _roi is None: print("注意: legs_lock.torso は face.mouth_roi か torso.roi が無いので使わない", file=sys.stderr)
         else: TORSO = {**_t, "roi": [int(round(v)) for v in _roi]}
 TOFF = {}                                         # 姿勢の絵の胴のずれ（測れない・大きすぎる姿勢は 0）

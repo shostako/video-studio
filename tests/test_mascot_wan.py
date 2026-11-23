@@ -106,9 +106,10 @@ def test_torso_offset_and_lock_legs_follow_the_torso():
     img = cv2.warpAffine(canon, np.float32([[1, 0, 7], [0, 1, -5]]), (W, H), borderMode=cv2.BORDER_REPLICATE)   # 胴ごと右上へずれた絵
     dx, dy, cc = lib.torso_offset(canon, img, roi)
     assert abs(dx - 7) < 0.5 and abs(dy + 5) < 0.5 and cc > 0.9
-    _, base = lib.lock_legs(img, canon, dx=0)
-    _, moved = lib.lock_legs(img, canon, dx=dx, dy_add=dy)
-    assert abs(moved["M"][0, 2] - dx) < 1e-6 and abs(moved["M"][1, 2] - (base["M"][1, 2] + dy)) < 1e-6   # 脚（と足元の点）が胴と同じだけずれる
+    _, moved = lib.lock_legs(img, canon, dx=dx, dy=dy)
+    assert abs(moved["M"][0, 2] - dx) < 1e-6 and abs(moved["M"][1, 2] - dy) < 1e-6   # 脚（と足元の点）が胴と同じだけずれる
+    _, feet = lib.lock_legs(img, canon, dx=0)                                         # 足ごとずれた絵: 足元で合わせた縦も同じ −5（足すと二重になる）
+    assert abs(feet["M"][1, 2] - dy) <= 1.0
 
 
 def test_torso_roi_from_mouth():

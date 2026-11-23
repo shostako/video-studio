@@ -1227,7 +1227,7 @@ def torso_offset(ref, img, roi, min_cc=0.9):
     return best
 
 
-def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, s=1.0, dy_add=0.0):
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, s=1.0, dy=None):
     """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
     切れ目の高さは canon の背で測る。canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
     切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
@@ -1235,7 +1235,8 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     canon_scale: 先に canon をその足元を中心にこの倍率にする（書き出しで img が canon と違う倍率で拡大縮小される時、出来上がりの脚の大きさを揃える）。
     辞書の M は canon の座標を出来上がりの絵の座標へ写す 2x3 の行列（canon の足元の点を写せば、差し替えた絵の足元になる）。
     dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。小数も可。
-    dy_add: 足元で合わせた縦の位置に足す画素（胴をずらして描いた絵で、脚を胴に付いてくる位置へ。legs_lock.torso）。"""
+    dy: 縦の位置を決め打ちする（None は足元で合わせる）。胴に合わせるとき（legs_lock.torso）は、測った胴のずれをそのまま渡す。
+      足元で合わせた位置に足すと、足ごとずれた絵で足元の分と胴の分が二重になる（PR #123 の Codex の指摘）。"""
     H, W = img.shape[:2]
     if canon.shape != img.shape: raise ValueError(f"legs_lock: 絵の大きさが基準と違う（{img.shape[1]}x{img.shape[0]} と {canon.shape[1]}x{canon.shape[0]}）")
     pv = feet_anchor(canon, min_area=scaled_area(400, s)) or (W / 2.0, float(H))
@@ -1245,7 +1246,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     crow = np.where(_main_blob(fg_mask(canon)).any(1))[0]
     if not len(rows) or not len(crow): return img.copy(), None
     fy = int(rows.max()) + 1; h = int(crow.max()) + 1 - int(crow.min())   # 背は基準の絵で測る（手を頭の上に挙げた絵で切れ目が上へずれない）
-    cy = int(round(fy - cut * h)); fb = max(2, int(round(feather * h))); dy = fy - (int(crow.max()) + 1) + float(dy_add)
+    cy = int(round(fy - cut * h)); fb = max(2, int(round(feather * h))); dy = float(fy - (int(crow.max()) + 1)) if dy is None else float(dy)
     y0 = max(0, cy - fb)                              # 帯は絵の中に収める（上へはみ出す分は帯を薄くする）
     if cy - y0 < 2: return img.copy(), None
     fb = cy - y0
