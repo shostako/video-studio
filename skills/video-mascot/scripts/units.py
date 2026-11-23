@@ -57,6 +57,8 @@ def units_config(cfg):
         bad = set(idle) - set(IDLE_DEFAULTS)
         if bad: raise ValueError(f"units.idle に知らない項目: {sorted(bad)}")
         idle = {**IDLE_DEFAULTS, **idle}
+        span = 2 * idle["turn"] + idle["hold"]
+        if idle["every"] < span + 0.2: raise ValueError(f"units.idle.every（{idle['every']}）は往復 1 回の長さ（2×turn＋hold＝{span:.2f} 秒）より 0.2 秒以上長くする")
         chain = (cfg.get("head") or {}).get("chain") or []
         if not idle["sides"]: raise ValueError("units.idle.sides に頭の向き（head.chain の姿勢）を書く")
         miss = [s for s in idle["sides"] if s not in chain]
@@ -107,7 +109,7 @@ def plan(cues, U, ok, start, end, min_hold=0.3):
         gaps = [(start, rows[0][0] if rows else end)] + [(rows[i][3], rows[i + 1][0]) for i in range(len(rows) - 1)] + ([(rows[-1][3], end)] if rows else [])
         for t0, t1 in gaps:                          # あいた所に、every 秒ごとに 1 回（少なくとも 1 回）。等しい間隔で真ん中に寄せる
             if t1 - t0 < max(idle["min_gap"], need + 0.2): continue
-            k = max(1, int((t1 - t0) // idle["every"]))
+            k = max(1, min(int((t1 - t0) // idle["every"]), int((t1 - t0) // (need + 0.2))))   # 1 回ずつ枠に収まる回数まで
             for j in range(k):
                 a = round(t0 + (t1 - t0) * (j + 0.5) / k - need / 2, 3); v = idle["sides"][side % len(idle["sides"])]; side += 1
                 heads += [{"at": a, "pose": base}, {"at": round(a + idle["turn"], 3), "pose": v},
@@ -127,6 +129,14 @@ def rife_pair(cfg, a, b):
     icfg = interp_config(cfg.get("interp"), None) or {}
     rp = (icfg.get("wan") or {}).get("rife_pairs") or []
     return f"{a}>{b}" in rp or f"{b}>{a}" in rp
+
+
+def wan_ready(P, cfg, a, b):
+    """a→b の Wan の列が、書き出しと同じ判定（wanflf.ready: 元の絵・seed・指示文・後処理の印）で今の設定に合うか。
+    合わなければ書き出しは列を作り直すので、検査した列とは別物になる（PR #124 の Codex の指摘）。"""
+    from wanflf import ready
+    icfg = interp_config(cfg.get("interp"), None)
+    return bool(icfg) and icfg.get("engine") == "wan" and ready(P, a, b, wan_n(cfg), icfg)
 
 
 def wan_dir(P, a, b, n):
@@ -193,8 +203,9 @@ def check(P, cfg, U):
             res = {}
             for a, b in ((base, x["pose"]), (x["pose"], base)):
                 d = wan_dir(P, a, b, n); fs = wan_files(d)
-                if not fs:
-                    res[f"{a}>{b}"] = {"ok": False, "why": f"作り置きが無い: {os.path.relpath(d, P.root)}（vm render で作る）"}
+                if not fs or not wan_ready(P, cfg, a, b):
+                    res[f"{a}>{b}"] = {"ok": False, "why": (f"作り置きが今の絵・設定に合わない: {os.path.relpath(d, P.root)}" if fs else
+                                                           f"作り置きが無い: {os.path.relpath(d, P.root)}") + "（vm render で作る）"}
                     print(f"{x['name']:14s} {a + '>' + b:22s} NG {res[f'{a}>{b}']['why']}"); continue
                 fr = [cv2.imread(f) for f in fs]; pa, pb = P.read_pose(a), P.read_pose(b)
                 if fr[0].shape != pa.shape: fr = [cv2.resize(im, (pa.shape[1], pa.shape[0]), interpolation=cv2.INTER_AREA) for im in fr]
@@ -223,7 +234,7 @@ def checked_ok(P, cfg, U):
         for a, b in ((base, x["pose"]), (x["pose"], base)):
             j = r["pairs"].get(f"{a}>{b}")
             fs = wan_files(wan_dir(P, a, b, n))
-            if not j or not fs or j.get("sig") != file_sig_mtime(fs): return False
+            if not j or not fs or j.get("sig") != file_sig_mtime(fs) or not wan_ready(P, cfg, a, b): return False
         return True
     return ok
 

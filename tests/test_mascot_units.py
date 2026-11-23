@@ -63,7 +63,12 @@ def test_idle_head_turns_fill_long_gaps():
     turns = [h["at"] for h in heads[1::4]]
     assert len(turns) == 4 and all(b - a > 5 for a, b in zip(turns, turns[1:]))          # 0〜29.2 秒のあきに 6 秒ごと
     _, _, _, heads = UN.plan([{"role": "point", "t": 2.0}, {"role": "explain", "t": 4.5}], U, ALL, 0.0, 6.5)
-    assert heads == []                                                                      # あきが短ければ入れない
+    assert heads == []
+    with pytest.raises(ValueError, match="往復 1 回の長さ"): UN.units_config(cfg(idle={"sides": ["half_l"], "every": 1}))
+    U = UN.units_config(cfg(idle={"sides": ["half_l", "half_r"], "every": 1.7}))
+    _, _, _, heads = UN.plan([{"role": "point", "t": 4.8}], U, ALL, 0.0, 7.0)        # あき 0〜4.0 秒
+    ats = [h["at"] for h in heads]
+    assert ats == sorted(ats) and ats[-1] <= 4.0 and ats[0] >= 0.0                         # 往復どうしが重ならず、あきに収まる                                                                      # あきが短ければ入れない
 
 
 def test_plan_shrinks_hold_and_stops_when_too_tight():
