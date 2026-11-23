@@ -218,8 +218,8 @@ for p_ in P.poses:                       # 顔（目と口）の矩形。この�
     mr, er, _ = map_rois(P, p_, pad=max(1, int(round(8 * WS)))); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
     m_ = lambda v: int(round(v * WS))
     KEEP[p_] = [(er[0] - m_(10), er[1] - m_(10), er[2] + m_(10), er[3] + m_(10)), (mr[0] - m_(10), mr[1] - m_(10), mr[2] + m_(10), mr[3] - m_(24))]   # 目と口を別々の箱に（口はあごの下へ広げない）
-    if TRIM and PARTS[p_]:                       # 口の範囲（上の mr は 8 画素広げてあるので戻す）
-        pd_ = max(1, int(round(8 * WS))); mr0 = (mr[0] + pd_, mr[1] + pd_, mr[2] - pd_, mr[3] - pd_)
+    if TRIM and PARTS[p_]:                       # 口の範囲は広げずに取り直す（home と顔の範囲を書いた姿勢は、pad を渡しても広げない）
+        mr0 = map_rois(P, p_, pad=0)[0]
         PARTS_IB[p_] = {k: ((trim_islands(im_, px, py, mr0), px, py) if k.startswith("m") else (im_, px, py)) for k, (im_, px, py) in PARTS[p_].items()}
 
 def face_affine(src, dst, roi):
