@@ -1,0 +1,153 @@
+{
+ "events": [
+  {
+   "at": 1.36,
+   "pose": "open"
+  },
+  {
+   "at": 2.96,
+   "pose": "home"
+  },
+  {
+   "at": 6.28,
+   "pose": "raise_r"
+  },
+  {
+   "at": 7.78,
+   "pose": "home"
+  },
+  {
+   "at": 9.2,
+   "pose": "point_r"
+  },
+  {
+   "at": 10.9,
+   "pose": "home"
+  },
+  {
+   "at": 13.92,
+   "pose": "span"
+  },
+  {
+   "at": 15.52,
+   "pose": "home"
+  },
+  {
+   "at": 17.2,
+   "pose": "point_l"
+  },
+  {
+   "at": 18.9,
+   "pose": "home"
+  },
+  {
+   "at": 23.5,
+   "pose": "palm_stop"
+  },
+  {
+   "at": 25.0,
+   "pose": "home"
+  },
+  {
+   "at": 26.1,
+   "pose": "open"
+  },
+  {
+   "at": 27.7,
+   "pose": "home"
+  },
+  {
+   "at": 29.62,
+   "pose": "point_r"
+  },
+  {
+   "at": 31.32,
+   "pose": "home"
+  }
+ ],
+ "interp": {
+  "engine": "wan",
+  "dur": 1.0,
+  "durs": {
+   "home>open": 0.8,
+   "open>home": 0.8,
+   "home>raise_r": 0.7,
+   "raise_r>home": 0.8,
+   "home>point_r": 0.8,
+   "point_r>home": 0.8,
+   "home>span": 0.8,
+   "span>home": 0.8,
+   "home>point_l": 0.8,
+   "point_l>home": 0.8,
+   "home>palm_stop": 0.7,
+   "palm_stop>home": 0.8
+  },
+  "wan": {
+   "rife_pairs": [
+    "home>nod"
+   ]
+  }
+ },
+ "head": {
+  "chain": [
+   "shake_r",
+   "look_r",
+   "half_r",
+   "home",
+   "half_l",
+   "look_l",
+   "shake_l"
+  ],
+  "mult": 6,
+  "events": [
+   {
+    "at": 4.32,
+    "pose": "home"
+   },
+   {
+    "at": 4.77,
+    "pose": "half_l"
+   },
+   {
+    "at": 5.27,
+    "pose": "half_l"
+   },
+   {
+    "at": 5.72,
+    "pose": "home"
+   },
+   {
+    "at": 12.11,
+    "pose": "home"
+   },
+   {
+    "at": 12.56,
+    "pose": "half_r"
+   },
+   {
+    "at": 13.06,
+    "pose": "half_r"
+   },
+   {
+    "at": 13.51,
+    "pose": "home"
+   },
+   {
+    "at": 20.9,
+    "pose": "home"
+   },
+   {
+    "at": 21.35,
+    "pose": "half_l"
+   },
+   {
+    "at": 21.85,
+    "pose": "half_l"
+   },
+   {
+    "at": 22.3,
+    "pose": "home"
+   }
+  ]
+ }
+}
