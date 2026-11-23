@@ -279,6 +279,44 @@
 - 背の変わる姿勢（`poses.<名前>.scale` を書いた姿勢。会釈など）は、胴が動くのが身振りなので止めない。その姿勢を含む切り替えも今までどおり
 - Wan 以外の中割り（RIFE の直の補間・描いた中割り）は測らず、両端の姿勢のずれを補った値を使う
 
+## 動きの部品: units と cues（opt-in、`vm units`）
+
+拠点の姿勢（ふつう `home`）から出て拠点へ戻る短い動きを「部品」として役ごとに登録し（`units`）、台本には役だけを書いて（`cues`）、`vm units <作業フォルダ> build` で `events`・`interp.durs`・`head.events` を組む。身振りを 1 つずつ `events` に書く代わり。Wan の切り替え（`interp.engine: "wan"`）の作り置きを使う。調べた中身は `research/2026-11-23-motion-units/NOTES.md`。
+
+```json
+"units": {
+  "base": "home",
+  "roles": {
+    "explain": [{"name": "explain_open", "pose": "open", "out": 0.8, "hold": 0.8, "back": 0.8},
+                {"name": "explain_span", "pose": "span", "out": 0.8, "hold": 0.8, "back": 0.8}],
+    "count":   [{"name": "count_1", "pose": "raise_r", "n": 1, "out": 0.7, "hold": 0.9, "back": 0.8},
+                {"name": "count_2", "pose": "count_2", "n": 2, "out": 0.6, "hold": 0.9, "back": 0.7}],
+    "greet":   [{"name": "bow", "pose": "nod", "rife": true, "out": 0.4, "hold": 0.6, "back": 0.6}]
+  },
+  "idle": {"sides": ["half_l", "half_r"], "min_gap": 1.8, "turn": 0.45, "hold": 0.5}
+},
+"cues": [
+  {"role": "explain", "kw": "わたす", "line": 33},
+  {"role": "count", "n": 1, "at": 225.55},
+  {"role": "point", "unit": "point_left", "at": 219.37}
+]
+```
+
+| 項目 | 意味 |
+|---|---|
+| `units.base` | 拠点の姿勢（既定は `home`） |
+| `units.roles` | 役ごとの部品の並び。部品は `name`、`pose`（着く姿勢）、`out`（拠点→姿勢の秒）、`hold`（止まる秒の上限）、`back`（姿勢→拠点の秒）。数える役は `n`（何番目か）。`rife: true` は描いた 2 枚の間を直に補間する組（`interp.wan.rife_pairs` の会釈など。Wan の検査をしない） |
+| `units.idle` | 拠点にいる間が長いとき（`min_gap` 秒以上）、頭を `sides` の向きへ `turn` 秒で回して `hold` 秒止まり戻す（左右を交互に）。あいた長さ `every` 秒（既定 6）ごとに 1 回入れる。`sides` は `head.chain` の姿勢。書かなければ頭の往復は入れない |
+| `cues` | 台本の役。`role` と、着く時刻を `at`（秒）か、`kw`（ひらがなの並び）/ `word`（語）＋ `line`（行番号）で書く（`events` と同じ引き方、`offset` も足せる。`kw` には小さい「ゃゅょ」を含む並びを書けない。含む語は `word` に聞き取りの語のひらがなで書くか、`at` で書く）。`unit` で部品を名指し（同じ物は同じ側で指す、など意味を固定する所）、数える役は `n` |
+
+- 同じ役が続くと、その役の部品を順に回す。`unit` も `n` も無い役で使う
+- 部品は語の頭に着くように `out` 秒前に動き出す。次の部品の出だしに食い込むなら止まる秒を縮め、0.3 秒を割ると止まる（どちらかを外すか時刻をずらす）。最後の部品は声の終わりまでに拠点へ戻る
+- 同じ姿勢を使う部品は `out`・`back` を揃える。書き出しの切り替えの秒（`interp.durs`）は姿勢の組ごとに 1 つなので、違うと止まる
+- `vm units <作業フォルダ> check` で、部品ごとに Wan の列（拠点→姿勢、姿勢→拠点）を検査する（動きの量・目の閉じ・着地・顔の位置）。結果は `units.checked.json`。`build` は検査を通った部品だけを使い、検査の後で列が変わった部品は使わない
+- `build` は `events` を丸ごと書き替え、`interp.durs` は部品の組の秒だけを書き替え、`head.events` は `idle` があるときだけ書き替える。最初の 1 回だけ元の config を `config.json.bak_units` に残す。`--dry` は書かずに予定だけ出す
+- 会釈は口の部品の無い姿勢なので、声の後の無音に置く（声の終わりで書き出しが終わる台本には置けない）
+- `cues` は台本に属するので、`vm pack` はパックへ持ってこない。`units` はパックに置ける
+
 ## 囲まれた白を閉じる: matte（opt-in）
 
 透明にする処理（`lib.matte`）は、既定では顔の箱の外にある「囲まれたほぼ白」（明るさ 241 以上で、絵の縁につながっていない所）を背景にする。毛束の間や腕と体の間のすき間を抜くためだが、白いシャツ・袖口・おでこの光も透ける。明るい地に重ねる型では見えないが、暗い背景に重ねると穴に見える。

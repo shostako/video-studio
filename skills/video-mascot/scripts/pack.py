@@ -26,7 +26,7 @@ import time
 
 from lib import die, file_sig, file_sig_mtime, READONLY, dir_link, is_dir_link, read_dir_link, same_path, remove_dir_link
 
-SCRIPT_KEYS = {"name", "voice", "events", "events_kw", "events_script", "events_demo", "gaze_script", "gaze_demo"}
+SCRIPT_KEYS = {"name", "voice", "cues", "events", "events_kw", "events_script", "events_demo", "gaze_script", "gaze_demo"}
 SPECIAL = {"poses", "pairs", "ib_steps", "hands", "mirrored", "gaze", "interp", "face", "anchor"}
 
 
