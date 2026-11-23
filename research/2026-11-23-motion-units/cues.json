@@ -1,0 +1,12 @@
+{"_": "design-vs-system の頭 33 秒（行 1〜4）。arrive はその語の声の頭（master.words.json）。その時刻に姿勢へ着くように動き出す",
+ "end": 33.0,
+ "cues": [
+  {"arrive": 2.16,  "role": "explain",  "word": "デザイン"},
+  {"arrive": 6.98,  "role": "emphasis", "word": "役目"},
+  {"arrive": 10.0,  "role": "point",    "word": "デザインは"},
+  {"arrive": 14.72, "role": "explain",  "word": "キャンバス"},
+  {"arrive": 18.0,  "role": "point",    "word": "デザインシステムは"},
+  {"arrive": 24.2,  "role": "emphasis", "word": "決めておく"},
+  {"arrive": 26.9,  "role": "explain",  "word": "架空の会社"},
+  {"arrive": 30.42, "role": "point",    "word": "両方を"}
+ ]}
