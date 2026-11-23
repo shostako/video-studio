@@ -46,6 +46,17 @@ def test_rife_units_need_rife_pairs_and_cache_length_follows_settings():
     assert UN.wan_n(c) == 63
 
 
+def test_interp_used_follows_render_conditions():
+    c = cfg(); c["interp"] = {"engine": "wan"}
+    assert UN.interp_used(c, "home", "open")
+    c["interp"]["pairs"] = ["home>span"]
+    assert UN.interp_used(c, "span", "home") and not UN.interp_used(c, "home", "open")   # interp.pairs で絞った組だけ
+    c["interp"].pop("pairs"); c["poses"]["open"] = {"yaw": 30}
+    assert not UN.interp_used(c, "home", "open")                                          # 向きが違う組は補間しない
+    c["interp"]["engine"] = "rife"; c["poses"]["open"] = {}
+    assert not UN.interp_used(c, "home", "open")
+
+
 def test_plan_arrives_on_time_rotates_and_picks_by_n_and_name():
     U = UN.units_config(cfg())
     cues = [{"role": "explain", "t": 3.0}, {"role": "explain", "t": 8.0}, {"role": "count", "n": 2, "t": 13.0},
