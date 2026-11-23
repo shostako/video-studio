@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_height, feet_anchor, fg_height, matte, die
 from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, LazyParts, EccCache, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
-from lib import occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
+from lib import trim_islands, occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
 from lib import legs_config, lock_legs, wipe_box
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
@@ -199,6 +199,10 @@ for p in P.poses:
         im_ = cv2.imread(P.p(f"parts_{p}", f"{k}.png"), cv2.IMREAD_UNCHANGED)
         if WS != 1.0: im_ = cv2.resize(im_, (max(1, round(im_.shape[1] * WS)), max(1, round(im_.shape[0] * WS))), interpolation=cv2.INTER_AREA)
         PARTS[p][k] = (im_, int(round(px * WS)), int(round(py * WS)))
+# 中割り（Wan の切り替えなど）へ写す口の部品は、口の範囲に触れない離れ小島（髪・首の縁の切れ端）を捨てる。
+# 止めた姿勢の絵の上は今までどおり。face.trim_islands で切り替え（既定は engine: wan のときだけ true）
+TRIM = C.get("face", {}).get("trim_islands", bool(INTERP) and INTERP["engine"] == "wan")
+PARTS_IB = dict(PARTS)                          # 下の顔の矩形の所で、口の範囲が分かってから作る
 FB = {"m7": "m1", "m3": "m2", "m6": "m1"}      # 無い形は近い形で代用
 def part_of(parts, k):
     while k and k not in parts: k = FB.get(k)
@@ -214,6 +218,9 @@ for p_ in P.poses:                       # 顔（目と口）の矩形。この�
     mr, er, _ = map_rois(P, p_, pad=max(1, int(round(8 * WS)))); HEAD[p_] = head_rig(mr, er, MOT["head"]["neck"], MOT["head"]["radius"]) if MOT and MOT["head"] else None
     m_ = lambda v: int(round(v * WS))
     KEEP[p_] = [(er[0] - m_(10), er[1] - m_(10), er[2] + m_(10), er[3] + m_(10)), (mr[0] - m_(10), mr[1] - m_(10), mr[2] + m_(10), mr[3] - m_(24))]   # 目と口を別々の箱に（口はあごの下へ広げない）
+    if TRIM and PARTS[p_]:                       # 口の範囲は広げずに取り直す（home と顔の範囲を書いた姿勢は、pad を渡しても広げない）
+        mr0 = map_rois(P, p_, pad=0)[0]
+        PARTS_IB[p_] = {k: ((trim_islands(im_, px, py, mr0), px, py) if k.startswith("m") else (im_, px, py)) for k, (im_, px, py) in PARTS[p_].items()}
 
 def face_affine(src, dst, roi):
     x0, y0, x1, y1 = roi
@@ -264,7 +271,7 @@ def ib_item(item, src_pose, lerp_parts=False):
         rig = rig_affine(rig, A)                  # 二次運動の首も、部品と同じく中割りの顔の位置へ写す
         H, W = clean.shape[:2]; memo = {}
         def part(k):                              # 引かれた部品だけ写す（1 コマで使うのは数個）
-            im, px, py = PARTS[src_pose][k]
+            im, px, py = PARTS_IB[src_pose][k]
             T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
             full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
             if OCC:                               # 中割りで顔の前に来た手には貼らない（config.face.occlude）

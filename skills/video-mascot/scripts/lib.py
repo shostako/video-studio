@@ -1687,6 +1687,23 @@ def home_route(a, b, home, has_pair):
 
 
 
+def trim_islands(im, px, py, roi):
+    """口の部品（RGBA、絵の中の左上 px, py）から、口の範囲 roi（x0, y0, x1, y1）の中心に届かない離れ小島を透明にした写しを返す。
+    差分を描かせたとき髪の縁や首の縁が少し描き直され、その切れ端が口の部品に入る（凜 115/173 枚、蘭 126/245 枚）。
+    部品は口の範囲の矩形の中で切るので、小島も矩形の角に入っている（凜のお団子の縁）。そこで、中心から矩形の短い辺の 1/4
+    以内に来る島（口の本体）だけを残す。止めた姿勢の絵の上では元と同じ絵なので見えないが、Wan の切り替えのコマでは
+    髪が動くので、元の髪と背景が浮いて見えた（お団子の縁に白い楔、research/2026-11-23-mouth-on-wan）。
+    残す島が無ければ元のまま返す。"""
+    a = im[:, :, 3]; n, lab, _, _ = cv2.connectedComponentsWithStats((a > 20).astype(np.uint8), 8)   # 縁のぼかしの裾でつながらないように
+    if n <= 2: return im
+    cx, cy = (roi[0] + roi[2]) / 2 - px, (roi[1] + roi[3]) / 2 - py; r = min(roi[2] - roi[0], roi[3] - roi[1]) / 4
+    h, w = a.shape; yy, xx = np.ogrid[:h, :w]; near = (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r
+    hit = np.unique(lab[near]); hit = hit[hit > 0]
+    if not len(hit) or len(hit) == n - 1: return im
+    keep = cv2.dilate(np.isin(lab, hit).astype(np.uint8), np.ones((9, 9), np.uint8))   # 残す島のぼかしの裾は残す
+    out = im.copy(); out[:, :, 3] = a * keep; return out
+
+
 def occlude_diff(target, ref, thr=40.0):
     """occlude の前半: 写す先と写す元の違う所の塊。1 枚の絵に部品が何枚あっても同じ結果なので、1 回だけ計算して pre で渡す。"""
     b_, g_, r_ = cv2.split(target.astype(np.float32) - ref.astype(np.float32))   # np.linalg.norm(axis=2) は 1 枚 15 ms 掛かる
