@@ -32,6 +32,20 @@ def test_config_checks():
     with pytest.raises(ValueError, match="知らない項目"): UN.units_config(cfg(roles={"x": [{"name": "a", "pose": "open", "out": 1, "hold": 1, "back": 1, "zz": 1}]}))
 
 
+def test_base_must_be_home():
+    with pytest.raises(ValueError, match="config.home"): UN.units_config(cfg(base="open"))
+
+
+def test_rife_units_need_rife_pairs_and_cache_length_follows_settings():
+    c = cfg(); c["interp"] = {"engine": "wan", "mult": 8, "wan": {"rife_pairs": ["home>nod"]}}
+    assert UN.rife_pair(c, "home", "nod") and UN.rife_pair(c, "nod", "home") and not UN.rife_pair(c, "home", "open")
+    assert UN.wan_n(c) == 47
+    c["interp"]["mult"] = 12; c["inbetween_div"] = 4
+    assert UN.wan_n(c) == 47                                                              # 4 × 12 − 1
+    c["interp"]["mult"] = 16
+    assert UN.wan_n(c) == 63
+
+
 def test_plan_arrives_on_time_rotates_and_picks_by_n_and_name():
     U = UN.units_config(cfg())
     cues = [{"role": "explain", "t": 3.0}, {"role": "explain", "t": 8.0}, {"role": "count", "n": 2, "t": 13.0},

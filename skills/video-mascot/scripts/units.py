@@ -29,8 +29,9 @@ def units_config(cfg):
     （秒）と、数える役の n、描いた 2 枚の間を直に補間する組の rife。"""
     u = cfg.get("units")
     if not isinstance(u, dict): raise ValueError("config.units が無い（references/config-spec.md の「動きの部品」）")
-    poses = cfg.get("poses", {}); base = u.get("base", cfg.get("home", "home"))
+    poses = cfg.get("poses", {}); home = cfg.get("home", next(iter(poses), None)); base = u.get("base", home)
     if base not in poses: raise ValueError(f"units.base の姿勢が無い: {base}")
+    if base != home: raise ValueError(f"units.base（{base}）は config.home（{home}）と同じにする（書き出しは home から始まる。PR #124 の Codex の指摘）")
     roles = u.get("roles")
     if not isinstance(roles, dict) or not roles: raise ValueError("units.roles は {役: [部品, ...]}")
     names, seen = set(), {}
@@ -115,6 +116,19 @@ def plan(cues, U, ok, start, end, min_hold=0.3):
 
 
 # ---------- 検査 ----------
+def wan_n(cfg):
+    """今の設定で書き出しが使う Wan の列のコマ数（render.py の DIV * interp.mult - 1）。"""
+    icfg = interp_config(cfg.get("interp"), None) or {}
+    return int(cfg.get("inbetween_div", 6)) * int(icfg.get("mult", 8)) - 1
+
+
+def rife_pair(cfg, a, b):
+    """a↔b を描いた 2 枚の間の補間で書き出すか（render.py と同じく interp.wan.rife_pairs のどちら向きかにあるか）。"""
+    icfg = interp_config(cfg.get("interp"), None) or {}
+    rp = (icfg.get("wan") or {}).get("rife_pairs") or []
+    return f"{a}>{b}" in rp or f"{b}>{a}" in rp
+
+
 def wan_dir(P, a, b, n):
     return P.p("ib_wan", f"{a}__{b}", f"n{n}")
 
@@ -154,7 +168,7 @@ def check(P, cfg, U):
     from wanflf import eye_patches
     icfg = interp_config(cfg.get("interp"), None) or {}
     if icfg.get("engine") != "wan": die("動きの部品の検査は Wan の切り替え（interp.engine: \"wan\"）の作り置きを見る。config.interp を確かめる")
-    n = int(cfg.get("inbetween_div", 6)) * int(icfg["mult"]) - 1
+    n = wan_n(cfg)
     tol = (icfg.get("wan") or {}).get("blink_tol", 0.05); tol = 0.05 if tol is None else tol
     base = U["base"]; home = P.read_pose(base)
     pj = json.load(open(P.p(f"parts_{base}", "parts.json"))); m1 = cv2.imread(P.p(f"parts_{base}", "m1.png"), cv2.IMREAD_UNCHANGED)
@@ -170,9 +184,12 @@ def check(P, cfg, U):
     out = {}
     for r, vs in U["roles"].items():
         for x in vs:
-            if x.get("rife"):
-                out[x["name"]] = {"role": r, "ok": True, "rife": True, "pairs": {}}
-                print(f"{x['name']:14s} {base + '<>' + x['pose']:22s} 描いた 2 枚の間の補間（Wan の検査なし）"); continue
+            if x.get("rife"):                            # 書き出しが補間で動かす組か（rife_pairs に無ければ Wan で動き、検査していない列になる）
+                good = rife_pair(cfg, base, x["pose"])
+                out[x["name"]] = {"role": r, "ok": good, "rife": True, "pairs": {},
+                                  **({} if good else {"why": f"interp.wan.rife_pairs に {base}>{x['pose']} が無い"})}
+                print(f"{x['name']:14s} {base + '<>' + x['pose']:22s} " + ("描いた 2 枚の間の補間（Wan の検査なし）" if good else
+                      f"NG rife: true だが interp.wan.rife_pairs に {base}>{x['pose']} が無い（書き出しは Wan で動く）")); continue
             res = {}
             for a, b in ((base, x["pose"]), (x["pose"], base)):
                 d = wan_dir(P, a, b, n); fs = wan_files(d)
@@ -197,14 +214,15 @@ def checked_ok(P, cfg, U):
     """検査を通っていて、検査の後で列が変わっていない部品か、を返す関数。"""
     f = P.p("units.checked.json")
     if not os.path.exists(f): die(f"検査の結果が無い: vm units {P.root} check")
-    ch = json.load(open(f)); base = U["base"]
+    ch = json.load(open(f)); base = U["base"]; n = wan_n(cfg)
     def ok(x):
         r = ch.get(x["name"])
         if not r or not r.get("ok"): return False
-        if r.get("rife"): return True
+        if r.get("rife") or x.get("rife"): return bool(x.get("rife")) and rife_pair(cfg, base, x["pose"])
+        if r.get("n") != n: return False                    # 検査の後で interp.mult・inbetween_div を変えた（書き出しは別の長さの列を使う）
         for a, b in ((base, x["pose"]), (x["pose"], base)):
             j = r["pairs"].get(f"{a}>{b}")
-            fs = wan_files(wan_dir(P, a, b, r.get("n")))
+            fs = wan_files(wan_dir(P, a, b, n))
             if not j or not fs or j.get("sig") != file_sig_mtime(fs): return False
         return True
     return ok
