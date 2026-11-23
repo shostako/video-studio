@@ -1,13 +1,148 @@
 {
- "_": "拠点 home から出て home へ戻る動きの部品。役ごとに 2 種類。out/back は切り替えの秒、hold は着いた姿勢で止まる秒（台本の長さに合わせて組む側が伸び縮みさせる最小）",
+ "_": "拠点 home から出て home へ戻る動きの部品。out/back は切り替えの秒、hold は着いた姿勢で止まる秒（次の部品に食い込むときは組む側が縮める）。rife: true は描いた 2 枚の間を RIFE で直に補間する組（会釈など）で、Wan の検査をしない",
  "base": "home",
  "roles": {
-  "explain":  [{"name": "explain_open", "pose": "open",      "out": 0.8, "hold": 0.8, "back": 0.8},
-               {"name": "explain_span", "pose": "span",      "out": 0.8, "hold": 0.8, "back": 0.8}],
-  "point":    [{"name": "point_right",  "pose": "point_r",   "out": 0.8, "hold": 0.9, "back": 0.8},
-               {"name": "point_left",   "pose": "point_l",   "out": 0.8, "hold": 0.9, "back": 0.8}],
-  "emphasis": [{"name": "emph_raise",   "pose": "raise_r",   "out": 0.7, "hold": 0.8, "back": 0.8},
-               {"name": "emph_palm",    "pose": "palm_stop", "out": 0.7, "hold": 0.8, "back": 0.8}]
+  "explain": [
+   {
+    "name": "explain_open",
+    "pose": "open",
+    "out": 0.8,
+    "hold": 0.8,
+    "back": 0.8
+   },
+   {
+    "name": "explain_span",
+    "pose": "span",
+    "out": 0.8,
+    "hold": 0.8,
+    "back": 0.8
+   }
+  ],
+  "point": [
+   {
+    "name": "point_right",
+    "pose": "point_r",
+    "out": 0.8,
+    "hold": 0.9,
+    "back": 0.8
+   },
+   {
+    "name": "point_left",
+    "pose": "point_l",
+    "out": 0.8,
+    "hold": 0.9,
+    "back": 0.8
+   }
+  ],
+  "emphasis": [
+   {
+    "name": "emph_palm",
+    "pose": "palm_stop",
+    "out": 0.7,
+    "hold": 0.8,
+    "back": 0.8
+   },
+   {
+    "name": "emph_raise",
+    "pose": "raise_r",
+    "out": 0.7,
+    "hold": 0.8,
+    "back": 0.8
+   }
+  ],
+  "question": [
+   {
+    "name": "think_chin",
+    "pose": "think",
+    "out": 0.8,
+    "hold": 1.0,
+    "back": 0.8
+   },
+   {
+    "name": "think_arms",
+    "pose": "arms_crossed",
+    "out": 0.8,
+    "hold": 1.0,
+    "back": 0.8
+   }
+  ],
+  "conclude": [
+   {
+    "name": "good_thumb",
+    "pose": "thumb_r",
+    "out": 0.7,
+    "hold": 0.9,
+    "back": 0.8
+   },
+   {
+    "name": "close_gassho",
+    "pose": "gassho",
+    "out": 0.8,
+    "hold": 1.0,
+    "back": 0.8
+   }
+  ],
+  "size": [
+   {
+    "name": "size_pinch",
+    "pose": "pinch",
+    "out": 0.7,
+    "hold": 0.9,
+    "back": 0.8
+   },
+   {
+    "name": "size_span",
+    "pose": "span",
+    "out": 0.8,
+    "hold": 0.9,
+    "back": 0.8
+   }
+  ],
+  "count": [
+   {
+    "name": "count_1",
+    "pose": "raise_r",
+    "n": 1,
+    "out": 0.6,
+    "hold": 0.9,
+    "back": 0.7
+   },
+   {
+    "name": "count_2",
+    "pose": "count_2",
+    "n": 2,
+    "out": 0.6,
+    "hold": 0.9,
+    "back": 0.7
+   },
+   {
+    "name": "count_3",
+    "pose": "count_3",
+    "n": 3,
+    "out": 0.6,
+    "hold": 0.9,
+    "back": 0.7
+   }
+  ],
+  "greet": [
+   {
+    "name": "bow",
+    "pose": "nod",
+    "rife": true,
+    "out": 0.4,
+    "hold": 0.6,
+    "back": 0.6
+   }
+  ]
  },
- "idle": {"_": "home にいる間の小さな往復（頭の向きの列 config.head）。gap 秒以上あいたら入れる", "min_gap": 1.8, "turn": 0.45, "hold": 0.5, "sides": ["half_l", "half_r"]}
+ "idle": {
+  "_": "home にいる間の小さな往復（頭の向きの列 config.head）。gap 秒以上あいたら入れる",
+  "min_gap": 1.8,
+  "turn": 0.45,
+  "hold": 0.5,
+  "sides": [
+   "half_l",
+   "half_r"
+  ]
+ }
 }
