@@ -133,10 +133,27 @@ def interp_used(cfg, a, b):
 
 
 def rife_pair(cfg, a, b):
-    """a↔b を描いた 2 枚の間の補間で書き出すか（render.py と同じく interp.wan.rife_pairs のどちら向きかにあるか）。"""
+    """a↔b が interp.wan.rife_pairs のどちら向きかにあるか。"""
     icfg = interp_config(cfg.get("interp"), None) or {}
     rp = (icfg.get("wan") or {}).get("rife_pairs") or []
     return f"{a}>{b}" in rp or f"{b}>{a}" in rp
+
+
+def render_path(cfg, a, b):
+    """書き出し（render.py の ib_seq）が a→b を何で動かすか: "wan"（Wan の列）、"rife"（描いた 2 枚の間の直の補間）、
+    None（どちらでもない。部品には使えない）。部品は rife: true なら "rife"、それ以外は "wan" と一致しなければ通さない。
+    条件を 1 つずつ足すと逆向きの食い違い（Wan で検査した組を後で rife_pairs に入れた、など）を取りこぼすので、ここ 1 か所で決める。"""
+    if not interp_used(cfg, a, b): return None
+    return "rife" if rife_pair(cfg, a, b) else "wan"
+
+
+def path_why(cfg, x, a, b):
+    """部品 x の a→b を、書き出しが部品の種類どおりに動かすか。合わなければ理由、合えば空。"""
+    want = "rife" if x.get("rife") else "wan"; got = render_path(cfg, a, b)
+    if got == want: return ""
+    if got is None: return f"書き出しが {a}→{b} を補間で動かさない（interp.engine・interp.pairs・向きを確かめる）"
+    if got == "rife": return f"{a}>{b} が interp.wan.rife_pairs にあり、書き出しは描いた 2 枚の間の補間で動かす（部品に rife: true を書いて検査し直す）"
+    return f"rife: true だが interp.wan.rife_pairs に {a}>{b} が無い（書き出しは Wan で動く）"
 
 
 def wan_ready(P, cfg, a, b):
@@ -144,7 +161,7 @@ def wan_ready(P, cfg, a, b):
     合わなければ書き出しは列を作り直すので、検査した列とは別物になる（PR #124 の Codex の指摘）。"""
     from wanflf import ready
     icfg = interp_config(cfg.get("interp"), None)
-    return interp_used(cfg, a, b) and ready(P, a, b, wan_n(cfg), icfg)
+    return render_path(cfg, a, b) == "wan" and ready(P, a, b, wan_n(cfg), icfg)
 
 
 def wan_dir(P, a, b, n):
@@ -203,16 +220,15 @@ def check(P, cfg, U):
     for r, vs in U["roles"].items():
         for x in vs:
             if x.get("rife"):                            # 書き出しが補間で動かす組か（rife_pairs に無ければ Wan で動き、検査していない列になる）
-                why = ("" if interp_used(cfg, base, x["pose"]) and interp_used(cfg, x["pose"], base) else
-                       f"書き出しが {base}↔{x['pose']} を補間で動かさない（interp.pairs・向きを確かめる）")
-                if not why and not rife_pair(cfg, base, x["pose"]): why = f"rife: true だが interp.wan.rife_pairs に {base}>{x['pose']} が無い（書き出しは Wan で動く）"
+                why = path_why(cfg, x, base, x["pose"]) or path_why(cfg, x, x["pose"], base)
                 out[x["name"]] = {"role": r, "ok": not why, "rife": True, "pairs": {}, **({"why": why} if why else {})}
                 print(f"{x['name']:14s} {base + '<>' + x['pose']:22s} " + ("描いた 2 枚の間の補間（Wan の検査なし）" if not why else "NG " + why)); continue
             res = {}
             for a, b in ((base, x["pose"]), (x["pose"], base)):
                 d = wan_dir(P, a, b, n); fs = wan_files(d)
-                if not interp_used(cfg, a, b):
-                    res[f"{a}>{b}"] = {"ok": False, "why": f"書き出しがこの組を補間で動かさない（interp.pairs・向きを確かめる）"}
+                why = path_why(cfg, x, a, b)
+                if why:
+                    res[f"{a}>{b}"] = {"ok": False, "why": why}
                     print(f"{x['name']:14s} {a + '>' + b:22s} NG {res[f'{a}>{b}']['why']}"); continue
                 if not fs or not wan_ready(P, cfg, a, b):
                     res[f"{a}>{b}"] = {"ok": False, "why": (f"作り置きが今の絵・設定に合わない: {os.path.relpath(d, P.root)}" if fs else
@@ -240,8 +256,9 @@ def checked_ok(P, cfg, U):
     def ok(x):
         r = ch.get(x["name"])
         if not r or not r.get("ok"): return False
-        if r.get("rife") or x.get("rife"):
-            return bool(x.get("rife")) and rife_pair(cfg, base, x["pose"]) and interp_used(cfg, base, x["pose"]) and interp_used(cfg, x["pose"], base)
+        if bool(r.get("rife")) != bool(x.get("rife")): return False   # 検査した後で部品の種類を書き替えた
+        if path_why(cfg, x, base, x["pose"]) or path_why(cfg, x, x["pose"], base): return False
+        if x.get("rife"): return True
         if r.get("n") != n: return False                    # 検査の後で interp.mult・inbetween_div を変えた（書き出しは別の長さの列を使う）
         for a, b in ((base, x["pose"]), (x["pose"], base)):
             j = r["pairs"].get(f"{a}>{b}")

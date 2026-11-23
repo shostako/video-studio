@@ -57,6 +57,19 @@ def test_interp_used_follows_render_conditions():
     assert not UN.interp_used(c, "home", "open")
 
 
+def test_render_path_decides_unit_kind_in_one_place():
+    c = cfg(); c["interp"] = {"engine": "wan", "wan": {"rife_pairs": ["home>nod"]}}
+    wan_u = {"name": "o", "pose": "open"}; rife_u = {"name": "b", "pose": "nod", "rife": True}
+    assert UN.render_path(c, "home", "open") == "wan" and UN.render_path(c, "nod", "home") == "rife"
+    assert UN.path_why(c, wan_u, "home", "open") == "" and UN.path_why(c, rife_u, "home", "nod") == ""
+    c["interp"]["wan"]["rife_pairs"].append("open>home")                                   # Wan で検査した組を後で rife_pairs に入れた
+    assert "rife_pairs にあり" in UN.path_why(c, wan_u, "open", "home")
+    c["interp"]["wan"]["rife_pairs"] = []                                                   # rife の部品の組を rife_pairs から外した
+    assert "rife_pairs に" in UN.path_why(c, rife_u, "home", "nod")
+    c["interp"]["pairs"] = ["home>span"]
+    assert "補間で動かさない" in UN.path_why(c, wan_u, "home", "open")
+
+
 def test_plan_arrives_on_time_rotates_and_picks_by_n_and_name():
     U = UN.units_config(cfg())
     cues = [{"role": "explain", "t": 3.0}, {"role": "explain", "t": 8.0}, {"role": "count", "n": 2, "t": 13.0},
