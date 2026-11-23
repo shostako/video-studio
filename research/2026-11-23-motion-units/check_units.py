@@ -3,6 +3,7 @@
   目の閉じ : 目を閉じたコマ（wanflf.blink_frames と同じ照合、tol は config.interp.wan.blink_tol か 0.05）が無いこと
   着地     : 列の最後のコマと着く姿勢の絵の差（平均の絶対差）が 3 未満、背景（四隅）の明るさの差が 2 未満
   顔の位置 : 顔の合わせ（ECC）の合いが 0.85 以上で、1 コマ間に顔が 3 px より跳ばないこと
+rife: true の部品（会釈など、描いた 2 枚の間を RIFE で直に補間する組）は Wan の列が無いので検査しない。
 使い方: python check_units.py <パック> units.json   → 表と、units.checked.json（部品ごとの合否と数字）"""
 import sys, os, glob, json, cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -65,6 +66,9 @@ print(f"{'部品':14s} {'組':22s} {'動き':>5s} {'止':>2s} {'目':>3s} {'着�
 for role, vs in U["roles"].items():
     for u in vs:
         res = {}
+        if u.get("rife"):                                # 描いた 2 枚の間を RIFE で直に補間する組。Wan の列は無い
+            print(f"{u['name']:14s} {base + '<>' + u['pose']:22s} RIFE の組（Wan の検査なし）")
+            out[u["name"]] = {"role": role, "ok": True, "pairs": {}, "rife": True}; continue
         for a, b in ((base, u["pose"]), (u["pose"], base)):
             r = check_pair(a, b); res[f"{a}>{b}"] = r
             if "motion_mean" in r:

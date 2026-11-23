@@ -1,0 +1,88 @@
+{
+ "_": "sheets-howto の行 26〜34（205〜277 秒）。arrive はその語の声の頭（master.words.json）。同じ物は同じ側で指す（Excel は左、ページの履歴は右）。締めの会釈は外した（声の終わり 275.72 秒で書き出しも終わり、後ろに無音が無い。会釈は口の部品の無い姿勢なので声の後に置く）",
+ "start": 205.0,
+ "end": 275.7,
+ "cues": [
+  {
+   "arrive": 209.25,
+   "role": "question",
+   "unit": "think_arms",
+   "word": "おかしな変更"
+  },
+  {
+   "arrive": 211.69,
+   "role": "point",
+   "word": "ここから戻す",
+   "unit": "point_right"
+  },
+  {
+   "arrive": 215.71,
+   "role": "explain",
+   "word": "共有とエクスポート"
+  },
+  {
+   "arrive": 219.37,
+   "role": "point",
+   "word": "Excel のファイルとして",
+   "unit": "point_left"
+  },
+  {
+   "arrive": 223.0,
+   "role": "emphasis",
+   "unit": "emph_palm",
+   "word": "持ち出すときの注意"
+  },
+  {
+   "arrive": 225.55,
+   "role": "count",
+   "n": 1,
+   "word": "一つ目"
+  },
+  {
+   "arrive": 231.63,
+   "role": "count",
+   "n": 2,
+   "word": "二つ目"
+  },
+  {
+   "arrive": 239.19,
+   "role": "count",
+   "n": 3,
+   "word": "三つ目"
+  },
+  {
+   "arrive": 245.81,
+   "role": "explain",
+   "word": "使い分けはこうだ"
+  },
+  {
+   "arrive": 249.51,
+   "role": "conclude",
+   "unit": "good_thumb",
+   "word": "Sheets で作る"
+  },
+  {
+   "arrive": 256.15,
+   "role": "point",
+   "word": "Excel のファイルを作らせる",
+   "unit": "point_left"
+  },
+  {
+   "arrive": 259.4,
+   "role": "size",
+   "unit": "size_pinch",
+   "word": "初めは自分にしか（狭い）"
+  },
+  {
+   "arrive": 264.05,
+   "role": "explain",
+   "word": "共有から渡す"
+  },
+  {
+   "arrive": 268.23,
+   "role": "conclude",
+   "unit": "close_gassho",
+   "word": "残りと判定が出る"
+  }
+ ]
+}
