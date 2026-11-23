@@ -89,6 +89,32 @@ def test_lock_legs_fixed_dx_does_not_search():
     assert searched["dx"] != 0 and fixed["dx"] == 0
 
 
+def test_legs_config_torso():
+    poses = {"home": {}, "point": {}}
+    assert lib.legs_config(True, poses, "home")["torso"] is None                       # 書かなければ呼ぶ側が決める
+    assert lib.legs_config({"torso": True}, poses, "home")["torso"] == lib.TORSO_DEFAULTS
+    assert lib.legs_config({"torso": {"min_cc": 0.8}}, poses, "home")["torso"]["min_cc"] == 0.8
+    assert lib.legs_config({"torso": False}, poses, "home")["torso"] is False
+    for bad in ({"torso": "yes"}, {"torso": {"roi": [1, 2]}}, {"torso": {"x": 1}}, {"torso": {"max_dev": 0}}):
+        with pytest.raises(ValueError): lib.legs_config(bad, poses, "home")
+
+
+def test_torso_offset_and_lock_legs_follow_the_torso():
+    canon = np.ascontiguousarray(np.array(sm.figure(0))[:, :, ::-1])
+    H, W = canon.shape[:2]
+    roi = (W // 2 - 40, H // 4, W // 2 + 40, H // 2)
+    img = cv2.warpAffine(canon, np.float32([[1, 0, 7], [0, 1, -5]]), (W, H), borderMode=cv2.BORDER_REPLICATE)   # 胴ごと右上へずれた絵
+    dx, dy, cc = lib.torso_offset(canon, img, roi)
+    assert abs(dx - 7) < 0.5 and abs(dy + 5) < 0.5 and cc > 0.9
+    _, base = lib.lock_legs(img, canon, dx=0)
+    _, moved = lib.lock_legs(img, canon, dx=dx, dy_add=dy)
+    assert abs(moved["M"][0, 2] - dx) < 1e-6 and abs(moved["M"][1, 2] - (base["M"][1, 2] + dy)) < 1e-6   # 脚（と足元の点）が胴と同じだけずれる
+
+
+def test_torso_roi_from_mouth():
+    assert lib.torso_roi([430, 540, 528, 612]) == (410, 622, 548, 874)
+
+
 # ---------- wanflf.dense_paths（ComfyUI と RIFE は差し替え） ----------
 def bgr(im): return np.ascontiguousarray(np.array(im)[:, :, ::-1])
 

@@ -37,7 +37,7 @@ from lib import Proj, MOUTHS, EYES, defloor, bake_shadow, boot_anchor, body_heig
 from lib import vowel_frames, resolve_events, resolve_pose_names, used_poses, scale_config_pixels, scale_motion_pixels, scaled_area, LazyParts, EccCache, plan_at, choose_mouth as choose, smooth_mouth
 from lib import mora_track, voiced_span, mora_frames, mora_mouth, PAUSE, frame_levels, word_hira, fill_vowel_gaps, words_hira, num_to_kanji
 from lib import trim_islands, occlude, occlude_diff, motion_config, breath_wave, wobble, onset_env, head_rig, rig_affine, head_maps, head_move, switch_offset, blink_times
-from lib import legs_config, lock_legs, wipe_box
+from lib import legs_config, lock_legs, wipe_box, torso_roi, torso_offset
 from lib import transition_config, switch_kind, pose_view, gaze_config, resolve_gaze, gaze_track, gaze_part
 from lib import interp_config, interp_on, interp_dur, dense_ks, via_home_config, home_route, head_config, head_pos, INTERP_DEFAULTS
 from lib import frame_tag, switch_check, switch_report, head_spans, mouth_off_spans, mouth_report, mouth_shut_spans, mouth_shut_report, speech_loud, short_holds, short_hold_report
@@ -140,13 +140,30 @@ except ValueError as e_: die(str(e_))
 LEGS_SRC = P.read_pose(LEGS["from"]) if LEGS else None
 LEGS_ON = set(LEGS["poses"]) | {LEGS["from"]} if LEGS else set()
 def legs_on(*poses_): return bool(LEGS) and all(q in LEGS_ON for q in poses_) and not all(q == LEGS["from"] for q in poses_)
-def legs(img, sc):
-    """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。"""
-    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=0 if LEGS["fix_x"] else None, s=WS)
+def legs(img, sc, off=None):
+    """下半身を差し替えた絵と、その絵の足元の点（元の姿勢の足元を写した点）。sc はこの絵を書き出す時の倍率（脚の大きさを元の姿勢に揃える）。
+    off: 胴のずれ（dx, dy）。脚をそのぶんずらして胴に付ける。足元の点もずれるので、書き出しで足元を揃えると胴が元の姿勢の胴の位置に来る"""
+    dx_ = off[0] if off is not None else (0 if LEGS["fix_x"] else None)
+    out, info = lock_legs(img, LEGS_SRC, LEGS["cut"], LEGS["feather"], LEGS["hand_zone"], SCALE[LEGS["from"]] / sc, dx=dx_, s=WS, dy_add=off[1] if off is not None else 0.0)
     if info is None: return img, None
     a_ = ANCH[LEGS["from"]]; M = info["M"]
     return out, (float(M[0, 0] * a_[0] + M[0, 2]), float(M[1, 1] * a_[1] + M[1, 2]))
 if LEGS: print("下半身の差し替え:", LEGS["from"], "→", LEGS["poses"], file=sys.stderr)
+# 胴を元の姿勢の胴の位置に止める（legs_lock.torso。既定は engine: wan のときだけ）。姿勢の絵が胴をずらして描かれていたり（凜の point_l は
+# 右上へ約 20 px）、Wan のコマで胴が揺れたりすると、脚は止まっているのに胴だけが滑って見えた（2026-11-23 ユーザー）。
+# 絵は動かさず、脚を胴に付いてくる位置へずらして差し替え、足元で揃えることで胴を止める（口・目の部品の置き場所は変わらない）
+TORSO = None
+if LEGS:
+    _t = LEGS["torso"]
+    if _t is None and bool(INTERP) and INTERP["engine"] == "wan":
+        from lib import TORSO_DEFAULTS; _t = dict(TORSO_DEFAULTS)
+    if _t:
+        _mr = C.get("face", {}).get("mouth_roi")
+        _roi = _t["roi"] if _t["roi"] is not None else (torso_roi(_mr) if _mr else None)
+        if _roi is None: print("注意: legs_lock.torso は face.mouth_roi か torso.roi が無いので使わない", file=sys.stderr)
+        else: TORSO = {**_t, "roi": [int(round(v)) for v in _roi]}
+TOFF = {}                                         # 姿勢の絵の胴のずれ（測れない・大きすぎる姿勢は 0）
+TOFF_F = {}                                       # Wan のコマの胴のずれ（パスごと）
 EVS = resolve_pose_names(C.get("events", []), P.poses, log=lambda m: print(m, file=sys.stderr))   # 名前の読み替えは全部の姿勢を見てから
 _used = used_poses(EVS, P.home, C.get("head"), LEGS["from"] if LEGS else None)
 P.poses = [p for p in P.poses if p in _used]      # 使う姿勢だけを読む（メモリと読み込みの時間）
@@ -181,9 +198,17 @@ if LEGS:                                          # 差し替える姿勢は基�
     if bad: die(f"legs_lock: 絵の大きさが {LEGS['from']} と違う姿勢: {bad}（同じ大きさにするか legs_lock.poses から外す）")
 if LEGS and LEGS["from"] not in ANCH: die(f"legs_lock.from の姿勢 {LEGS['from']} の足元が無い（anchor.points に書く）")
 if LEGS:                                          # 足元と大きさを元の絵で決めてから差し替え、足元の点は元の姿勢の足元を写した点にする（手で書いた anchor も）
+    if TORSO:                                     # 背の変わる姿勢（poses.<名前>.scale。会釈など）は胴が動いて当然なので止めない
+        TOFF[LEGS["from"]] = (0.0, 0.0); skip = []
+        for p in P.poses:
+            if p == LEGS["from"] or not legs_on(p) or "scale" in PCFG[p]: continue
+            dx_, dy_, cc_ = torso_offset(LEGS_SRC, RAW[p], TORSO["roi"], TORSO["min_cc"])
+            if cc_ >= TORSO["min_cc"] and np.hypot(dx_, dy_) <= TORSO["max_dev"] * WS: TOFF[p] = (dx_, dy_)
+            else: skip.append(p)
+        print("胴のずれ（止める）:", {p: (round(v[0], 1), round(v[1], 1)) for p, v in TOFF.items() if np.hypot(*v) >= 1}, ("測れず止めない: " + str(skip)) if skip else "", file=sys.stderr)
     for p in P.poses:
         if not legs_on(p): continue
-        img, a_ = legs(RAW[p], SCALE[p])
+        img, a_ = legs(RAW[p], SCALE[p], TOFF.get(p))
         if a_ is None: continue
         ANCH[p] = a_
         if FL.get("clean", False): PB[p], SH[p] = defloor(img, Y0, WS)
@@ -234,6 +259,17 @@ _pose_ids = {}
 def pose_id(p):                                   # 姿勢の絵の中身の印（顔の合わせの控えの鍵）
     if p not in _pose_ids: _pose_ids[p] = hashlib.md5(PB[p].tobytes()).hexdigest()
     return _pose_ids[p]
+def torso_of(path, img, a_, b_, k_):
+    """中割りのコマの胴のずれ。両端の姿勢のずれを k の割合で補った値を見込みにし、Wan のコマだけは測る。測れない（腕が胴の前を
+    通る腕組みなど）か、見込みから max_dev より離れたら見込みを使う。胴を止めない姿勢を含む組（会釈など）は None（今までどおり）。"""
+    if not TORSO or a_ not in TOFF or b_ not in TOFF: return None
+    w_ = k_ / DIV if a_ != b_ else 0.0
+    ex = (TOFF[a_][0] + (TOFF[b_][0] - TOFF[a_][0]) * w_, TOFF[a_][1] + (TOFF[b_][1] - TOFF[a_][1]) * w_)
+    if f"{os.sep}ib_wan{os.sep}" not in path: return ex
+    if path not in TOFF_F:
+        dx_, dy_, cc_ = torso_offset(LEGS_SRC, img, TORSO["roi"], TORSO["min_cc"])
+        TOFF_F[path] = (dx_, dy_) if cc_ >= TORSO["min_cc"] and np.hypot(dx_ - ex[0], dy_ - ex[1]) <= TORSO["max_dev"] * WS else ex
+    return TOFF_F[path]
 IBCACHE = {}; IBCACHE_MAX = 48   # 中割りの絵の控え。補間で枚数が増えるとメモリを食い潰すので、古いものから捨てる
 def ib_item(item, src_pose, lerp_parts=False):
     """中割りの絵と、その上に移植した部品（顔に合わせられなければ部品なし）、軸足の位置、大きさの補正。"""
@@ -246,7 +282,7 @@ def ib_item(item, src_pose, lerp_parts=False):
     if img.shape != ref.shape: img = cv2.resize(img, (ref.shape[1], ref.shape[0]), interpolation=cv2.INTER_AREA if WS != 1.0 else cv2.INTER_LINEAR)
     sc = SCALE[a_] + (SCALE[b_] - SCALE[a_]) * k_ / DIV
     lanc = None
-    if legs_on(a_, b_): img, lanc = legs(img, sc)  # 両端とも差し替える姿勢なら、中割りも同じ下半身に（足元の点も差し替えた脚から）
+    if legs_on(a_, b_): img, lanc = legs(img, sc, torso_of(path, img, a_, b_, k_))  # 両端とも差し替える姿勢なら、中割りも同じ下半身に（足元の点も差し替えた脚から）
     clean, shadow = defloor(img, Y0, WS) if FL.get("clean", False) else (img, np.zeros(img.shape[:2], np.float32))
     own = "anchor" in PCFG[a_] or "anchor" in PCFG[b_]          # 端の姿勢に anchor を書いたら、中割りも測らずに両端の間で補う
     anc = lanc if lanc is not None else (DETECT(clean) if DETECT and not own else None)
