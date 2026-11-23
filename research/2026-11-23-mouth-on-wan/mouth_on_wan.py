@@ -5,16 +5,17 @@ home／X の口の部品を貼る。貼り方を 3 つ並べて比べる:
   A 今のまま   : 部品を顔の合わせ（ECC のアフィン）で写して貼るだけ（render.py の中割りと同じ）
   B 平均の色   : 部品の縁の帯で「コマ − 元の姿勢の絵」の平均（Lab）を取り、部品全体に足す（効かないので出力からは外した）
   C 場所ごとの色: 同じ差を、唇の形の違う所を除いて大きくぼかし、部品の場所ごとに足す
-  D 小島を捨てる: 部品のいちばん大きい島（口の本体）だけを貼る。色は合わせない
+  D 小島を捨てる: 写す前に、口の範囲の中心に届かない島を捨てる（render.py の face.trim_islands と同じ lib.trim_islands）。色は合わせない
 縁の浮き（部品の縁のすぐ内側の色と、その下のコマの色の差、ΔE）をコマごとに出す。
 
 使い方: python mouth_on_wan.py <パック> <声の作業フォルダ> <出力フォルダ> X [X ...]
+口の範囲はパックの config.face.mouth_roi（home の座標）をそのまま使う（X の部品も home とほぼ同じ場所にある）。
 """
 import sys, os, json, glob, subprocess, cv2, numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "../../skills/video-mascot/scripts"))
-from lib import frame_levels, choose_mouth, smooth_mouth, vowel_frames, words_hira, word_hira, fill_vowel_gaps  # noqa: E402
+from lib import trim_islands, frame_levels, choose_mouth, smooth_mouth, vowel_frames, words_hira, word_hira, fill_vowel_gaps  # noqa: E402
 
 P, VW, OUT = sys.argv[1], sys.argv[2], sys.argv[3]; XS = sys.argv[4:]
 os.makedirs(OUT, exist_ok=True)
@@ -24,14 +25,6 @@ FPS = 30
 def load_parts(pose):
     d = f"{P}/parts_{pose}"; pj = json.load(open(f"{d}/parts.json"))
     return {k: (cv2.imread(f"{d}/{k}.png", -1), x, y) for k, (x, y) in pj.items() if k.startswith("m")}
-
-
-def main_island(im):
-    """口の部品のうち、いちばん大きい島（口の本体）だけを残す。髪・首の縁の切れ端は透明にする。"""
-    a = im[:, :, 3]; n, lb, st, _ = cv2.connectedComponentsWithStats((a > 0).astype(np.uint8), 8)
-    if n <= 2: return im
-    big = 1 + int(np.argmax(st[1:, 4])); keep = cv2.dilate((lb == big).astype(np.uint8), np.ones((3, 3), np.uint8))
-    out = im.copy(); out[:, :, 3] = a * keep; return out
 
 
 def roi_of(parts, W, H):
@@ -55,16 +48,17 @@ def lab(img): return cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
 def bgr(lab_): return cv2.cvtColor(np.clip(lab_, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
-def compose(frame, pose_img, part, A, mode):
-    """部品を A で frame に写して貼る。返り値: 貼った絵、縁の ΔE、部品の中心。"""
+def compose(frame, pose_img, part, A, mode, mroi=None):
+    """部品を A で frame に写して貼る。mode D は写す前に口の範囲 mroi の中心に届かない島を捨てる（render.py と同じ trim_islands）。
+    返り値: 貼った絵、縁の ΔE、部品の中心。"""
     im, px, py = part; H, W = frame.shape[:2]
+    if mode == "D": im = trim_islands(im, px, py, mroi)
     T = A.copy(); T[:, 2] += A[:, 0] * px + A[:, 1] * py
     full = cv2.warpAffine(im, T, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
     a = full[:, :, 3].astype(np.float32) / 255; yy, xx = np.where(a > 0)
     x0, x1, y0, y1 = xx.min() - 30, xx.max() + 31, yy.min() - 30, yy.max() + 31
     sl = (slice(y0, y1), slice(x0, x1))
     fl, pl = lab(frame[sl]), lab(np.ascontiguousarray(full[sl][:, :, :3])); al = a[sl]
-    if mode == "D": im = main_island(im)
     if mode in ("B", "C"):
         ref = cv2.warpAffine(pose_img, A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
         d = fl - lab(ref[sl])                                   # コマと元の姿勢の絵の差（明るさ・色のずれ＋唇の形の違い）
@@ -116,6 +110,7 @@ vowel_at = fill_vowel_gaps(vowel_at, lvl_s >= 0.15, FPS)
 MOUTH = smooth_mouth([choose_mouth(lvl_s[f], vowel_at[f]) for f in range(NMAX)], 1)
 FB = {"m7": "m1", "m3": "m2", "m6": "m1"}
 
+MROI = json.load(open(f"{P}/config.json"))["face"]["mouth_roi"]
 HOME = cv2.imread(f"{P}/poses/pose_home.png"); PARTS = {"home": load_parts("home")}
 report = {}
 for X in XS:
@@ -138,7 +133,7 @@ for X in XS:
         outs = {}
         for m in "ACD":
             if k is None or cc < 0.80: outs[m] = fr; continue
-            outs[m], de, _ = compose(fr, PIMG[src], parts[k], A, m); stats[m].append(de)
+            outs[m], de, _ = compose(fr, PIMG[src], parts[k], A, m, MROI); stats[m].append(de)
             if m == "A": des_t.append((de, t))
         row = [body(outs["D"]), crop(outs["A"]), crop(outs["C"]), crop(outs["D"])]
         img = np.hstack(row)
