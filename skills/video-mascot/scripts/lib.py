@@ -1130,7 +1130,8 @@ def gaze_track(nall, fps, spans, switches=(), yaw_of=None, lead=0.15):
 
 
 # ---------- 下半身の差し替え（config.legs_lock。opt-in）----------
-LEGS_DEFAULTS = {"from": None, "cut": 0.38, "feather": 0.03, "hand_zone": 0.45, "poses": None, "fix_x": False}
+LEGS_DEFAULTS = {"from": None, "cut": 0.38, "feather": 0.03, "hand_zone": 0.45, "poses": None, "fix_x": False, "torso": None}
+TORSO_DEFAULTS = {"roi": None, "min_cc": 0.9, "max_dev": 40}
 
 
 def legs_config(value, poses_cfg, home):
@@ -1151,6 +1152,17 @@ def legs_config(value, poses_cfg, home):
     if not 0 < out["feather"] < out["cut"]: raise ValueError(f"legs_lock.feather は 0 より大きく cut より小さく: {out['feather']}")
     if not 0 <= out["hand_zone"] <= 1: raise ValueError(f"legs_lock.hand_zone は 0〜1: {out['hand_zone']}")
     if not isinstance(out["fix_x"], bool): raise ValueError(f"legs_lock.fix_x は true か false: {out['fix_x']!r}")
+    t = out["torso"]                                  # 胴を元の姿勢（from）の胴に合わせる（None は呼ぶ側が決める。render は engine: wan のとき true）
+    if t is True: t = {}
+    if isinstance(t, dict):
+        bad = set(t) - set(TORSO_DEFAULTS)
+        if bad: raise ValueError(f"legs_lock.torso に知らない項目: {sorted(bad)}")
+        t = {**TORSO_DEFAULTS, **t}
+        if t["roi"] is not None and (not isinstance(t["roi"], (list, tuple)) or len(t["roi"]) != 4): raise ValueError(f"legs_lock.torso.roi は [x0, y0, x1, y1]: {t['roi']!r}")
+        if not 0 < float(t["min_cc"]) <= 1: raise ValueError(f"legs_lock.torso.min_cc は 0〜1: {t['min_cc']}")
+        if not float(t["max_dev"]) > 0: raise ValueError(f"legs_lock.torso.max_dev は正の画素: {t['max_dev']}")
+    elif t not in (None, False): raise ValueError(f"legs_lock.torso は true/false か辞書: {t!r}")
+    out["torso"] = t
     if out["poses"] is None:
         out["poses"] = [p for p, c in poses_cfg.items() if not c.get("yaw")]
     else:
@@ -1190,14 +1202,41 @@ def _main_blob(m):
     return lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
 
 
-def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, s=1.0):
+def torso_roi(mouth_roi):
+    """口の範囲から胴（襟・シャツ・ボタン）の範囲を決める。口の中心から左右に口の幅の 0.7 倍、口の下 10 画素から口の高さの 3.5 倍。
+    腕と、腰の前で組んだ手は入らない（凜で 410〜548 × 622〜874）。"""
+    x0, y0, x1, y1 = mouth_roi; cx, w, h = (x0 + x1) / 2, x1 - x0, y1 - y0
+    return (int(round(cx - 0.7 * w)), int(round(y1 + 10)), int(round(cx + 0.7 * w)), int(round(y1 + 10 + 3.5 * h)))
+
+
+def torso_offset(ref, img, roi, min_cc=0.9):
+    """img の胴が ref の胴からどれだけずれているか（dx, dy, 合い）。roi（ref の座標）の中で平行移動だけを合わせる。
+    合いが min_cc に届かなければ、上の 4 割（襟まわり）だけでもう一度測り、合いの良い方を返す（腕組み・合掌は胸の前の腕で
+    胴が隠れ、全体では 0.6〜0.75 だったが、襟では 0.97〜0.98）。合わなければ合いは -1。
+    姿勢の絵が胴をずらして描かれていたり、Wan のコマで胴が揺れたりするのを測る。"""
+    g0 = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY).astype(np.float32); g1 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    def one(x0, y0, x1, y1):
+        m = np.zeros(g0.shape, np.uint8); m[max(0, y0):y1, max(0, x0):x1] = 1; M = np.eye(2, 3, dtype=np.float32)
+        try: cc, M = cv2.findTransformECC(g0, g1, M, cv2.MOTION_TRANSLATION, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 200, 1e-5), m, 5)
+        except cv2.error: return 0.0, 0.0, -1.0
+        return float(M[0, 2]), float(M[1, 2]), float(cc)
+    x0, y0, x1, y1 = [int(v) for v in roi]; best = one(x0, y0, x1, y1)
+    if best[2] < min_cc:
+        up = one(x0, y0, x1, y0 + int((y1 - y0) * 0.4))
+        if up[2] > best[2]: best = up
+    return best
+
+
+def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.0, dx=None, s=1.0, dy=None):
     """img の腰から下を canon の下半身に差し替えた絵（同じ大きさの BGR）と、使った値の辞書を返す。
     切れ目の高さは canon の背で測る。canon は足元の y を img に合わせ、切れ目の帯で脚の重なりが一番大きくなるよう横に ±40px までずらす。
     切れ目の上の帯では、両方の絵の腰の輪郭を行ごとに途中の輪郭へ伸び縮みさせてから混ぜる（二重の輪郭を出さない）。
     元の絵の手（肌の色）と、腰・脚の外にある腕・手は、切れ目から足元までの上 hand_zone までは元のまま残す（足首の肌は canon）。
     canon_scale: 先に canon をその足元を中心にこの倍率にする（書き出しで img が canon と違う倍率で拡大縮小される時、出来上がりの脚の大きさを揃える）。
     辞書の M は canon の座標を出来上がりの絵の座標へ写す 2x3 の行列（canon の足元の点を写せば、差し替えた絵の足元になる）。
-    dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。"""
+    dx: 横のずらしを決め打ちする（None は切れ目の帯で脚の重なりが一番大きくなる所を ±40px 探す）。小数も可。
+    dy: 縦の位置を決め打ちする（None は足元で合わせる）。胴に合わせるとき（legs_lock.torso）は、測った胴のずれをそのまま渡す。
+      足元で合わせた位置に足すと、足ごとずれた絵で足元の分と胴の分が二重になる（PR #123 の Codex の指摘）。"""
     H, W = img.shape[:2]
     if canon.shape != img.shape: raise ValueError(f"legs_lock: 絵の大きさが基準と違う（{img.shape[1]}x{img.shape[0]} と {canon.shape[1]}x{canon.shape[0]}）")
     pv = feet_anchor(canon, min_area=scaled_area(400, s)) or (W / 2.0, float(H))
@@ -1207,7 +1246,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     crow = np.where(_main_blob(fg_mask(canon)).any(1))[0]
     if not len(rows) or not len(crow): return img.copy(), None
     fy = int(rows.max()) + 1; h = int(crow.max()) + 1 - int(crow.min())   # 背は基準の絵で測る（手を頭の上に挙げた絵で切れ目が上へずれない）
-    cy = int(round(fy - cut * h)); fb = max(2, int(round(feather * h))); dy = fy - (int(crow.max()) + 1)
+    cy = int(round(fy - cut * h)); fb = max(2, int(round(feather * h))); dy = float(fy - (int(crow.max()) + 1)) if dy is None else float(dy)
     y0 = max(0, cy - fb)                              # 帯は絵の中に収める（上へはみ出す分は帯を薄くする）
     if cy - y0 < 2: return img.copy(), None
     fb = cy - y0
@@ -1215,7 +1254,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     cs = cv2.warpAffine(canon, np.float32([[1, 0, 0], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     b = fg_mask(cs)[y0:cy].sum(0).astype(np.float32)
     if dx is None: dx = max(range(-int(round(40 * s)), int(round(40 * s)) + 1), key=lambda s_: (float((a * np.roll(b, s_)).sum()), -abs(s_)))
-    else: dx = int(dx)                                # 横のずらしを決め打ち（legs_lock.fix_x。カメラ固定の絵で足元を揺らさない）
+    else: dx = float(dx)                              # 横のずらしを決め打ち（legs_lock.fix_x。カメラ固定の絵で足元を揺らさない。胴に合わせるときは小数）
     c = cv2.warpAffine(canon, np.float32([[1, 0, dx], [0, 1, dy]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(BG, BG, BG))
     wr = np.clip((np.arange(H) - y0) / fb, 0, 1).astype(np.float32)
     imgW, cW, mc = img.copy(), c.copy(), fg_mask(c); cx = W / 2.0; X = np.arange(W, dtype=np.float32)
@@ -1251,7 +1290,7 @@ def lock_legs(img, canon, cut=0.38, feather=0.03, hand_zone=0.45, canon_scale=1.
     k = np.maximum(sk, keep)[..., None]; w = wr[:, None, None] * (1 - ck[..., None])
     out = (imgW.astype(np.float32) * (1 - w) + cW.astype(np.float32) * w) * (1 - k) + img.astype(np.float32) * k
     M = M0.copy(); M[0, 2] += dx; M[1, 2] += dy
-    return np.clip(out + 0.5, 0, 255).astype(np.uint8), {"cut": cy, "feather": fb, "dx": int(dx), "dy": int(dy), "M": M}
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8), {"cut": cy, "feather": fb, "dx": float(dx), "dy": float(dy), "M": M}
 
 
 # ---------- 中割りのコマ補間（config.interp、opt-in）----------
