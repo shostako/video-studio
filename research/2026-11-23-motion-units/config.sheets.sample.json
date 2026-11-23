@@ -41,7 +41,7 @@
    "pose": "home"
   },
   {
-   "at": 224.95,
+   "at": 224.85,
    "pose": "raise_r"
   },
   {
@@ -127,8 +127,8 @@
    "point_l>home": 0.8,
    "home>palm_stop": 0.7,
    "palm_stop>home": 0.8,
-   "home>raise_r": 0.6,
-   "raise_r>home": 0.7,
+   "home>raise_r": 0.7,
+   "raise_r>home": 0.8,
    "home>count_2": 0.6,
    "count_2>home": 0.7,
    "home>count_3": 0.6,
@@ -177,19 +177,19 @@
     "pose": "home"
    },
    {
-    "at": 228.39,
+    "at": 228.44,
     "pose": "home"
    },
    {
-    "at": 228.84,
+    "at": 228.89,
     "pose": "half_r"
    },
    {
-    "at": 229.34,
+    "at": 229.39,
     "pose": "half_r"
    },
    {
-    "at": 229.79,
+    "at": 229.84,
     "pose": "home"
    },
    {

@@ -14,6 +14,13 @@ chk = os.path.splitext(UF)[0] + ".checked.json"
 ok = json.load(open(chk)) if os.path.exists(chk) else {}
 if not ok: sys.exit(f"検査の結果が無い: {chk}（先に check_units.py）")
 pool = {r: [u for u in vs if ok.get(u["name"], {}).get("ok")] for r, vs in U["roles"].items()}
+# 書き出しの切り替えの秒（interp.durs）は姿勢の組ごとに 1 つ。同じ姿勢を使う部品で out/back が違うと、後の部品が
+# 前の部品の秒を黙って上書きし、組んだ時刻と書き出しが食い違う（PR #122 の Codex の指摘）。揃っていなければ止める
+seen = {}
+for vs in U["roles"].values():
+    for u in vs:
+        k = (u["out"], u["back"]); p = seen.setdefault(u["pose"], (k, u["name"]))
+        if p[0] != k: sys.exit(f"同じ姿勢 {u['pose']} の部品 {p[1]} と {u['name']} で out/back が違う（{p[0]} と {k}）。揃える")
 turn = {r: 0 for r in pool}
 
 plan = []                                   # (動き出す秒, 着く秒, 戻り始める秒, 戻り着く秒, 部品)

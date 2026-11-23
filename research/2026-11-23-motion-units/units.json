@@ -103,9 +103,9 @@
     "name": "count_1",
     "pose": "raise_r",
     "n": 1,
-    "out": 0.6,
+    "out": 0.7,
     "hold": 0.9,
-    "back": 0.7
+    "back": 0.8
    },
    {
     "name": "count_2",
