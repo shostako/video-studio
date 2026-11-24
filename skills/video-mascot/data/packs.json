@@ -17,6 +17,14 @@
    "sha256": "fcdbb789b9898d5d6b9c72075493c0d939e78fbb59087801c353d868750ba22a"
   },
   {
+   "name": "rin3",
+   "desc": "凜（ひし形のショートボブ）。姿勢 26・Wan の切り替え 43 組・頭の向きと会釈の列 7",
+   "version": "2026-11-24",
+   "url": "https://github.com/shostako/video-studio/releases/download/packs-2026-11-24/rin3-pack.zip",
+   "size": 340689955,
+   "sha256": "149a8094a15468bcee8f4a839ab2bbc0bf4d280b66bfd6a7c30e8af1af4cc6d4"
+  },
+  {
    "name": "ran",
    "desc": "蘭（ボブ）。姿勢 36・Wan の切り替え 52 組・会釈の列 1",
    "version": "2026-11-01",
