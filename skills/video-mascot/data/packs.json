@@ -11,10 +11,10 @@
   {
    "name": "rin2",
    "desc": "凜（ショート。首の近くに髪を置かない）。姿勢 26・Wan の切り替え 43 組・頭の向きと会釈の列 7",
-   "version": "2026-11-24",
+   "version": "2026-11-24.2",
    "url": "https://github.com/shostako/video-studio/releases/download/packs-2026-11-24/rin2-pack.zip",
-   "size": 338085091,
-   "sha256": "7629ad09d2238788230dadabf6ea9fa1a881f2f05672d2a1baf862ac254064d6"
+   "size": 338143697,
+   "sha256": "fcdbb789b9898d5d6b9c72075493c0d939e78fbb59087801c353d868750ba22a"
   },
   {
    "name": "ran",
