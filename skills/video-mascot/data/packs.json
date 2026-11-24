@@ -9,6 +9,14 @@
    "sha256": "1cb598aec1aec10bb06a74750ed4593be53a15a5b5292772dc9554a51f8a4d0e"
   },
   {
+   "name": "rin2",
+   "desc": "凜（ショート。首の近くに髪を置かない）。姿勢 26・Wan の切り替え 43 組・頭の向きと会釈の列 7",
+   "version": "2026-11-24",
+   "url": "https://github.com/shostako/video-studio/releases/download/packs-2026-11-24/rin2-pack.zip",
+   "size": 337993762,
+   "sha256": "d7cd8ee1c0447fc27406d37dda2f2f4eb218ab834780e8f631b50f6796f12df4"
+  },
+  {
    "name": "ran",
    "desc": "蘭（ボブ）。姿勢 36・Wan の切り替え 52 組・会釈の列 1",
    "version": "2026-11-01",
